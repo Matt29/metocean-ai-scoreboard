@@ -105,15 +105,24 @@ Vercel (Next.js) — redéploiement auto sur push, lit les JSON statiques
 
 Accès programmatique aux données :
 
-1. **Obs Candhis (Cerema)** : vérifier le flux exact (API, open data, ou
-   scraping toléré). Si une bouée n'est pas accessible proprement, changer de
-   station avant d'écrire le moindre modèle.
+1. **Obs Candhis (Cerema)** : clé API en main (stockée dans `.env` local, non
+   commitée ; en production : secret GitHub Actions `CANDHIS_API_KEY`). Reste à
+   valider le format du flux et la liste des bouées réellement servies.
 2. **API SHOM (data.shom.fr)** : demander la clé gratuite, vérifier les quotas.
 3. **Copernicus Marine / ARPEGE** : accès déjà maîtrisé (downloaders existants
    dans OCEANO/API_METEO_FRANCE et projets CMEMS).
 
 La première tâche du plan d'implémentation est un spike de validation de ces
 trois accès.
+
+## Méthode d'implémentation
+
+Le plan d'implémentation déléguera les tâches à des sous-agents, en routant
+par tier de modèle (règle du workspace) : Haiku pour les scans/inventaires,
+Sonnet pour l'implémentation cadrée (fetchers, scoring, site), Opus pour le
+debug complexe et la modélisation, l'orchestration restant au modèle
+principal. Les tâches indépendantes (un fetcher par source, pipeline vs web)
+sont parallélisables entre sous-agents.
 
 ## Évolutions prévues (architecture prête, pas construites)
 
