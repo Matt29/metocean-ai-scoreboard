@@ -391,6 +391,7 @@ dependencies = [
     { name = "pandas" },
     { name = "requests" },
     { name = "scikit-learn" },
+    { name = "utide" },
 ]
 
 [package.dev-dependencies]
@@ -404,6 +405,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=3.0.5" },
     { name = "requests", specifier = ">=2.34.2" },
     { name = "scikit-learn", specifier = ">=1.9.0" },
+    { name = "utide", specifier = ">=0.3.1" },
 ]
 
 [package.metadata.requires-dev]
@@ -443,4 +445,17 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c", size = 433602, upload-time = "2026-05-07T16:13:18.596Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897", size = 131087, upload-time = "2026-05-07T16:13:17.151Z" },
+]
+
+[[package]]
+name = "utide"
+version = "0.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/50/51/6df9a74565eb47b0337a8f369389d8961ec30b4e124132f3502fcca045f2/utide-0.3.1.tar.gz", hash = "sha256:5b8fc6e0227c53c10320f35a84680b703d5b445220aea0d1f0ebf9ec7a620f51", size = 75392, upload-time = "2025-04-28T13:38:31.55Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d8/c5/7ea3c324ba97896341c64899d9324cd34f30c84463faa2f9d98c7627de9c/utide-0.3.1-py3-none-any.whl", hash = "sha256:e9d65223bf47b355ceecb691202b3b47a4a0c4289fd11659613ecc321b10b61e", size = 75287, upload-time = "2025-04-28T13:38:28.379Z" },
 ]
