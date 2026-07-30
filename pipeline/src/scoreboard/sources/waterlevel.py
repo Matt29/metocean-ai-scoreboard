@@ -10,27 +10,43 @@ from scoreboard.sources import SourceError
 
 _BASE_URL = "https://services.data.shom.fr/maregraphie/observation/json"
 _TIMEOUT = 30
+_MAX_SPAN = timedelta(days=30)  # REFMAR caps a single request at 31 days
 
 
 def fetch_tide_obs(
-    station: Station, date_start: date, session: requests.Session | None = None
+    station: Station,
+    date_start: date,
+    session: requests.Session | None = None,
+    date_end: date | None = None,
 ) -> pd.DataFrame:
+    """Water level, hourly UTC. Spans over 30 days are fetched in chunks (API cap)."""
     session = session or requests.Session()
-    dt_start = f"{date_start.isoformat()}T00:00Z"
-    dt_end = f"{(date_start + timedelta(days=1)).isoformat()}T00:00Z"
-    try:
-        resp = session.get(
-            f"{_BASE_URL}/{station.source_id}",
-            params={"sources": 1, "dtStart": dt_start, "dtEnd": dt_end},
-            timeout=_TIMEOUT,
-        )
-        payload = resp.json()
-    except (requests.RequestException, ValueError) as exc:
-        raise SourceError(station.id, f"refmar request failed: {exc}") from exc
+    date_end = date_end or date_start + timedelta(days=1)
 
-    rows = payload.get("data") or []
-    if resp.status_code != 200 or not rows:
-        raise SourceError(station.id, f"refmar returned no data (HTTP {resp.status_code})")
+    rows: list[dict] = []
+    chunk_start = date_start
+    while chunk_start < date_end:
+        chunk_end = min(chunk_start + _MAX_SPAN, date_end)
+        try:
+            resp = session.get(
+                f"{_BASE_URL}/{station.source_id}",
+                params={
+                    "sources": 1,
+                    "dtStart": f"{chunk_start.isoformat()}T00:00Z",
+                    "dtEnd": f"{chunk_end.isoformat()}T00:00Z",
+                },
+                timeout=_TIMEOUT,
+            )
+            payload = resp.json()
+        except (requests.RequestException, ValueError) as exc:
+            raise SourceError(station.id, f"refmar request failed: {exc}") from exc
+        if resp.status_code != 200:
+            raise SourceError(station.id, f"refmar returned HTTP {resp.status_code}")
+        rows.extend(payload.get("data") or [])
+        chunk_start = chunk_end
+
+    if not rows:
+        raise SourceError(station.id, "refmar returned no data")
 
     df = pd.DataFrame(rows)[["timestamp", "value"]]
     df = df.rename(columns={"timestamp": "time", "value": "level"})

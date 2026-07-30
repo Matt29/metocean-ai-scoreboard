@@ -225,7 +225,10 @@ stations niveau d'eau (SHOM REFMAR), toutes vérifiées vivantes le
 
 - Heure exacte de disponibilité du run MFWAM quotidien : à reconfirmer avant
   de figer le cron GitHub Actions (voir section 4).
-- Profondeur d'archive REFMAR au-delà de ~3 mois : non caractérisée
-  précisément (non requis par la brief, à vérifier si l'entraînement a besoin
-  de plus d'historique niveau d'eau que l'archive brute n'en offre).
+- ~~Profondeur d'archive REFMAR au-delà de ~3 mois~~ : **résolu en Task 6** —
+  `sources=1` sert **365 jours continus** (8761 valeurs horaires pour Brest et
+  Saint-Malo, 2025-07-30 → 2026-07-30), en requêtes de 30 jours (cap API de
+  31 jours géré par `fetch_tide_obs(date_end=...)`). Idem l'archive *analyse*
+  du dataset MFWAM `anfc` : 365 jours disponibles, utilisée comme proxy de
+  l'archive de prévision pour l'entraînement (voir `scripts/build_dataset.py`).
 - IOC : fallback documenté seulement, pas de fetcher prévu en v1.

@@ -8,6 +8,7 @@ dependencies = [
     "joblib>=1.5.3",
     "netcdf4>=1.7.4",
     "pandas>=3.0.5",
+    "pyarrow>=25.0.0",
     "requests>=2.34.2",
     "scikit-learn>=1.9.0",
     "utide>=0.3.1",
