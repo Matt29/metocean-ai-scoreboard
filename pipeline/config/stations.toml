@@ -1,0 +1,64 @@
+# Stations retenues pour le scoreboard metocean IA v1.
+# Source de vérité pour config.load_stations() (Task 2).
+# Voir docs/data-sources.md pour la justification de chaque source et la
+# preuve de disponibilité (appels API réels, 2026-07-30).
+
+[[station]]
+id = "pierres-noires"
+name = "Les Pierres Noires"
+kind = "wave"
+lat = 48.2903328
+lon = -4.9683332
+source = "candhis"
+source_id = "02911"
+baseline = "mfwam"
+
+[[station]]
+id = "belle-ile"
+name = "Belle-Ile"
+kind = "wave"
+lat = 47.2849998
+lon = -3.2850001
+source = "candhis"
+source_id = "05602"
+baseline = "mfwam"
+
+[[station]]
+id = "anglet"
+name = "Anglet"
+kind = "wave"
+lat = 43.5321655
+lon = -1.6150000
+source = "candhis"
+source_id = "06402"
+baseline = "mfwam"
+
+[[station]]
+id = "cherbourg"
+name = "Cherbourg (extérieur)"
+kind = "wave"
+lat = 49.6940600
+lon = -1.6213680
+source = "candhis"
+source_id = "05008"
+baseline = "mfwam"
+
+[[station]]
+id = "brest"
+name = "Brest"
+kind = "tide"
+lat = 48.3829002
+lon = -4.4950399
+source = "shom"
+source_id = "3"
+baseline = "harmonic"
+
+[[station]]
+id = "saint-malo"
+name = "Saint-Malo"
+kind = "tide"
+lat = 48.6408120
+lon = -2.0281030
+source = "shom"
+source_id = "410"
+baseline = "harmonic"
