@@ -132,13 +132,41 @@ def _tide_data(station: Station, test_days: int) -> tuple | None:
     return x, df["y"].astype(float), split_by_issue_day(x, test_days), None
 
 
+def _reference(x_ev: pd.DataFrame, obs_ev: pd.Series) -> tuple[float, float, float]:
+    """(MAE baseline, biais moyen, MAE baseline débiaisée) on an eval window."""
+    resid = obs_ev.to_numpy() - x_ev["baseline"].to_numpy()
+    mae_base = float(np.abs(resid).mean())
+    bias = float(resid.mean())
+    return mae_base, bias, float(np.abs(resid - bias).mean())
+
+
+def _score(est, x_ev: pd.DataFrame, obs_ev: pd.Series, kind: str) -> dict:
+    """MAE and both gains of one fitted candidate on one eval window."""
+    pred = model.predict(est, x_ev)
+    level = x_ev["baseline"].to_numpy() + pred if kind == "tide" else pred
+    mae_model = float(np.abs(level - obs_ev.to_numpy()).mean())
+    mae_base, _, mae_debiased = _reference(x_ev, obs_ev)
+    return {
+        "mae_model": mae_model,
+        "gain": (mae_base - mae_model) / mae_base if mae_base else 0.0,
+        # The honest headline: gain over the baseline once its offset is gone.
+        "gain_debiased": (mae_debiased - mae_model) / mae_debiased if mae_debiased else 0.0,
+    }
+
+
 def evaluate(
     station: Station,
     test_days: int,
     ablate: tuple[str, ...] = (),
     model_names: tuple[str, ...] = model.MODEL_NAMES,
 ) -> dict | None:
-    """Train every candidate on the same split; publish the best gain hors biais."""
+    """Pick the ML candidate on a validation slice of TRAIN, then report its
+    single test score.
+
+    The test window is touched **once**, by the winner. Choosing the candidate on
+    the test set would make the published gain a max over three draws on the same
+    ~30 issue days — the same leak `select_baseline` avoids, one level up.
+    """
     loaded = _wave_data(station, test_days) if station.kind == "wave" else _tide_data(
         station, test_days
     )
@@ -159,51 +187,50 @@ def evaluate(
     # Tide: learn the residual; waves: learn the corrected value directly.
     target = obs - x["baseline"] if station.kind == "tide" else obs
 
-    x_train, target_train = x[~is_test], target[~is_test]
+    x_train, target_train, obs_train = x[~is_test], target[~is_test], obs[~is_test]
     x_test, obs_test = x[is_test], obs[is_test]
-    resid = obs_test.to_numpy() - x_test["baseline"].to_numpy()
-    mae_base = float(np.abs(resid).mean())
-    # How much of the baseline error is a plain constant offset (see report §4).
-    bias = float(resid.mean())
-    mae_debiased = float(np.abs(resid - bias).mean())
+    mae_base, bias, mae_debiased = _reference(x_test, obs_test)
 
-    fitted, scores = {}, {}
-    for name in model_names:
-        m = model.train(x_train, target_train, name=name)
-        pred = model.predict(m, x_test)
-        level = x_test["baseline"].to_numpy() + pred if station.kind == "tide" else pred
-        mae_model = float(np.abs(level - obs_test.to_numpy()).mean())
-        fitted[name] = m
-        scores[name] = {
-            "mae_model": mae_model,
-            "gain": (mae_base - mae_model) / mae_base if mae_base else 0.0,
-            # The honest headline: gain over the baseline once its offset is gone.
-            "gain_debiased": (mae_debiased - mae_model) / mae_debiased if mae_debiased else 0.0,
-        }
+    # Selection: the last `test_days` issue days *of the train window* are the
+    # validation slice. Same mechanics as the test split, one level in.
+    val_scores = {}
+    if len(model_names) > 1:
+        is_val = split_by_issue_day(x_train, test_days)
+        if is_val.all() or not is_val.any():
+            print(f"  {station.id}: no room for a {test_days}d validation slice — skipped")
+            return None
+        for name in model_names:
+            m = model.train(x_train[~is_val], target_train[~is_val], name=name)
+            val_scores[name] = _score(m, x_train[is_val], obs_train[is_val], station.kind)
+    best = max(val_scores, key=lambda n: val_scores[n]["gain_debiased"]) if val_scores else (
+        model_names[0]
+    )
 
-    # The judge is the gain hors biais (equivalently, the lowest MAE: the two
-    # reference MAEs are the same for every candidate of a given station).
-    best = max(scores, key=lambda n: scores[n]["gain_debiased"])
+    # The winner, refitted on the whole train window, is evaluated on the test
+    # window exactly once — no max over candidates here.
+    final = model.train(x_train, target_train, name=best)
+    scores = _score(final, x_test, obs_test, station.kind)
     row = {
         "station": station.id,
         "kind": station.kind,
         "baseline_model": baseline_model,
         "n_train": int((~is_test).sum()),
         "n_test": int(is_test.sum()),
+        "n_val": int(is_val.sum()) if val_scores else 0,
         "mae_base": mae_base,
         "bias": bias,
         "mae_debiased": mae_debiased,
         "ml_model": best,
-        "scores": scores,
-        **scores[best],
-        "pass": scores[best]["gain"] >= GATE,
+        "val_scores": val_scores,
+        **scores,
+        "pass": scores["gain"] >= GATE,
         # "weak": the model brings nothing a constant offset would not.
-        "weak": scores[best]["mae_model"] >= mae_debiased,
+        "weak": scores["mae_model"] >= mae_debiased,
     }
     saved = (
         None
         if ablate  # ablation must not clobber the published artefact
-        else model.save(fitted[best], station.id, baseline_model=baseline_model)
+        else model.save(final, station.id, baseline_model=baseline_model)
     )
     print(
         f"  {station.id}: train {row['n_train']} / test {row['n_test']} rows | "
@@ -211,8 +238,12 @@ def evaluate(
         f"MAE base {mae_base:.3f} -> {best} {row['mae_model']:.3f} ({row['gain']:+.1%}) | "
         f"{_verdict(row)} -> {saved.name if saved else 'not saved (ablation)'}"
     )
-    for name, s in scores.items():
-        print(f"      {name:14} MAE {s['mae_model']:.4f}  hors biais {s['gain_debiased']:+7.1%}")
+    for name, s in val_scores.items():
+        chosen = " <- publié" if name == best else ""
+        print(
+            f"      [validation] {name:14} MAE {s['mae_model']:.4f}  "
+            f"hors biais {s['gain_debiased']:+7.1%}{chosen}"
+        )
     return row
 
 
@@ -223,11 +254,26 @@ def _verdict(r: dict) -> str:
     return "PASS*" if r["weak"] else "PASS"
 
 
-def _failure_notes(rows: list[dict]) -> list[str]:
-    """Réserve 4, entièrement dérivée des chiffres — aucune station codée en dur."""
+def _failure_notes(rows: list[dict], gate_failed: list[str]) -> list[str]:
+    """Réserve 5, entièrement dérivée des chiffres — aucune station codée en dur."""
     failing = [r for r in rows if not r["pass"]]
+    stale = [s for s in gate_failed if s not in {r["station"] for r in rows}]
+    stale_note = (
+        [
+            f"   Hors de ce run, `gate.json` garde sous le gate : {', '.join(stale)} —",
+            "   station(s) non ré-entraînée(s) ici, verdict inchangé.",
+            "",
+        ]
+        if stale
+        else []
+    )
     if not failing:
-        return ["5. **Aucune station sous le gate sur cette fenêtre de test.**", ""]
+        return [
+            "5. **Aucune station ré-entraînée n'est sous le gate sur cette fenêtre de",
+            "   test.**",
+            "",
+            *stale_note,
+        ]
     notes = [
         "5. **Stations sous le gate — à ne pas publier en l'état.** Le modèle n'y",
         f"   atteint pas les +{GATE:.0%} exigés : il ne trouve pas de signal exploitable",
@@ -249,7 +295,7 @@ def _failure_notes(rows: list[dict]) -> list[str]:
         f"({r['gain']:+.1%} affiché, {r['gain_debiased']:+.1%} hors biais)"
         for r in failing
     ]
-    return notes + [""]
+    return notes + [""] + stale_note
 
 
 def _rejected_leads() -> list[str]:
@@ -292,23 +338,30 @@ def _rejected_leads() -> list[str]:
 
 def _gain_cell(row: dict, name: str) -> str:
     """Gain hors biais of one candidate, bold when it is the published one."""
-    if name not in row["scores"]:
+    if name not in row["val_scores"]:
         return "—"  # candidate not run for this station (e.g. `--model`)
-    gain = f"{row['scores'][name]['gain_debiased']:+.1%}"
+    gain = f"{row['val_scores'][name]['gain_debiased']:+.1%}"
     return f"**{gain}**" if name == row["ml_model"] else gain
 
 
 def _ml_comparison(rows: list[dict]) -> list[str]:
-    """Table station × candidate ML model, on the gain hors biais."""
-    names = list(dict.fromkeys(n for r in rows for n in r["scores"]))
+    """Table station × candidate ML model, on the *validation* gain hors biais."""
+    names = list(dict.fromkeys(n for r in rows for n in r["val_scores"]))
+    if not names:
+        return []
     lines = [
         "## Comparaison des modèles ML",
         "",
-        "Gain **hors biais** de chaque candidat, entraîné et évalué sur exactement le",
-        "même split et la même baseline physique que les autres. Le modèle publié par",
-        "station est celui de meilleur gain hors biais (en gras). `ridge` est le",
-        "**plancher honnête** : un gradient boosting qui ne le bat pas ne paie pas sa",
-        "complexité, et c'est un résultat, pas un échec.",
+        "Gain **hors biais sur la fenêtre de VALIDATION** — pas sur le test. Les trois",
+        "candidats sont entraînés sur le train privé de sa validation, comparés sur",
+        "cette validation, et seul le gagnant (en gras) est ré-entraîné sur tout le",
+        "train puis évalué **une seule fois** sur le test : les chiffres du tableau",
+        "« Résultats par station » ne sont donc jamais un maximum sur trois tirages.",
+        "Les valeurs ci-dessous ne sont pas comparables à celles du test — fenêtre",
+        "différente, modèle entraîné sur moins de données.",
+        "",
+        "`ridge` est le **plancher honnête** : un gradient boosting qui ne le bat pas",
+        "ne paie pas sa complexité, et c'est un résultat, pas un échec.",
         "",
         "| Station | Baseline physique | " + " | ".join(f"`{n}`" for n in names) + " | Publié |",
         "|---|---|" + "---|" * (len(names) + 1),
@@ -323,7 +376,16 @@ def _ml_comparison(rows: list[dict]) -> list[str]:
     return lines + [""]
 
 
-def write_report(rows: list[dict], test_days: int, skipped: list[str] | None = None) -> None:
+def write_report(
+    rows: list[dict],
+    test_days: int,
+    gate: dict | None = None,
+    skipped: list[str] | None = None,
+) -> None:
+    """`gate` is the *merged* verdict file — the headline sentences are computed
+    on it, not on `rows`, so a station skipped this run cannot be silently
+    absolved by a report that only saw the retrained ones."""
+    gate = gate or {r["station"]: {"pass": r["pass"], "weak": r["weak"]} for r in rows}
     lines = [
         "# Évaluation des modèles de post-traitement",
         "",
@@ -381,12 +443,14 @@ def write_report(rows: list[dict], test_days: int, skipped: list[str] | None = N
         "source, pas ce tableau, que le publisher doit lire.",
         "",
     ]
-    failed = [r["station"] for r in rows if not r["pass"]]
+    # Computed on the merged gate: a station not retrained this run keeps its
+    # verdict, and the report must not claim otherwise.
+    gate_failed = sorted(s for s, e in gate.items() if not e["pass"])
     lines += [
-        f"**Stations sous le gate : {', '.join(failed)}** — à ne pas mettre en ligne en"
-        " l'état.\n"
-        if failed
-        else "**Toutes les stations passent le gate.**\n",
+        f"**Stations sous le gate dans `gate.json` : {', '.join(gate_failed)}** — à ne pas"
+        " mettre en ligne en l'état.\n"
+        if gate_failed
+        else "**Toutes les stations de `gate.json` passent le gate.**\n",
     ]
     lines += _ml_comparison(rows)
     lines += [
@@ -404,9 +468,14 @@ def write_report(rows: list[dict], test_days: int, skipped: list[str] | None = N
         "  le dénominateur de tous les gains ci-dessus. La sélection ne voit jamais la",
         "  fenêtre de test : sinon la baseline serait choisie par les données mêmes qui",
         "  servent à la juger, ce qui gonflerait mécaniquement le gain.",
-        "* **Comparaison des modèles ML.** Les trois candidats (`hgb`, `ridge`,",
-        "  `hgb-per-lead`) sont entraînés sur le même split, avec les mêmes features et",
-        "  la même baseline ; celui de meilleur gain hors biais est publié.",
+        "* **Choix du modèle ML — sur validation, jamais sur le test.** Les",
+        f"  {test_days} derniers jours d'émission **du train** forment une fenêtre de",
+        "  validation. Les trois candidats (`hgb`, `ridge`, `hgb-per-lead`) y sont",
+        "  comparés, à features et baseline identiques ; le meilleur gain hors biais",
+        "  gagne, est ré-entraîné sur tout le train, puis évalué **une seule fois** sur",
+        "  le test. Choisir le modèle sur le test publierait un maximum sur trois",
+        "  tirages faits sur la même fenêtre — la même fuite que la sélection de",
+        "  baseline évite, un étage plus haut.",
         "* **Cible.** Stations `wave` : l'observation Hs. Stations `tide` : le résidu",
         "  `obs - harmonique` ; le niveau publié est réassemblé en",
         "  `harmonique + résidu prédit`, et c'est sur ce niveau reconstitué que la MAE",
@@ -442,9 +511,10 @@ def write_report(rows: list[dict], test_days: int, skipped: list[str] | None = N
     ]
     # Tout est dérivé : la fermeté de la phrase suit les chiffres, elle ne les précède pas.
     inflated = [r for r in rows if r["gain"] > 0 and r["gain_debiased"] < 0.5 * r["gain"]]
-    weak = [r["station"] for r in rows if r["weak"]]
+    weak = sorted(s for s, e in gate.items() if e["weak"])
     lines += [
-        f"4. **Sur {len(inflated)} des {len(rows)} stations, plus de la moitié du gain",
+        f"4. **Sur {len(inflated)} des {len(rows)} stations ré-entraînées, plus de la",
+        "   moitié du gain",
         "   affiché n'est qu'une correction de biais constant** — chaque baseline dérive",
         "   sur la fenêtre de test, et retirer ce seul offset capte déjà l'essentiel du",
         "   gain. Le chiffre à citer est donc **« Gain hors biais »**, jamais « Gain",
@@ -463,21 +533,44 @@ def write_report(rows: list[dict], test_days: int, skipped: list[str] | None = N
             f"hors biais : {', '.join(f'`{r['station']}`' for r in inflated)} — leur "
             "chiffre de tête est d'abord du débiaisage."
             if inflated
-            else "   Aucune station n'a un gain affiché supérieur au double de son gain "
-            "hors biais."
+            else "   Aucune station ré-entraînée n'a un gain affiché supérieur au double "
+            "de son gain hors biais."
         ),
         (
-            f"   Stations où le modèle **ne bat pas** ce simple débiaisage : "
-            f"{', '.join(f'`{s}`' for s in weak)} — il n'y apporte rien de plus qu'une"
-            " constante, à ne pas présenter comme du skill météo-océanique."
+            f"   Stations `weak` dans `gate.json` (le modèle **ne bat pas** ce simple "
+            f"débiaisage) : {', '.join(f'`{s}`' for s in weak)} — il n'y apporte rien de "
+            "plus qu'une constante, à ne pas présenter comme du skill météo-océanique."
             if weak
-            else "   Toutes les stations battent ce simple débiaisage."
+            else "   Aucune station de `gate.json` n'est `weak` : toutes battent ce "
+            "simple débiaisage."
         ),
     ]
-    lines += _failure_notes(rows)
+    lines += _failure_notes(rows, gate_failed)
     lines += _rejected_leads()
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text("\n".join(lines))
+
+
+def merge_gate(previous: dict, rows: list[dict], known: set[str]) -> dict:
+    """Previous verdicts + this run's, minus the stations no longer configured.
+
+    Merged, never rewritten from scratch: a station skipped this run (no dataset
+    on disk) keeps its previous artefact, so it must keep its verdict.
+    """
+    gate = {k: v for k, v in previous.items() if k in known}
+    for r in rows:
+        entry = {
+            "pass": r["pass"],
+            "weak": r["weak"],
+            "mae_model": round(r["mae_model"], 4),
+            "mae_baseline": round(r["mae_base"], 4),
+            "gain": round(r["gain"], 4),
+            "gain_debiased": round(r["gain_debiased"], 4),
+        }
+        if r["baseline_model"]:
+            entry["baseline_model"] = r["baseline_model"]
+        gate[r["station"]] = entry
+    return gate
 
 
 def main() -> int:
@@ -524,27 +617,12 @@ def main() -> int:
         return 0
 
     # Machine-readable gate: the publisher (Task 8) reads this, not the markdown.
-    # Merged, never rewritten from scratch: a station skipped this run (no
-    # dataset on disk) keeps its previous artefact, so it must keep its verdict.
-    known = {s.id for s in stations}
     previous = json.loads(GATE_PATH.read_text()) if GATE_PATH.exists() else {}
-    gate = {k: v for k, v in previous.items() if k in known}  # drop retired stations
-    for r in rows:
-        entry = {
-            "pass": r["pass"],
-            "weak": r["weak"],
-            "mae_model": round(r["mae_model"], 4),
-            "mae_baseline": round(r["mae_base"], 4),
-            "gain": round(r["gain"], 4),
-            "gain_debiased": round(r["gain_debiased"], 4),
-        }
-        if r["baseline_model"]:
-            entry["baseline_model"] = r["baseline_model"]
-        gate[r["station"]] = entry
+    gate = merge_gate(previous, rows, {s.id for s in stations})
     GATE_PATH.write_text(json.dumps(gate, indent=2, sort_keys=True) + "\n")
 
     skipped = [s.id for s in stations if s.id not in {r["station"] for r in rows}]
-    write_report(rows, args.test_days, skipped)
+    write_report(rows, args.test_days, gate, skipped)
     failed = [r["station"] for r in rows if not r["pass"]]
 
     print(f"\nreport -> {REPORT_PATH}")

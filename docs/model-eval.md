@@ -1,6 +1,6 @@
 # Évaluation des modèles de post-traitement
 
-Généré par `pipeline/scripts/train.py` le 2026-08-03 16:29 UTC (test = les 30 derniers jours d'émission).
+Généré par `pipeline/scripts/train.py` le 2026-08-03 16:50 UTC (test = les 30 derniers jours d'émission).
 
 Le modèle **post-traite** une prévision physique officielle : il la corrige, il
 ne la remplace jamais. Cette baseline n'est plus imposée : pour une station
@@ -14,7 +14,7 @@ station `tide`, c'est la prédiction harmonique.
 | Station | Type | Baseline (meilleur modèle physique) | Modèle ML | Rows train / test | MAE baseline | MAE baseline débiaisée | MAE modèle | Gain affiché | **Gain hors biais** | Verdict |
 |---|---|---|---|---|---|---|---|---|---|---|
 | pierres-noires | wave | ncep_gfswave025 | `hgb-per-lead` | 14946 / 1402 | 0.213 | 0.213 | 0.158 | +25.8% | **+25.9%** | PASS |
-| belle-ile | wave | ewam | `hgb` | 15206 / 1402 | 0.117 | 0.114 | 0.098 | +16.8% | **+14.4%** | PASS |
+| belle-ile | wave | ewam | `hgb-per-lead` | 15206 / 1402 | 0.117 | 0.114 | 0.101 | +14.1% | **+11.7%** | PASS |
 | anglet | wave | meteofrance_wave | `ridge` | 7936 / 1402 | 0.118 | 0.112 | 0.106 | +9.8% | **+5.4%** | PASS |
 | cherbourg | wave | ewam | `hgb` | 14488 / 926 | 0.087 | 0.072 | 0.070 | +19.3% | **+3.0%** | PASS |
 
@@ -40,22 +40,27 @@ Ce verdict est aussi émis en donnée dans `pipeline/models/gate.json`
 baseline_model}}`) — c'est cette
 source, pas ce tableau, que le publisher doit lire.
 
-**Toutes les stations passent le gate.**
+**Stations sous le gate dans `gate.json` : saint-malo** — à ne pas mettre en ligne en l'état.
 
 ## Comparaison des modèles ML
 
-Gain **hors biais** de chaque candidat, entraîné et évalué sur exactement le
-même split et la même baseline physique que les autres. Le modèle publié par
-station est celui de meilleur gain hors biais (en gras). `ridge` est le
-**plancher honnête** : un gradient boosting qui ne le bat pas ne paie pas sa
-complexité, et c'est un résultat, pas un échec.
+Gain **hors biais sur la fenêtre de VALIDATION** — pas sur le test. Les trois
+candidats sont entraînés sur le train privé de sa validation, comparés sur
+cette validation, et seul le gagnant (en gras) est ré-entraîné sur tout le
+train puis évalué **une seule fois** sur le test : les chiffres du tableau
+« Résultats par station » ne sont donc jamais un maximum sur trois tirages.
+Les valeurs ci-dessous ne sont pas comparables à celles du test — fenêtre
+différente, modèle entraîné sur moins de données.
+
+`ridge` est le **plancher honnête** : un gradient boosting qui ne le bat pas
+ne paie pas sa complexité, et c'est un résultat, pas un échec.
 
 | Station | Baseline physique | `hgb` | `ridge` | `hgb-per-lead` | Publié |
 |---|---|---|---|---|---|
-| pierres-noires | ncep_gfswave025 | +25.3% | +15.1% | **+25.9%** | `hgb-per-lead` |
-| belle-ile | ewam | **+14.4%** | +7.6% | +11.7% | `hgb` |
-| anglet | meteofrance_wave | -6.0% | **+5.4%** | -8.4% | `ridge` |
-| cherbourg | ewam | **+3.0%** | -1.2% | -0.3% | `hgb` |
+| pierres-noires | ncep_gfswave025 | +29.4% | +24.9% | **+31.5%** | `hgb-per-lead` |
+| belle-ile | ewam | +32.7% | +32.6% | **+32.9%** | `hgb-per-lead` |
+| anglet | meteofrance_wave | +9.4% | **+12.5%** | +7.5% | `ridge` |
+| cherbourg | ewam | **+21.2%** | +15.7% | +20.8% | `hgb` |
 
 ## Protocole
 
@@ -71,9 +76,14 @@ complexité, et c'est un résultat, pas un échec.
   le dénominateur de tous les gains ci-dessus. La sélection ne voit jamais la
   fenêtre de test : sinon la baseline serait choisie par les données mêmes qui
   servent à la juger, ce qui gonflerait mécaniquement le gain.
-* **Comparaison des modèles ML.** Les trois candidats (`hgb`, `ridge`,
-  `hgb-per-lead`) sont entraînés sur le même split, avec les mêmes features et
-  la même baseline ; celui de meilleur gain hors biais est publié.
+* **Choix du modèle ML — sur validation, jamais sur le test.** Les
+  30 derniers jours d'émission **du train** forment une fenêtre de
+  validation. Les trois candidats (`hgb`, `ridge`, `hgb-per-lead`) y sont
+  comparés, à features et baseline identiques ; le meilleur gain hors biais
+  gagne, est ré-entraîné sur tout le train, puis évalué **une seule fois** sur
+  le test. Choisir le modèle sur le test publierait un maximum sur trois
+  tirages faits sur la même fenêtre — la même fuite que la sélection de
+  baseline évite, un étage plus haut.
 * **Cible.** Stations `wave` : l'observation Hs. Stations `tide` : le résidu
   `obs - harmonique` ; le niveau publié est réassemblé en
   `harmonique + résidu prédit`, et c'est sur ce niveau reconstitué que la MAE
@@ -106,20 +116,25 @@ complexité, et c'est un résultat, pas un échec.
 3. **Le gate de +5 % s'applique quand même**, mais il se lit
    « +5 % mesuré sur analyse, avec un vent parfait », pas « +5 % en
    opérationnel ».
-4. **Sur 1 des 4 stations, plus de la moitié du gain
+4. **Sur 1 des 4 stations ré-entraînées, plus de la
+   moitié du gain
    affiché n'est qu'une correction de biais constant** — chaque baseline dérive
    sur la fenêtre de test, et retirer ce seul offset capte déjà l'essentiel du
    gain. Le chiffre à citer est donc **« Gain hors biais »**, jamais « Gain
    affiché ». Détail par station (biais obs − baseline, puis les deux gains) :
 
    * `pierres-noires` : biais -0.007 m — gain affiché +25.8%, **hors biais +25.9%**
-   * `belle-ile` : biais -0.043 m — gain affiché +16.8%, **hors biais +14.4%**
+   * `belle-ile` : biais -0.043 m — gain affiché +14.1%, **hors biais +11.7%**
    * `anglet` : biais -0.030 m — gain affiché +9.8%, **hors biais +5.4%**
    * `cherbourg` : biais -0.066 m — gain affiché +19.3%, **hors biais +3.0%**
 
    Stations dont le gain affiché vaut **au moins le double** de son gain hors biais : `cherbourg` — leur chiffre de tête est d'abord du débiaisage.
-   Toutes les stations battent ce simple débiaisage.
-5. **Aucune station sous le gate sur cette fenêtre de test.**
+   Stations `weak` dans `gate.json` (le modèle **ne bat pas** ce simple débiaisage) : `brest`, `saint-malo` — il n'y apporte rien de plus qu'une constante, à ne pas présenter comme du skill météo-océanique.
+5. **Aucune station ré-entraînée n'est sous le gate sur cette fenêtre de
+   test.**
+
+   Hors de ce run, `gate.json` garde sous le gate : saint-malo —
+   station(s) non ré-entraînée(s) ici, verdict inchangé.
 
 
 ## Pistes testées et écartées

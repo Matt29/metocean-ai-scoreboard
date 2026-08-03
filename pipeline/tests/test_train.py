@@ -101,6 +101,54 @@ def test_per_lead_router_routes_each_slice_to_its_own_model():
         assert pred[i] == pytest.approx(expected)
 
 
+def test_model_selection_never_looks_at_the_test_window(tmp_path, monkeypatch):
+    """The published candidate is chosen on validation, and its reported score
+    is a single test evaluation — not the best of three test scores."""
+    raw = _raw(days=120)
+    raw["hs_gwam"] = raw["hs"] + 0.02
+    monkeypatch.setattr(train, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(model, "MODELS_DIR", tmp_path)
+    raw.to_parquet(tmp_path / "synthetic_raw.parquet")
+
+    seen = []
+    real_score = train._score
+    monkeypatch.setattr(
+        train, "_score", lambda est, x, obs, kind: seen.append(len(x)) or real_score(est, x, obs, kind)
+    )
+    row = train.evaluate(STATION, test_days=10, model_names=("ridge", "hgb"))
+
+    # 2 validation scores + exactly 1 test score, and the published numbers are
+    # that last one — the test window is evaluated once, by the winner alone.
+    assert len(seen) == 3
+    assert seen[-1] == row["n_test"]
+    assert seen[0] == seen[1] == row["n_val"] != row["n_test"]
+    assert row["ml_model"] in ("ridge", "hgb")
+    assert set(row["val_scores"]) == {"ridge", "hgb"}
+
+
+def test_merge_gate_keeps_skipped_stations_and_drops_retired_ones():
+    previous = {
+        "brest": {"pass": False, "weak": True, "gain": -0.1},  # skipped this run
+        "old-station": {"pass": True, "weak": False},  # no longer in stations.toml
+        "anglet": {"pass": False, "weak": True, "gain": 0.0},  # retrained below
+    }
+    rows = [
+        {
+            "station": "anglet", "baseline_model": "ewam", "pass": True, "weak": False,
+            "mae_model": 0.1063, "mae_base": 0.1178, "gain": 0.0978, "gain_debiased": 0.0543,
+        }
+    ]
+
+    gate = train.merge_gate(previous, rows, known={"anglet", "brest"})
+
+    assert gate["brest"] == previous["brest"]  # untouched, verdict preserved
+    assert "old-station" not in gate  # evicted with the config entry
+    assert gate["anglet"] == {
+        "pass": True, "weak": False, "mae_model": 0.1063, "mae_baseline": 0.1178,
+        "gain": 0.0978, "gain_debiased": 0.0543, "baseline_model": "ewam",
+    }
+
+
 def test_evaluate_writes_an_artefact_carrying_baseline_model_and_feature_columns(
     tmp_path, monkeypatch
 ):

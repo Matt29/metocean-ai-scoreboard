@@ -10,10 +10,10 @@
   },
   "belle-ile": {
     "baseline_model": "ewam",
-    "gain": 0.1676,
-    "gain_debiased": 0.1438,
+    "gain": 0.1412,
+    "gain_debiased": 0.1167,
     "mae_baseline": 0.1174,
-    "mae_model": 0.0978,
+    "mae_model": 0.1009,
     "pass": true,
     "weak": false
   },
