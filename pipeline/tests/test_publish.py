@@ -12,7 +12,7 @@ from scoreboard.config import Station
 
 STATIONS = [
     Station(id="a", name="A", kind="wave", lat=1.0, lon=2.0,
-            source="candhis", source_id="0001", baseline="mfwam"),
+            source="candhis", source_id="0001", baseline="marine-best"),
     Station(id="b", name="B", kind="tide", lat=3.0, lon=4.0,
             source="shom", source_id="0002", baseline="harmonic"),
 ]

@@ -1,28 +1,37 @@
 # Scoreboard Metocean IA
 
-Un modèle IA **post-traite** la prévision physique officielle (MFWAM pour la
-houle, un modèle harmonique pour le niveau d'eau) sur des stations françaises
-de référence, et publie chaque jour son écart mesuré face à cette baseline
-officielle. Ce n'est pas un modèle qui remplace la physique — c'est une
-correction statistique dessus, notée publiquement, jour après jour.
+Un modèle IA **post-traite** la prévision physique officielle (le meilleur des
+5 modèles de vagues Open-Meteo Marine pour la houle — `baseline_model`, choisi
+par station à l'entraînement — un modèle harmonique pour le niveau d'eau) sur
+des stations françaises de référence, et publie chaque jour son écart mesuré
+face à cette baseline officielle. Ce n'est pas un modèle qui remplace la
+physique — c'est une correction statistique dessus, notée publiquement, jour
+après jour.
 
 Spec complète : [`docs/superpowers/specs/2026-07-30-scoreboard-metocean-ia-design.md`](docs/superpowers/specs/2026-07-30-scoreboard-metocean-ia-design.md).
 Justification de chaque source de données : [`docs/data-sources.md`](docs/data-sources.md).
 
 ## Stations
 
-6 stations retenues, **4 publiées** — les 2 autres sont mesurées comme les
-autres tous les jours, mais un *gate* qualité (`pipeline/models/gate.json`)
+6 stations retenues, **5 publiées** — la station restante est mesurée comme
+les autres tous les jours, mais un *gate* qualité (`pipeline/models/gate.json`)
 retient toute station où l'IA ne bat pas sa propre baseline sur les données
 d'entraînement. Ce n'est pas une faiblesse cachée : c'est l'argument du
 produit — ce scoreboard ne publie que ce qu'il peut démontrer.
 
+Pour les stations houle, la baseline officielle n'est pas un modèle fixe : à
+l'entraînement, `scripts/train.py` retient par station le **meilleur** des 5
+modèles de vagues Open-Meteo Marine (`meteofrance_wave`, `ecmwf_wam025`,
+`gwam`, `ewam`, `ncep_gfswave025`) et l'écrit dans l'artefact
+(`baseline_model`) — c'est ce choix, pas un nom générique "MFWAM", que le
+gate et le serve utilisent ensuite.
+
 | station | variable | source obs | baseline officielle | publiée |
 |---|---|---|---|---|
-| Pierres Noires | houle (Hs) | Candhis | MFWAM | oui |
-| Belle-Île | houle (Hs) | Candhis | MFWAM | oui |
-| Anglet | houle (Hs) | Candhis | MFWAM | oui |
-| Cherbourg | houle (Hs) | Candhis | MFWAM | non (sous le gate) |
+| Pierres Noires | houle (Hs) | Candhis | Open-Meteo Marine (`ncep_gfswave025`) | oui |
+| Belle-Île | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | oui |
+| Anglet | houle (Hs) | Candhis | Open-Meteo Marine (`meteofrance_wave`) | oui |
+| Cherbourg | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | oui |
 | Brest | niveau d'eau | SHOM REFMAR | harmonique (utide) | oui |
 | Saint-Malo | niveau d'eau | SHOM REFMAR | harmonique (utide) | non (sous le gate) |
 
@@ -39,19 +48,29 @@ GitHub Actions (cron, voir .github/workflows/daily.yml)
   uv run scoreboard daily
         │
         ├─ 1. score les prédictions publiées hier (obs Candhis/SHOM d'aujourd'hui)
-        ├─ 2. baseline du jour : MFWAM (Copernicus Marine) ou refit harmonique (utide)
+        ├─ 2. baseline du jour : meilleur modèle vague Open-Meteo Marine
+        │      (`baseline_model`, choisi par station à l'entraînement) ou
+        │      refit harmonique (utide)
         ├─ 3. prévision vent ARPEGE (Open-Meteo) → inférence du modèle IA (par station)
         ├─ 4. publie data/<station>/latest.json + history.json + data/scores.json
-        └─ 5. archive le vent servi → pipeline/data_forecast_archive/YYYY-MM-DD.parquet
+        └─ 5. archive le vent + les modèles vague servis → pipeline/data_forecast_archive/YYYY-MM-DD.parquet
         │
         ▼
   git commit + push (uniquement si data/ ou pipeline/data_forecast_archive/ a changé)
 ```
 
+Le chemin vague est passé de Copernicus Marine (MFWAM/CMEMS) à l'API Marine
+d'Open-Meteo lors du retrain multi-modèles (2026-08) — voir
+`docs/data-sources.md` § 4ter pour la justification et les chiffres de
+couverture/écart mesurés.
+
 `pipeline/data_forecast_archive/` n'est pas un sous-produit accessoire : c'est
 le corpus qui permettra un jour de ré-entraîner sur le vent *réellement servi*
 (ARPEGE) plutôt que sur la réanalyse ERA5 utilisée à l'entraînement — voir
-`docs/data-sources.md` §4bis pour le skew que ça corrige.
+`docs/data-sources.md` §4bis pour le skew que ça corrige (résolu pour les
+vagues, toujours ouvert pour le vent). Il archive aussi, depuis Task 7, les
+colonnes `hs_*` des 5 modèles vague effectivement servis à chaque station —
+pas seulement le vent.
 
 ## Commandes
 
@@ -87,10 +106,8 @@ défaut du dépôt si le run quotidien s'arrête sans erreur visible.
 # 1. Créer le dépôt (public — c'est le produit vitrine) et pousser le code
 gh repo create metocean-ai-scoreboard --public --source . --push
 
-# 2. Poser les 3 secrets attendus par .github/workflows/daily.yml
+# 2. Poser le secret attendu par .github/workflows/daily.yml
 gh secret set CANDHIS_API_KEY
-gh secret set COPERNICUSMARINE_SERVICE_USERNAME
-gh secret set COPERNICUSMARINE_SERVICE_PASSWORD
 
 # 3. Déclencher un premier run manuel et vérifier le commit de données
 gh workflow run daily.yml
@@ -105,10 +122,14 @@ gh workflow run daily.yml
 Le run quotidien est planifié à **09:30 UTC** (`.github/workflows/daily.yml`).
 Cette heure n'est pas celle du brief d'origine (06:00 UTC) : elle a été
 recalée après avoir constaté, en listant directement le bucket S3 source de
-Copernicus Marine sur 12 jours, que le fichier MFWAM du jour n'est publié
+Copernicus Marine sur 12 jours, que le fichier MFWAM du jour n'était publié
 qu'entre 08:10 et 08:50 UTC selon les jours. 09:30 UTC laisse ~40 min de
 marge sur le pire cas observé. Détail de la méthode et des données dans
 `.superpowers/sdd/2026-07-30-scoreboard-metocean-ia/task-10-report.md`.
+Ce constraint CMEMS a disparu avec le retrait de Copernicus (Task 7,
+`docs/data-sources.md` § 4ter) ; l'heure n'a pas été rouverte depuis faute de
+nouvelle mesure sur la disponibilité Open-Meteo — 09:30 UTC reste la valeur en
+place.
 
 Une station en `"missing"` (503 transitoire, station sous le gate, source
 indisponible) est un résultat normal du run — le job ne devient rouge que sur

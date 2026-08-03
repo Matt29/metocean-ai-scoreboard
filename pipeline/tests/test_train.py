@@ -31,7 +31,7 @@ train = _load_train()
 
 STATION = Station(
     id="synthetic", name="Synthetic", kind="wave", lat=48.29, lon=-4.97,
-    source="candhis", source_id="02911", baseline="mfwam",
+    source="candhis", source_id="02911", baseline="marine-best",
 )
 
 

@@ -223,14 +223,19 @@ avec la demande 1 (graphiques).
 1. Vérifier les premiers jours scorés non reconstitués.
 2. ~~Étendre la mesure aux échéances 25–48 h.~~ Fait le 2026-08-03 (`pending`
    + `_rescore_pending`).
-3. Ré-entraîner sur les prévisions archivées. **Mise à jour 2026-08-03** : plus
-   besoin d'attendre un mois de collecte propre — l'API Historical Forecast
-   d'Open-Meteo sert `meteofrance_arpege_europe` (vraies prévisions, format
-   identique au live) complet depuis ~2025 (vérifié par sondage, station Brest).
-   Limites vérifiées le même jour : leads courts seulement (concaténation des
-   runs les plus frais), et la Previous Runs API (leads stratifiés 1–7 j) n'a
-   **pas** ARPEGE — seulement `ecmwf_ifs025`. Auto-hébergement possible pour
-   lever les quotas si le volume l'exige.
+3. ~~Ré-entraîner sur les prévisions archivées~~ — **fait (2026-08-03)** pour
+   les vagues : retrain multi-modèles Task 7, baseline vague basculée sur
+   Open-Meteo Marine (meilleur des 5 modèles par station), CMEMS/MFWAM
+   retiré du pipeline (voir `docs/data-sources.md` § 4ter). **Mise à jour
+   2026-08-03** : plus besoin d'attendre un mois de collecte propre —
+   l'API Historical Forecast d'Open-Meteo sert `meteofrance_arpege_europe`
+   (vraies prévisions, format identique au live) complet depuis ~2025 (vérifié
+   par sondage, station Brest). Limites vérifiées le même jour : leads courts
+   seulement (concaténation des runs les plus frais), et la Previous Runs API
+   (leads stratifiés 1–7 j) n'a **pas** ARPEGE — seulement `ecmwf_ifs025`.
+   Reste ouvert pour le **vent** (skew ERA5-train/ARPEGE-serve toujours actif,
+   voir § 2 ci-dessus) : auto-hébergement possible pour lever les quotas si le
+   volume l'exige.
 4. Alors seulement : les graphiques (1) sur des chiffres opérationnels, la
    décision d'horizon (2) sur un modèle dont on connaît le skill réel, et les
    stations de vent (3).

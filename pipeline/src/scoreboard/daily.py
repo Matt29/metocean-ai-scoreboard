@@ -443,8 +443,12 @@ def _run_station(
         # station has nothing to archive, no invented empty rows) — see
         # `docs/data-sources.md` for why this corpus exists at all. Must
         # never fail the run: the scoreboard publish above already happened.
+        # Wave frame (`hs_*`, includes the baseline itself) alongside the wind
+        # forcing: without it the anti-skew corpus is missing 5 of the 18 wave
+        # features a future retrain needs (Task 7 review).
+        archived = forcing if wave_models is None else pd.concat([forcing, wave_models], axis=1)
         valid_times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in series])
-        archive.write_day(archive_dir, station.id, t0, valid_times, forcing, source=forcing_source)
+        archive.write_day(archive_dir, station.id, t0, valid_times, archived, source=forcing_source)
     except Exception as exc:  # noqa: BLE001 - archiving must never fail the run
         log.warning("%s: archiving served wind forecast failed: %s", station.id, exc)
 

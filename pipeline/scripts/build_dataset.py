@@ -18,9 +18,11 @@ Sources and documented compromises
 * Atmospheric forcing (Open-Meteo / ERA5): ONE archive request per station over
   the whole window, hourly 10 m wind converted to u/v. **Documented train/serve
   skew**: training uses the ERA5 *reanalysis*, while the daily run will use ARPEGE
-  *forecast* (`sources.wind.fetch_wind_forecast`). Same category of compromise
-  as the MFWAM analysis-as-forecast proxy above — a mean-bias-type skew, not an
-  equivalence — and it resorbs the same way, by accumulating real forecast runs.
+  *forecast* (`sources.wind.fetch_wind_forecast`, `fetch_wind_models_forecast`) —
+  a mean-bias-type skew, not an equivalence — resorbed over time by
+  `archive.write_day` accumulating real served forecast runs (see
+  `docs/data-sources.md` §4bis; already resolved for waves by the 2026-08 retrain,
+  which moved the wave path off the CMEMS analysis-as-forecast proxy entirely).
 * Tide (REFMAR): raw high-frequency observations, chunked in 30-day requests
   (API caps a request at 31 days). Real archive depth is discovered at runtime.
 * Tide baseline (harmonic): **causal rolling fit** (`harmonic.causal_predict`).

@@ -54,8 +54,6 @@ jobs:
         working-directory: pipeline
         env:
           CANDHIS_API_KEY: ${{ secrets.CANDHIS_API_KEY }}
-          COPERNICUSMARINE_SERVICE_USERNAME: ${{ secrets.COPERNICUSMARINE_SERVICE_USERNAME }}
-          COPERNICUSMARINE_SERVICE_PASSWORD: ${{ secrets.COPERNICUSMARINE_SERVICE_PASSWORD }}
           # Never interpolate inputs.backfill_since directly into `run:` —
           # it comes from a workflow_dispatch form field and would otherwise
           # be a script-injection vector. Passed via env instead, and

@@ -28,7 +28,7 @@ TODAY = date(2026, 7, 30)  # backfill replays up to (but not including) TODAY
 YESTERDAY = TODAY - timedelta(days=1)
 
 WAVE = Station(id="wave-a", name="Wave A", kind="wave", lat=48.0, lon=-4.0,
-               source="candhis", source_id="0001", baseline="mfwam")
+               source="candhis", source_id="0001", baseline="marine-best")
 TIDE = Station(id="tide-b", name="Tide B", kind="tide", lat=48.4, lon=-4.5,
                 source="shom", source_id="0002", baseline="harmonic")
 STATIONS = [WAVE, TIDE]

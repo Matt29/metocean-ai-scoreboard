@@ -10,7 +10,7 @@ from scoreboard.sources.wind import MULTI_FORCING_COLUMNS
 
 STATION = Station(
     id="s", name="s", kind="wave", lat=48.0, lon=-5.0,
-    source="candhis", source_id="1", baseline="mfwam",
+    source="candhis", source_id="1", baseline="marine-best",
 )
 
 

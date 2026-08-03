@@ -25,7 +25,7 @@ def _load_build_dataset():
 
 STATION = Station(
     id="pierres-noires", name="Les Pierres Noires", kind="wave", lat=48.29, lon=-4.97,
-    source="candhis", source_id="02911", baseline="mfwam",
+    source="candhis", source_id="02911", baseline="marine-best",
 )
 
 

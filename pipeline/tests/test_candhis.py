@@ -11,7 +11,7 @@ from scoreboard.sources import SourceError
 
 FIX = json.loads((Path(__file__).parent / "fixtures/candhis_tr.json").read_text())
 ST = Station(id="pierres-noires", name="PN", kind="wave", lat=48.29, lon=-4.97,
-             source="candhis", source_id="02911", baseline="mfwam")
+             source="candhis", source_id="02911", baseline="marine-best")
 
 
 @pytest.fixture(autouse=True)

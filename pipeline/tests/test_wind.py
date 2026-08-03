@@ -20,7 +20,7 @@ from scoreboard.sources.wind import (
 )
 
 ST = Station(id="pierres-noires", name="PN", kind="wave", lat=48.29, lon=-4.97,
-             source="candhis", source_id="02911", baseline="mfwam")
+             source="candhis", source_id="02911", baseline="marine-best")
 
 
 def payload(times, speeds, dirs):

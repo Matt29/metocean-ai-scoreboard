@@ -2,7 +2,8 @@
 
 Same JSON contract for both legs (train = historical, serve = live), same
 parser — the anti-skew guarantee of `sources/wind.py`, applied to waves.
-Replaces `mfwam.py`/CMEMS on the wave path (Task 6 wires it in).
+Replaces the old CMEMS `mfwam.py` fetcher on the wave path (Task 6 wired it
+in; the module itself was deleted in Task 7).
 A model absent from the archive answers HTTP 200 with nulls: columns are kept
 as NaN so downstream coverage checks (features.py) can refuse to serve — they
 must NEVER be silently zero-filled here.

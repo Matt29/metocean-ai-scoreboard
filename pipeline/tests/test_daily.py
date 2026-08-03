@@ -26,7 +26,7 @@ BASELINE_MODEL = "ewam"
 MODEL_HS = {col: 1.0 + i for i, col in enumerate(MODEL_COLUMNS)}
 
 WAVE = Station(id="wave-a", name="Wave A", kind="wave", lat=48.0, lon=-4.0,
-                source="candhis", source_id="0001", baseline="mfwam")
+                source="candhis", source_id="0001", baseline="marine-best")
 TIDE = Station(id="tide-b", name="Tide B", kind="tide", lat=48.4, lon=-4.5,
                 source="shom", source_id="0002", baseline="harmonic")
 STATIONS = [WAVE, TIDE]
@@ -265,7 +265,9 @@ def test_daily_run_archives_the_served_wind_forecast_for_every_published_station
     tmp_path, patched_sources
 ):
     """Task A1: the wind forecast fed to the model must be kept, not thrown away,
-    so a future retrain can use real ARPEGE instead of ERA5 hindsight."""
+    so a future retrain can use real ARPEGE instead of ERA5 hindsight. Task 7
+    review: the served `hs_*` wave-model columns (baseline included) must be
+    kept too, or the anti-skew corpus is missing 5 of the 18 wave features."""
     archive_dir = tmp_path / "archive"
 
     daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=archive_dir)
@@ -273,17 +275,20 @@ def test_daily_run_archives_the_served_wind_forecast_for_every_published_station
     df = pd.read_parquet(archive_dir / f"{RUN_DATE.isoformat()}.parquet")
     assert set(df["station_id"]) == {"wave-a", "tide-b"}
     # One file, two forcing shapes: the wave path archives the multi-model
-    # frame it actually served, the tide path still the mono ARPEGE one.
+    # wind frame plus the 5-model wave frame it actually served, the tide
+    # path still the mono ARPEGE wind one (no wave frame at all).
     assert set(df.columns) == {
         "station_id", "issued", "valid_time", "lead_h", "source",
-        "wind_u10", "wind_v10", *MULTI_FORCING_COLUMNS,
+        "wind_u10", "wind_v10", *MULTI_FORCING_COLUMNS, *MODEL_COLUMNS,
     }
     wave, tide = df[df["station_id"] == "wave-a"], df[df["station_id"] == "tide-b"]
     assert (wave["source"] == "openmeteo:multi").all()
     assert wave[MULTI_FORCING_COLUMNS].notna().all().all()
+    assert wave[MODEL_COLUMNS].notna().all().all()
     assert wave[["wind_u10", "wind_v10"]].isna().all().all()
     assert (tide["source"] == "meteofrance_arpege_europe").all()
     assert tide[["wind_u10", "wind_v10"]].notna().all().all()
+    assert tide[MODEL_COLUMNS].isna().all().all()
     assert df["lead_h"].min() >= 1
 
 

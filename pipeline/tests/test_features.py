@@ -283,7 +283,7 @@ WAVE_STATION = Station(
     lon=-4.0,
     source="candhis",
     source_id="00000",
-    baseline="mfwam",
+    baseline="marine-best",
 )
 
 
