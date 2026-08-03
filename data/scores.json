@@ -1,50 +1,50 @@
 {
   "schema_version": 1,
-  "updated": "2026-08-03T06:00:00Z",
+  "updated": "2026-08-03T12:49:08.016175Z",
   "stations": [
     {
       "id": "pierres-noires",
-      "n_days": 0,
-      "n_days_backfilled": 0,
-      "mae_ia_7d": null,
-      "mae_baseline_7d": null,
-      "mae_ia_30d": null,
-      "mae_baseline_30d": null,
-      "mae_ia_all": null,
-      "mae_baseline_all": null
+      "n_days": 29,
+      "n_days_backfilled": 29,
+      "mae_ia_7d": 0.1009,
+      "mae_baseline_7d": 0.1869,
+      "mae_ia_30d": 0.0913,
+      "mae_baseline_30d": 0.2613,
+      "mae_ia_all": 0.0913,
+      "mae_baseline_all": 0.2613
     },
     {
       "id": "belle-ile",
-      "n_days": 0,
-      "n_days_backfilled": 0,
-      "mae_ia_7d": null,
-      "mae_baseline_7d": null,
-      "mae_ia_30d": null,
-      "mae_baseline_30d": null,
-      "mae_ia_all": null,
-      "mae_baseline_all": null
+      "n_days": 29,
+      "n_days_backfilled": 29,
+      "mae_ia_7d": 0.0887,
+      "mae_baseline_7d": 0.1282,
+      "mae_ia_30d": 0.0784,
+      "mae_baseline_30d": 0.1543,
+      "mae_ia_all": 0.0784,
+      "mae_baseline_all": 0.1543
     },
     {
       "id": "anglet",
-      "n_days": 0,
-      "n_days_backfilled": 0,
-      "mae_ia_7d": null,
-      "mae_baseline_7d": null,
-      "mae_ia_30d": null,
-      "mae_baseline_30d": null,
-      "mae_ia_all": null,
-      "mae_baseline_all": null
+      "n_days": 29,
+      "n_days_backfilled": 29,
+      "mae_ia_7d": 0.0723,
+      "mae_baseline_7d": 0.0772,
+      "mae_ia_30d": 0.1012,
+      "mae_baseline_30d": 0.1052,
+      "mae_ia_all": 0.1012,
+      "mae_baseline_all": 0.1052
     },
     {
       "id": "brest",
-      "n_days": 0,
-      "n_days_backfilled": 0,
-      "mae_ia_7d": null,
-      "mae_baseline_7d": null,
-      "mae_ia_30d": null,
-      "mae_baseline_30d": null,
-      "mae_ia_all": null,
-      "mae_baseline_all": null
+      "n_days": 29,
+      "n_days_backfilled": 29,
+      "mae_ia_7d": 0.1638,
+      "mae_baseline_7d": 0.2252,
+      "mae_ia_30d": 0.1806,
+      "mae_baseline_30d": 0.2226,
+      "mae_ia_all": 0.1806,
+      "mae_baseline_all": 0.2226
     }
   ]
 }
