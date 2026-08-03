@@ -122,11 +122,47 @@ et infirmée).
 
 ---
 
+## 3. Stations de vent — points clés côtiers et sites EMR
+
+**Demande** (2026-08-03). Ajouter quelques stations de vent à des points
+stratégiques (proches côtes, sites EMR) en récupérant les observations des
+stations Météo-France.
+
+### Cadrage à faire avant toute implémentation
+
+- **Le rôle du vent d'abord** : variable *scorée* à part entière (prévision
+  ARPEGE vs obs station — nouveau `kind` dans `stations.toml`, nouvelle source
+  obs, nouveau baseline) ou simple vérification des features des modèles
+  existants ? Les deux ne coûtent pas du tout pareil.
+- **La source obs** : API Météo-France (données d'observation / climatologiques).
+  Le projet `~/Documents/DEV/OCEANO/API_METEO_FRANCE` a déjà l'outillage ARPEGE ;
+  la partie *observations stations* reste à sonder — disponibilité réelle par
+  station à vérifier par requêtes effectives, pas sur la page de doc (leçon
+  Open-Meteo du 2026-08-03 : une API peut répondre 200 avec des null partout).
+- **L'angle produit** : la sélection « sites EMR » est un argument de prospection
+  — le choix des points est une décision commerciale autant que technique.
+
+### Préalable
+
+Comme les demandes 1 et 2 : passe **après** le ré-entraînement sur prévisions
+archivées. Un nouveau type de station hérite de toute la chaîne (gate, pending,
+backfill) — la stabiliser d'abord sur les variables existantes.
+
+---
+
 ## Ordre suggéré
 
 1. Vérifier les premiers jours scorés non reconstitués.
 2. ~~Étendre la mesure aux échéances 25–48 h.~~ Fait le 2026-08-03 (`pending`
    + `_rescore_pending`).
-3. Ré-entraîner sur les prévisions archivées (≥ 1 mois de collecte).
-4. Alors seulement : les graphiques (1) sur des chiffres opérationnels, et la
-   décision d'horizon (2) sur un modèle dont on connaît le skill réel.
+3. Ré-entraîner sur les prévisions archivées. **Mise à jour 2026-08-03** : plus
+   besoin d'attendre un mois de collecte propre — l'API Historical Forecast
+   d'Open-Meteo sert `meteofrance_arpege_europe` (vraies prévisions, format
+   identique au live) complet depuis ~2025 (vérifié par sondage, station Brest).
+   Limites vérifiées le même jour : leads courts seulement (concaténation des
+   runs les plus frais), et la Previous Runs API (leads stratifiés 1–7 j) n'a
+   **pas** ARPEGE — seulement `ecmwf_ifs025`. Auto-hébergement possible pour
+   lever les quotas si le volume l'exige.
+4. Alors seulement : les graphiques (1) sur des chiffres opérationnels, la
+   décision d'horizon (2) sur un modèle dont on connaît le skill réel, et les
+   stations de vent (3).
