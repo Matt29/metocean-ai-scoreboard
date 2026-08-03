@@ -309,5 +309,14 @@ def run(
         for st in published
     }
 
-    publish.write_scores(out_dir, [s.id for s in published], iso(pd.Timestamp(datetime.now(timezone.utc))))
+    # `issued` (run_date's own nominal issuance instant), not wall-clock
+    # `datetime.now()`: rerunning the same `run_date` a second time (real-world
+    # idempotence check, GitHub Actions cron re-triggered or manually
+    # re-dispatched) must write byte-identical `scores.json` when nothing
+    # else changed, or the daily commit step never becomes a true no-op.
+    # Same fix intent as backfill.py's "skip on a strict no-op" guard, applied
+    # here by making the timestamp itself deterministic per `run_date` instead
+    # (daily always writes at least one station's status, so a truthy-summary
+    # guard wouldn't skip anything here).
+    publish.write_scores(out_dir, [s.id for s in published], issued)
     return summary

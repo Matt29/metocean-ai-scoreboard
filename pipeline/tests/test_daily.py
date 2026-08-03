@@ -297,6 +297,21 @@ def test_rerunning_the_same_date_does_not_invent_a_scored_day(tmp_path, patched_
     assert row["n_days"] == 0
 
 
+def test_rerunning_the_same_date_writes_byte_identical_scores_json(tmp_path, patched_sources):
+    """Real-world regression: `scores.json["updated"]` used to be wall-clock
+    `datetime.now()`, so a same-day re-run (GitHub Actions re-dispatched, or
+    a schedule retry) always produced a diff and a spurious commit even when
+    nothing else changed. `updated` must track `run_date`'s own issuance
+    instant instead, so a same-date rerun is a true no-op on disk."""
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    first = (tmp_path / "scores.json").read_text()
+
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    second = (tmp_path / "scores.json").read_text()
+
+    assert first == second
+
+
 def test_scored_day_carries_n_points_and_max_lead_h(tmp_path, patched_sources):
     daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
     daily.run(date(2026, 7, 31), tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
