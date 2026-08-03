@@ -15,9 +15,25 @@ that loses to its own baseline is never published):
 3. Fetch the ARPEGE wind forecast and run inference through the trained model.
 4. Publish today's `latest.json`.
 
-Each station is wrapped in its own try/except (résolution 5): a `SourceError`
-anywhere in a station's pipeline — obs, baseline, or forcing — marks that
-station `"missing"` for the day and never reaches or blocks the others.
+Each station is wrapped in its own try/except (résolution 5): *any* exception
+anywhere in a station's pipeline — obs, scoring, baseline, forcing, or model —
+marks that station `"missing"` for the day and never reaches or blocks the
+others. A history day entry's `"date"` means one of two distinct things,
+both documented at the call site: the day a *previous* issue is finally
+scored (keyed by *that issue's own* `issued` date, however long ago it was
+issued) versus the day *this run* failed to issue anything at all (keyed by
+`run_date`) — a single run can write both in the same call.
+
+Two lookback windows, deliberately different since v1.1 (see the Task 8
+review that caught a silent bug here): `OBS_LOOKBACK_DAYS` is a short window
+covering the feature engineering needs (`last_err`/`mean_err_24h`) and the
+scoring of the previous issue. `TIDE_FIT_LOOKBACK_DAYS` is the *harmonic fit*
+window — utide needs enough history to separate the main tidal constituents
+(M2/S2 need 14.8 days apart, M2/N2 need 27.6 days), so a fit on only a few
+days silently returns nonsense amplitudes rather than raising. Below
+`MIN_TIDE_FIT_DAYS` (the same 30-day floor `scripts/build_dataset.py` already
+enforces at training time) the station is marked missing instead of serving
+a degenerate baseline.
 """
 
 from __future__ import annotations
@@ -41,7 +57,9 @@ from scoreboard.sources.wind import fetch_wind_forecast
 log = logging.getLogger(__name__)
 
 ISSUE_HOUR = 6  # UTC, matches dataset.assemble's training default
-OBS_LOOKBACK_DAYS = 4  # >= 24h (mean_err_24h) with margin for a short source outage
+OBS_LOOKBACK_DAYS = 4  # wave: >= 24h (mean_err_24h) + margin for a short outage
+TIDE_FIT_LOOKBACK_DAYS = 90  # utide needs months, not days, to separate constituents
+MIN_TIDE_FIT_DAYS = 30  # same hard floor as scripts/build_dataset.py's `24 * 30`
 BASELINE_LOOKBACK_H = 24
 BASELINE_HORIZON_H = 48
 GATE_PATH = model.MODELS_DIR / "gate.json"
@@ -59,11 +77,14 @@ def _iso(t: pd.Timestamp) -> str:
 
 
 def _fetch_obs(station: Station, run_date: date) -> pd.Series:
-    """One request (résolution 5): the whole lookback window in a single call."""
-    start = run_date - timedelta(days=OBS_LOOKBACK_DAYS)
+    """One station-level fetch (résolution 5). Tide requests `TIDE_FIT_LOOKBACK_DAYS`
+    (chunked internally by `fetch_tide_obs`, ~3 HTTP requests — still one call here
+    and well within quota) so the harmonic fit below never starves for history."""
     if station.kind == "wave":
+        start = run_date - timedelta(days=OBS_LOOKBACK_DAYS)
         df = fetch_wave_obs(station, start)
         return df["hs"].astype(float).dropna().sort_index()
+    start = run_date - timedelta(days=TIDE_FIT_LOOKBACK_DAYS)
     df = fetch_tide_obs(station, start, date_end=run_date + timedelta(days=1))
     return df["level"].astype(float).dropna().sort_index()
 
@@ -88,8 +109,13 @@ def _baseline_window(station: Station, obs: pd.Series, t0: pd.Timestamp, mfwam: 
     # run" costs the same as "refit every 30 days" would, but never serves a
     # fit older than today's obs (résolution 4).
     past = obs[obs.index <= t0].dropna()
-    if past.empty:
-        raise SourceError(station.id, "no tide observations to fit a harmonic baseline")
+    min_hours = MIN_TIDE_FIT_DAYS * 24
+    if len(past) < min_hours:
+        raise SourceError(
+            station.id,
+            f"only {len(past)}h of tide obs (< {min_hours}h / {MIN_TIDE_FIT_DAYS}d) — "
+            "refusing a degenerate harmonic fit",
+        )
     fitted = harmonic.fit(past, station.lat)
     window = pd.date_range(
         t0 - pd.Timedelta(hours=BASELINE_LOOKBACK_H),
@@ -100,14 +126,25 @@ def _baseline_window(station: Station, obs: pd.Series, t0: pd.Timestamp, mfwam: 
     return fitted.predict(window)
 
 
-def _score_previous_issue(station: Station, obs: pd.Series, out_dir: Path) -> None:
-    """Score yesterday's `latest.json` against today's freshly fetched obs."""
+def _score_previous_issue(station: Station, obs: pd.Series, out_dir: Path, run_date: date) -> None:
+    """Score a *previous* `latest.json` against today's freshly fetched obs.
+
+    Day label = that issue's own `issued` date — never `run_date` — because
+    an issue can be scored on any later run, not necessarily the next day.
+    Guard against re-running the same (or a past) `--date`: a `latest.json`
+    issued on or after `run_date` was written by *this or a later* run, not a
+    genuinely previous one, and scoring it here would invent a day out of a
+    single self-matched point (the bug an earlier version of this file had).
+    """
     path = out_dir / station.id / "latest.json"
     if not path.exists():
         return
     prev = json.loads(path.read_text())
+    issued_ts = pd.Timestamp(prev["issued"])
+    if issued_ts.date() >= run_date:
+        return
     prev_series = prev.get("series") or []
-    day = pd.Timestamp(prev["issued"]).date().isoformat()
+    day = issued_ts.date().isoformat()
     if not prev_series:
         publish.upsert_history(out_dir, station.id, {"date": day, "status": "missing"})
         return
@@ -132,6 +169,7 @@ def _score_previous_issue(station: Station, obs: pd.Series, out_dir: Path) -> No
         }
         for t in times[keep]
     ]
+    lead_hours = (times[keep] - issued_ts) / pd.Timedelta(hours=1)
     publish.upsert_history(
         out_dir,
         station.id,
@@ -141,6 +179,11 @@ def _score_previous_issue(station: Station, obs: pd.Series, out_dir: Path) -> No
             "series": series,
             "mae_ia": round(mae_ia, 4),
             "mae_baseline": round(mae_baseline, 4),
+            "n_points": int(keep.sum()),
+            # Réserve : ne couvre que les leads matchés par les obs de CE run
+            # (typiquement <= 24h — voir `_fetch_obs`/`OBS_LOOKBACK_DAYS`), pas
+            # le plein horizon 48h de `gate.mae_model` — pas comparable tel quel.
+            "max_lead_h": int(round(lead_hours.max())),
         },
     )
 
@@ -156,12 +199,18 @@ def _run_station(
 ) -> dict:
     try:
         obs = _fetch_obs(station, run_date)
-    except SourceError as exc:
+    except Exception as exc:  # noqa: BLE001 - one station's failure must never be global
         log.warning("%s: obs fetch failed: %s", station.id, exc)
         publish.upsert_history(out_dir, station.id, {"date": run_date.isoformat(), "status": "missing"})
         return {"status": "missing", "reason": str(exc)}
 
-    _score_previous_issue(station, obs, out_dir)
+    try:
+        # A malformed/truncated latest.json (bad JSON, missing "issued") must
+        # not abort today's inference below — scoring the past and issuing
+        # today are independent, so a failure here is swallowed, not raised.
+        _score_previous_issue(station, obs, out_dir, run_date)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("%s: scoring the previous issue failed: %s", station.id, exc)
 
     try:
         baseline = _baseline_window(station, obs, t0, mfwam)
@@ -174,11 +223,14 @@ def _run_station(
             {"t": _iso(t), "ia": round(float(i), 4), "baseline": round(float(b), 4)}
             for t, i, b in zip(feats.index, ia, feats["baseline"])
         ]
-    except (SourceError, FileNotFoundError, OSError) as exc:
-        # FileNotFoundError/OSError: a missing/corrupt model artifact must not
-        # crash the whole run either — same "one station down never blocks
-        # the others" contract as a SourceError.
+    except Exception as exc:  # noqa: BLE001 - SourceError, a missing model file,
+        # sklearn/pandas/utide raising on a degenerate input: none of it may
+        # escape and abort the other stations' loop iteration.
         log.warning("%s: inference failed: %s", station.id, exc)
+        # Distinct "date" meaning from _score_previous_issue's entry above:
+        # this one says "run_date's own issuance failed", not "a past issue
+        # could not be scored" — the two can coexist in the same history.json.
+        publish.upsert_history(out_dir, station.id, {"date": run_date.isoformat(), "status": "missing"})
         return {"status": "missing", "reason": str(exc)}
 
     publish.write_latest(out_dir, station.id, issued, series)

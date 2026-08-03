@@ -44,9 +44,13 @@ def _wave_obs_df(start, periods, value=1.3):
     return pd.DataFrame({"hs": np.full(periods, value), "tp": np.full(periods, 8.0)}, index=idx)
 
 
-def _tide_obs_df(start, periods, value=2.0):
-    idx = pd.date_range(start, periods=periods, freq="1h", tz="UTC")
-    return pd.DataFrame({"level": np.full(periods, value)}, index=idx)
+def _tide_obs_df(start, date_end, value=2.0):
+    """Hourly obs spanning the whole requested window — the harmonic fit floor
+    (MIN_TIDE_FIT_DAYS = 30, real lookback = TIDE_FIT_LOOKBACK_DAYS = 90) needs
+    the mock to actually reflect the window daily.py asks for, not a fixed
+    handful of days."""
+    idx = pd.date_range(start, date_end, freq="1h", tz="UTC", inclusive="left")
+    return pd.DataFrame({"level": np.full(len(idx), value)}, index=idx)
 
 
 def _mfwam_baseline(start, periods, value=1.0):
@@ -68,7 +72,7 @@ def patched_sources(monkeypatch):
     )
     monkeypatch.setattr(
         daily, "fetch_tide_obs",
-        lambda station, start, date_end=None: _tide_obs_df(start, 24 * 6),
+        lambda station, start, date_end=None: _tide_obs_df(start, date_end),
     )
     monkeypatch.setattr(
         daily, "fetch_wave_forecast",
@@ -177,3 +181,71 @@ def test_missing_model_artifact_is_isolated_to_its_station(tmp_path, patched_sou
 
     assert summary["wave-a"]["status"] == "missing"
     assert summary["tide-b"]["status"] == "ok"
+
+
+def test_arbitrary_inference_exceptions_do_not_escape_and_block_other_stations(
+    tmp_path, patched_sources
+):
+    """sklearn/pandas/utide can raise plain ValueError/KeyError, not just SourceError."""
+
+    def _boom(pipe, x):
+        raise ValueError("input X contains NaN")
+
+    patched_sources.setattr(daily.model, "predict", _boom)
+    summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE)
+
+    assert summary["wave-a"]["status"] == "missing"
+    assert summary["tide-b"]["status"] == "missing"  # both use model.predict
+
+
+def test_inference_failure_still_records_a_missing_history_day(tmp_path, patched_sources):
+    """Résolution 3: a degraded/unavailable forcing must be a *visible* missing day,
+    not a silent gap in history.json."""
+
+    def _wind_boom(station, session=None):
+        raise SourceError(station.id, "open-meteo 503")
+
+    patched_sources.setattr(daily, "fetch_wind_forecast", _wind_boom)
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE)
+
+    history = json.loads((tmp_path / "wave-a" / "history.json").read_text())
+    assert history["days"][-1] == {"date": RUN_DATE.isoformat(), "status": "missing"}
+
+
+def test_rerunning_the_same_date_does_not_invent_a_scored_day(tmp_path, patched_sources):
+    """Regression for the bug the reviewer reproduced: re-running `--date` must
+    never score a station's own just-published latest.json against itself."""
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE)
+    assert not (tmp_path / "wave-a" / "history.json").exists()
+
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE)  # same date again
+
+    assert not (tmp_path / "wave-a" / "history.json").exists()  # still no invented day
+    scores = json.loads((tmp_path / "scores.json").read_text())
+    row = next(r for r in scores["stations"] if r["id"] == "wave-a")
+    assert row["n_days"] == 0
+
+
+def test_scored_day_carries_n_points_and_max_lead_h(tmp_path, patched_sources):
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE)
+    daily.run(date(2026, 7, 31), tmp_path, stations=STATIONS, gate=GATE)
+
+    history = json.loads((tmp_path / "wave-a" / "history.json").read_text())
+    scored_day = next(d for d in history["days"] if d["date"] == RUN_DATE.isoformat())
+    assert scored_day["n_points"] == len(scored_day["series"])
+    assert scored_day["max_lead_h"] >= 1
+
+
+def test_harmonic_fit_below_30_days_of_tide_obs_marks_the_station_missing(
+    tmp_path, patched_sources
+):
+    """Blocker 1 regression: a short tide history must never silently fit a
+    degenerate harmonic baseline (utide can't separate M2/S2/N2 on a few days)."""
+    patched_sources.setattr(
+        daily, "fetch_tide_obs",
+        lambda station, start, date_end=None: _tide_obs_df(date_end - pd.Timedelta(days=10), date_end),
+    )
+    summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE)
+
+    assert summary["tide-b"]["status"] == "missing"
+    assert not (tmp_path / "tide-b" / "latest.json").exists()

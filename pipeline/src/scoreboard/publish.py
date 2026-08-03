@@ -25,6 +25,8 @@ to read.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -46,9 +48,18 @@ def score_day(obs, pred_ia, pred_baseline) -> tuple[float, float]:
 
 def _atomic_write(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=2) + "\n")
-    tmp.replace(path)  # rename is atomic within the same directory/filesystem
+    # A unique tmp name (not a fixed `<file>.tmp` sibling) so a crash between
+    # write and rename never leaves a stale, colliding file for the next run
+    # (or a `git add data/` in CI) to pick up; the except cleans up the one
+    # case an unhandled write error would otherwise leave behind.
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(payload, indent=2) + "\n")
+        os.replace(tmp_name, path)  # atomic within the same directory/filesystem
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
 
 
 def _read(path: Path) -> dict | None:
