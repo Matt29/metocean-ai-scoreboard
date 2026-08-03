@@ -9,8 +9,11 @@ not reduced, by retraining on real served forecasts once enough have accumulated
 `daily.py` already fetches exactly that forecast every run and discards it; this
 module is the only change: keep what was already in hand.
 
-Columns are derived from `wind.FORCING_COLUMNS`, not hardcoded, so an added
-forcing variable is picked up here without touching this file.
+Columns are whatever the forcing frame actually carries, not a hardcoded list:
+the wave path serves the 3-model frame (`wind.MULTI_FORCING_COLUMNS`, archived
+as `source="openmeteo:multi"`), the tide path the single ARPEGE run — and both
+land in the same day file, each with the other's columns as NaN. The reader
+here presupposes nothing, so parquets written before Task 6 stay readable.
 
 Idempotent by (day file, station_id): replaying the same day for the same station
 replaces its rows rather than duplicating them; other stations' rows already
@@ -32,8 +35,6 @@ import tempfile
 from pathlib import Path
 
 import pandas as pd
-
-from scoreboard.sources.wind import FORCING_COLUMNS
 
 DEFAULT_ARCHIVE_DIR = Path(__file__).resolve().parents[2] / "data_forecast_archive"
 
@@ -65,7 +66,7 @@ def write_day(
             "issued": issued.isoformat(),
             "valid_time": [t.isoformat() for t in valid_times],
             "lead_h": ((valid_times - issued) / pd.Timedelta(hours=1)).round().astype(int),
-            **{col: forcing_at_valid[col].to_numpy() for col in FORCING_COLUMNS},
+            **{col: forcing_at_valid[col].to_numpy() for col in forcing.columns},
             "source": source,
         }
     )

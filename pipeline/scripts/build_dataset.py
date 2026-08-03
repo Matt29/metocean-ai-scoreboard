@@ -9,17 +9,20 @@ Sources and documented compromises
   window (the TR archive serves >= 365 days in a single request — verified in
   the Task-1 spike, docs/data-sources.md). Candhis has a daily quota, so this
   script deliberately never loops per-day.
-* Wave baseline (MFWAM): the *analysis* fields of the same `anfc` dataset used
-  for the live forecast, taken as a proxy for the archived forecast. Analysis
-  is closer to truth than a real +24h forecast, so the training set is slightly
-  optimistic. Accepted for v1 (there is no free archive of past MFWAM runs);
-  the public scoreboard is scored on real forecasts, not on this proxy.
+* Wave models (Open-Meteo Marine, `sources.marine`): ONE request per station
+  for the 5 candidate wave models, raw Hs, no baseline selection here — that
+  choice (and feature assembly) moves to `train.py` (Task 5), because it must
+  happen after the per-station baseline pick. `--kind wave` therefore writes
+  one raw parquet per station (`<station>_raw.parquet`: obs + 5 wave models +
+  6 multi-model wind columns) instead of an assembled (X, y) dataset.
 * Atmospheric forcing (Open-Meteo / ERA5): ONE archive request per station over
   the whole window, hourly 10 m wind converted to u/v. **Documented train/serve
   skew**: training uses the ERA5 *reanalysis*, while the daily run will use ARPEGE
-  *forecast* (`sources.wind.fetch_wind_forecast`). Same category of compromise
-  as the MFWAM analysis-as-forecast proxy above — a mean-bias-type skew, not an
-  equivalence — and it resorbs the same way, by accumulating real forecast runs.
+  *forecast* (`sources.wind.fetch_wind_forecast`, `fetch_wind_models_forecast`) —
+  a mean-bias-type skew, not an equivalence — resorbed over time by
+  `archive.write_day` accumulating real served forecast runs (see
+  `docs/data-sources.md` §4bis; already resolved for waves by the 2026-08 retrain,
+  which moved the wave path off the CMEMS analysis-as-forecast proxy entirely).
 * Tide (REFMAR): raw high-frequency observations, chunked in 30-day requests
   (API caps a request at 31 days). Real archive depth is discovered at runtime.
 * Tide baseline (harmonic): **causal rolling fit** (`harmonic.causal_predict`).
@@ -36,7 +39,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -46,50 +48,25 @@ from scoreboard import harmonic
 from scoreboard.config import Station, load_env, load_stations
 from scoreboard.dataset import HORIZON_H, assemble
 from scoreboard.sources.candhis import fetch_wave_obs
-from scoreboard.sources.mfwam import _DATASET_ID, _VARIABLE, _extract_point
+from scoreboard.sources.marine import fetch_wave_models_history
 from scoreboard.sources.waterlevel import fetch_tide_obs
-from scoreboard.sources.wind import fetch_wind_history
+from scoreboard.sources.wind import fetch_wind_history, fetch_wind_models_history
 
 OUT_DIR = Path(__file__).resolve().parents[1] / "data_train"
-BBOX_MARGIN = 0.2
 
 
-def fetch_mfwam_history(stations: list[Station], start: date, end: date) -> dict[str, pd.DataFrame]:
-    """One CMEMS subset for the whole bbox/period, then point extraction per station."""
-    import copernicusmarine
-    import xarray as xr
-
-    lats = [s.lat for s in stations]
-    lons = [s.lon for s in stations]
-    with tempfile.TemporaryDirectory() as tmpdir:
-        response = copernicusmarine.subset(
-            dataset_id=_DATASET_ID,
-            variables=[_VARIABLE],
-            minimum_longitude=min(lons) - BBOX_MARGIN,
-            maximum_longitude=max(lons) + BBOX_MARGIN,
-            minimum_latitude=min(lats) - BBOX_MARGIN,
-            maximum_latitude=max(lats) + BBOX_MARGIN,
-            start_datetime=start.isoformat(),
-            end_datetime=end.isoformat(),
-            output_directory=tmpdir,
-            output_filename="mfwam_history.nc",
-        )
-        ds = xr.open_dataset(Path(response.output_directory) / response.file_path).load()
-    return {s.id: _extract_point(ds, s.lat, s.lon) for s in stations}
-
-
-def build_wave(stations: list[Station], start: date, end: date) -> dict[str, tuple]:
-    baselines = fetch_mfwam_history(stations, start, end)
+def build_wave(stations: list[Station], start: date, end: date) -> dict[str, pd.DataFrame]:
+    """One raw parquet per station: obs + 5 wave models + 6 multi-model wind
+    columns, hourly UTC. No feature assembly here (Task 5/train.py)."""
     out = {}
     for st in stations:
-        obs = fetch_wave_obs(st, start)  # single deep request (quota-friendly)
-        obs = obs[["hs"]].resample("1h").mean()  # 30-min native -> hourly
-        forcing = fetch_wind_history(st, start, end)  # single ERA5 request
-        out[st.id] = assemble(st, obs, baselines[st.id], forcing)
-        print(
-            f"  {st.id}: obs {len(obs)}h, baseline {len(baselines[st.id])}h, "
-            f"forcing {len(forcing)}h"
-        )
+        obs = fetch_wave_obs(st, start)[["hs"]].resample("1h").mean()  # single deep request
+        waves = fetch_wave_models_history(st, start, end)  # single request
+        winds = fetch_wind_models_history(st, start, end)  # single request
+        raw = obs.join(waves, how="outer").join(winds, how="outer")
+        raw.to_parquet(OUT_DIR / f"{st.id}_raw.parquet")
+        out[st.id] = raw
+        print(f"  {st.id}: {len(raw)}h, obs {raw['hs'].notna().mean():.0%} couverts")
     return out
 
 
@@ -143,8 +120,8 @@ def main() -> int:
     waves = [s for s in stations if s.kind == "wave"]
     tides = [s for s in stations if s.kind == "tide"]
     if waves:
-        print("Waves (Candhis + MFWAM analysis):")
-        datasets |= build_wave(waves, start, end)
+        print("Waves (Candhis + Open-Meteo multi-model), raw parquet per station:")
+        build_wave(waves, start, end)  # writes its own <station>_raw.parquet
     if tides:
         print("Tide (REFMAR + harmonic):")
         datasets |= build_tide(tides, start, end, args.fit_frac, args.refit_days)

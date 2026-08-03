@@ -174,7 +174,12 @@ Conservé comme redondance possible si REFMAR devient indisponible.
   (source différente, réseau différent — bonne redondance). Pas implémenté
   dans le pipeline v1 (pas de fetcher IOC prévu tant que REFMAR fonctionne).
 
-## 4. Copernicus Marine (CMEMS) — MFWAM, baseline officielle Hs
+## 4. Copernicus Marine (CMEMS) — MFWAM, baseline officielle Hs [historique, retiré Task 7]
+
+> **Section conservée comme trace du spike, plus utilisée.** Le retrain
+> multi-modèles (2026-08) a retiré CMEMS/MFWAM du pipeline : la baseline vague
+> vient désormais d'Open-Meteo Marine (voir § 4ter). `pipeline/src/scoreboard/sources/mfwam.py`
+> et la dépendance `copernicusmarine` ont été supprimés.
 
 - **Dataset :** `cmems_mod_glo_wav_anfc_0.083deg_PT3H-i`, variable `VHM0`.
 - **Auth :** identifiants CMEMS déjà configurés (`~/.copernicusmarine-credentials`,
@@ -270,14 +275,21 @@ vent prévu à +1…+48 h). Ce sont deux familles de modèles différentes sur d
 grilles différentes, et la prévision porte une erreur de lead time que la
 réanalyse n'a pas. **Ce n'est pas une équivalence.**
 
-C'est exactement le même type de compromis que celui déjà documenté pour la
-baseline vague (`scripts/build_dataset.py` : l'**analyse** MFWAM sert de proxy à
-la prévision archivée, faute d'archive libre) : un skew de type biais moyen,
+C'était exactement le même type de compromis que celui documenté jusqu'à
+Task 6 pour la baseline vague (l'**analyse** MFWAM CMEMS servait de proxy à la
+prévision archivée, faute d'archive libre) : un skew de type biais moyen,
 borné et explicable, sur une feature correctrice et non sur le signal principal.
-Il se résorbera de la même façon : une fois que le run quotidien aura accumulé
-~6–12 mois de ses **propres** prévisions ARPEGE, on ré-entraînera dessus et le
-skew disparaîtra. En attendant, les chiffres de `docs/model-eval.md` doivent se
-lire « vent parfait à l'entraînement », donc plutôt optimistes.
+Pour le **vent**, il reste ouvert et se résorbera de la même façon : une fois
+que le run quotidien aura accumulé ~6–12 mois de ses **propres** prévisions
+ARPEGE (voir « Archive du vent servi » ci-dessous), on ré-entraînera dessus et
+le skew disparaîtra. En attendant, les chiffres de `docs/model-eval.md`
+doivent se lire « vent parfait à l'entraînement », donc plutôt optimistes.
+
+**Résolu pour les vagues par le retrain 2026-08 (Task 7)** : le chemin vague
+n'a plus cette forme de skew du tout, il a été retiré à la source plutôt que
+résorbé — voir § 4ter. Open-Meteo Marine sert le même contrat JSON en train
+(Historical Forecast API) et en serve (Marine API), donc plus d'analyse
+utilisée comme proxy de prévision.
 
 ### Archive du vent servi (Task A1) — corpus pour un ré-entraînement honnête
 
@@ -308,6 +320,46 @@ ne peut pas distinguer un run 06Z frais d'un run 00Z vieux de six heures :
 facteur de confusion réel pour une analyse de l'erreur en fonction de
 l'échéance, à garder en tête pour un futur ré-entraînement.
 
+## 4ter. Open-Meteo — vagues, retrait CMEMS (Task 7, retrain 2026-08)
+
+Remplace intégralement la section 4 (CMEMS/MFWAM). Sondage de couverture et
+comparaison faits en Task 0, rapport complet dans
+`.superpowers/sdd/2026-08-03-retrain-multi-modeles/task-0-coverage.md`.
+
+- **Entraînement et inférence +48 h (Marine API, un seul et même chemin)** :
+  `https://marine-api.open-meteo.com/v1/marine`
+  `?...&hourly=wave_height&models=meteofrance_wave,ecmwf_wam025,gwam,ewam,ncep_gfswave025`,
+  en mode archive (`start_date`/`end_date`) pour l'entraînement, en mode
+  prévision pour l'inférence — même URL, même contrat JSON, même parseur
+  (`pipeline/src/scoreboard/sources/marine.py`, `fetch_wave_models_history` /
+  `fetch_wave_models_forecast`). **Pas de skew train/serve de type « famille de
+  modèle différente »** pour la houle, contrairement au vent (§ 4bis) où
+  l'entraînement passe par `historical-forecast-api.open-meteo.com` (les 3
+  modèles de vent candidats, `fetch_wind_models_history`) pour approcher au
+  plus près la prévision ARPEGE servie en production.
+- **Couverture mesurée (Task 0), fenêtre retenue `2025-06-01` → hier** : les 5
+  modèles de vagues passent tous ≥ 90 % de couverture non-null sur les 4
+  stations. `gwam` reste à 98,8 % (démarrage réel `2025-06-06`, 5 jours après
+  le début de fenêtre) et `ncep_gfswave025` était tardif à **Anglet**
+  seulement (démarrage `2025-05-05`, avant `2025-05-01` initial testé) —
+  aucun modèle exclu, juste un recul de la date de début par rapport à la
+  fenêtre `2025-01-01` initialement envisagée.
+- **Écart MFWAM CMEMS (baseline archivée) vs `meteofrance_wave` (Open-Meteo)**,
+  comparé sur la fenêtre disponible `2026-07-04` → `2026-08-03` (720/720
+  points horaires appariés par station) : MAE ≤ 5 cm et corrélation ≥ 0,998
+  sur les 3 stations avec historique (`pierres-noires` 0,0056 m / 0,9998,
+  `belle-ile` 0,0372 m / 0,9982, `anglet` 0,0478 m / 0,9991) — cohérent avec
+  `meteofrance_wave` réexposant vraisemblablement le même modèle
+  MFWAM/PREVIMER. `cherbourg` n'a pas d'historique archivé, donc pas de
+  preuve de continuité pour cette station à ce stade.
+- **Limite leads courts de l'archive** : `archive.write_day` (§ « Archive du
+  vent servi » ci-dessus, étendue en Task 7 aux colonnes `hs_*` du chemin
+  vague) n'archive que la prévision **effectivement servie** à l'inférence —
+  un point par lead de l'issue du jour (`lead_h >= 1`, horizon +48 h), pas un
+  hindcast complet du run. Même limite que pour le vent : `issued` est le
+  `t0` nominal du scoreboard, pas l'heure d'initialisation réelle du run
+  vague sous-jacent.
+
 ## 5. Résumé des stations retenues
 
 Voir `pipeline/config/stations.toml` — 4 stations houle (Candhis) + 2
@@ -325,12 +377,11 @@ stations niveau d'eau (SHOM REFMAR), toutes vérifiées vivantes le
 
 ## Points ouverts / non bloquants
 
-- Heure exacte de disponibilité du run MFWAM quotidien : à reconfirmer avant
-  de figer le cron GitHub Actions (voir section 4).
+- ~~Heure exacte de disponibilité du run MFWAM quotidien~~ : **sans objet
+  depuis Task 7** — CMEMS/MFWAM retiré, la baseline vague vient d'Open-Meteo
+  Marine (§ 4ter), pas d'un run CMEMS à surveiller.
 - ~~Profondeur d'archive REFMAR au-delà de ~3 mois~~ : **résolu en Task 6** —
   `sources=1` sert **365 jours continus** (8761 valeurs horaires pour Brest et
   Saint-Malo, 2025-07-30 → 2026-07-30), en requêtes de 30 jours (cap API de
-  31 jours géré par `fetch_tide_obs(date_end=...)`). Idem l'archive *analyse*
-  du dataset MFWAM `anfc` : 365 jours disponibles, utilisée comme proxy de
-  l'archive de prévision pour l'entraînement (voir `scripts/build_dataset.py`).
+  31 jours géré par `fetch_tide_obs(date_end=...)`).
 - IOC : fallback documenté seulement, pas de fetcher prévu en v1.

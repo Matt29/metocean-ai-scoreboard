@@ -1,40 +1,72 @@
 # Évaluation des modèles de post-traitement
 
-Généré par `pipeline/scripts/train.py` le 2026-08-03 09:58 UTC (test = les 30 derniers jours d'émission).
+Généré par `pipeline/scripts/train.py` le 2026-08-03 19:04 UTC (test = les 30 derniers jours d'émission).
 
-Le modèle **post-traite** la prévision physique officielle (MFWAM pour les
-vagues, harmonique pour le niveau d'eau) : il la corrige, il ne la remplace
-jamais.
+Le modèle **post-traite** une prévision physique officielle : il la corrige, il
+ne la remplace jamais. Cette baseline n'est plus imposée : pour une station
+`wave`, c'est le **meilleur modèle physique** parmi les 5 modèles de vagues
+Open-Meteo, choisi station par station comme le plus proche de sa bouée **sur
+les seuls jours d'émission d'entraînement** (colonne « Baseline »). Pour une
+station `tide`, c'est la prédiction harmonique.
 
 ## Résultats par station
 
-| Station | Type | Rows train / test | MAE baseline | MAE baseline débiaisée | MAE modèle | Gain affiché | **Gain hors biais** | Verdict |
-|---|---|---|---|---|---|---|---|---|
-| pierres-noires | wave | 15286 / 1402 | 0.260 | 0.121 | 0.089 | +65.8% | **+26.4%** | PASS |
-| belle-ile | wave | 15810 / 1402 | 0.154 | 0.101 | 0.077 | +50.1% | **+24.5%** | PASS |
-| anglet | wave | 10960 / 1402 | 0.102 | 0.105 | 0.096 | +5.7% | **+8.4%** | PASS |
-| cherbourg | wave | 14246 / 1368 | 0.110 | 0.102 | 0.107 | +2.4% | **-5.2%** | FAIL |
-| brest | tide | 7243 / 1404 | 0.087 | 0.064 | 0.067 | +22.9% | **-5.4%** | PASS\* |
-| saint-malo | tide | 7243 / 1404 | 0.117 | 0.116 | 0.132 | -13.3% | **-14.1%** | FAIL |
+| Station | Type | Baseline (meilleur modèle physique) | Modèle ML | Rows train / test | MAE baseline | MAE baseline débiaisée | MAE modèle | Gain affiché | **Gain hors biais** | Verdict |
+|---|---|---|---|---|---|---|---|---|---|---|
+| pierres-noires | wave | ncep_gfswave025 | `hgb-per-lead` | 14946 / 1402 | 0.213 | 0.213 | 0.158 | +25.8% | **+25.9%** | PASS |
+| belle-ile | wave | ewam | `hgb-per-lead` | 15206 / 1402 | 0.117 | 0.114 | 0.101 | +14.1% | **+11.7%** | PASS |
+| anglet | wave | meteofrance_wave | `ridge` | 7936 / 1402 | 0.118 | 0.112 | 0.106 | +9.8% | **+5.4%** | PASS |
+| cherbourg | wave | ewam | `hgb` | 14488 / 926 | 0.087 | 0.072 | 0.070 | +19.3% | **+3.0%** | FAIL |
+
+**Stations non ré-entraînées sur cette fenêtre : brest, saint-malo** — leur
+jeu d'entraînement est absent de `pipeline/data_train/`. Leur artefact et leur
+entrée `gate.json` du run précédent sont **conservés tels quels** : ils ne sont
+ni supprimés ni rafraîchis, et les chiffres ci-dessus ne les couvrent pas.
 
 MAE en m (Hs) pour les stations `wave`, en m (water level) pour les
 stations `tide`. « MAE baseline débiaisée » = MAE de la baseline après retrait
 de son seul biais moyen sur la fenêtre de test — c'est le garde-fou de la
 réserve 4 : un modèle qui ne bat pas cette colonne n'apporte rien de plus
-qu'une constante. Gate de mise en ligne : **+5 % de MAE gagnée** sur la
-baseline. Une station FAIL reste entraînée et son artefact reste versionné,
-mais elle ne doit pas être publiée telle quelle sur le scoreboard.
+qu'une constante. Gate de mise en ligne : **+5 % de MAE gagnée hors biais**
+(critère 3 de la spec) — le gate porte sur `gain_debiased`, jamais sur le
+gain affiché, précisément pour qu'une station ne passe pas sur un simple
+débiaisage. Une station FAIL reste entraînée et son artefact reste
+versionné, mais elle ne doit pas être publiée telle quelle sur le
+scoreboard.
 
 **`PASS*`** = la station passe le gate mais **ne bat pas sa propre baseline
 débiaisée** : son gain affiché est essentiellement une constante, pas du skill.
-Ne pas mettre ce chiffre en avant sans la réserve 4.
+Ne pas mettre ce chiffre en avant sans la réserve 4. Le gate portant désormais
+sur le gain hors biais, une station `PASS` ne peut plus être `weak` — `PASS*`
+ne peut donc plus apparaître pour une station retrainée ici ; le mécanisme est
+conservé tel quel pour compatibilité avec `gate.json`.
 
 Ce verdict est aussi émis en donnée dans `pipeline/models/gate.json`
-(`{station: {pass, weak, mae_model, mae_baseline, gain, gain_debiased}}`) —
-c'est cette
+(`{station: {pass, weak, mae_model, mae_baseline, gain, gain_debiased,
+baseline_model}}`) — c'est cette
 source, pas ce tableau, que le publisher doit lire.
 
-**Stations sous le gate : cherbourg, saint-malo** — à ne pas mettre en ligne en l'état.
+**Stations sous le gate dans `gate.json` : cherbourg, saint-malo** — à ne pas mettre en ligne en l'état.
+
+## Comparaison des modèles ML
+
+Gain **hors biais sur la fenêtre de VALIDATION** — pas sur le test. Les trois
+candidats sont entraînés sur le train privé de sa validation, comparés sur
+cette validation, et seul le gagnant (en gras) est ré-entraîné sur tout le
+train puis évalué **une seule fois** sur le test : les chiffres du tableau
+« Résultats par station » ne sont donc jamais un maximum sur trois tirages.
+Les valeurs ci-dessous ne sont pas comparables à celles du test — fenêtre
+différente, modèle entraîné sur moins de données.
+
+`ridge` est le **plancher honnête** : un gradient boosting qui ne le bat pas
+ne paie pas sa complexité, et c'est un résultat, pas un échec.
+
+| Station | Baseline physique | `hgb` | `ridge` | `hgb-per-lead` | Publié |
+|---|---|---|---|---|---|
+| pierres-noires | ncep_gfswave025 | +29.4% | +24.9% | **+31.5%** | `hgb-per-lead` |
+| belle-ile | ewam | +32.7% | +32.6% | **+32.9%** | `hgb-per-lead` |
+| anglet | meteofrance_wave | +9.4% | **+12.5%** | +7.5% | `ridge` |
+| cherbourg | ewam | **+21.2%** | +15.7% | +20.8% | `hgb` |
 
 ## Protocole
 
@@ -44,6 +76,20 @@ source, pas ce tableau, que le publisher doit lire.
   fuir une émission entre train et test. Le jour d'émission est reconstruit
   comme `valid_time - lead_h`, et les 30 derniers jours d'émission
   forment le test. Jamais de split aléatoire.
+* **Choix de la baseline (stations `wave`).** Les 5 modèles de vagues
+  Open-Meteo sont comparés à la bouée **sur les seuls jours d'émission
+  d'entraînement**, et le plus proche devient la baseline de la station — donc
+  le dénominateur de tous les gains ci-dessus. La sélection ne voit jamais la
+  fenêtre de test : sinon la baseline serait choisie par les données mêmes qui
+  servent à la juger, ce qui gonflerait mécaniquement le gain.
+* **Choix du modèle ML — sur validation, jamais sur le test.** Les
+  30 derniers jours d'émission **du train** forment une fenêtre de
+  validation. Les trois candidats (`hgb`, `ridge`, `hgb-per-lead`) y sont
+  comparés, à features et baseline identiques ; le meilleur gain hors biais
+  gagne, est ré-entraîné sur tout le train, puis évalué **une seule fois** sur
+  le test. Choisir le modèle sur le test publierait un maximum sur trois
+  tirages faits sur la même fenêtre — la même fuite que la sélection de
+  baseline évite, un étage plus haut.
 * **Cible.** Stations `wave` : l'observation Hs. Stations `tide` : le résidu
   `obs - harmonique` ; le niveau publié est réassemblé en
   `harmonique + résidu prédit`, et c'est sur ce niveau reconstitué que la MAE
@@ -53,45 +99,48 @@ source, pas ce tableau, que le publisher doit lire.
 
 ## Réserves importantes sur l'interprétation
 
-1. **Le skill des stations `wave` est un plafond mesuré sur analyse, pas sur
-   prévision réelle.** Faute d'archive libre des runs MFWAM passés, la
-   baseline d'entraînement est l'**analyse** MFWAM, qui assimile les bouées
-   Candhis — donc les observations mêmes qui servent de vérité terrain. Le
-   couple (baseline, obs) vu à l'entraînement n'est donc pas celui que verra
-   la production : ces gains sont un **plafond mesuré sur analyse**, pas une
-   estimation du skill opérationnel, et la direction de l'écart n'est pas
-   déterminable a priori. Le ré-entraînement sur de vraies prévisions
-   archivées interviendra après ~1 mois de runs quotidiens ; ces chiffres
-   seront alors remplacés.
-2. **Le forçage atmosphérique d'entraînement est parfait, celui de production
-   ne le sera pas.** Les features de forçage (vent 10 m et anomalie de pression
-   au niveau de la mer) sont apprises sur la **réanalyse ERA5** (0,25°, ECMWF,
-   connue après coup) et seront servies avec une **prévision ARPEGE
-   Europe** (0,1°, Météo-France), qui porte une erreur de lead time que la
-   réanalyse n'a pas. Ce n'est **pas** une équivalence : deux familles de
+1. **Le skill des stations `wave` est un plafond mesuré sur passé reconstitué,
+   pas sur prévision réelle.** Faute d'archive libre des runs de vagues passés,
+   la baseline d'entraînement vient de la fenêtre historique de l'API Open-Meteo
+   Marine, qui n'est pas le run à +1–48 h qu'aura la production. Le couple
+   (baseline, obs) vu à l'entraînement n'est donc pas celui que verra la
+   production : ces gains sont un **plafond**, pas une estimation du skill
+   opérationnel, et la direction de l'écart n'est pas déterminable a priori. Le
+   ré-entraînement sur de vraies prévisions archivées interviendra après ~1 mois
+   de runs quotidiens ; ces chiffres seront alors remplacés.
+2. **Pour les stations `tide` uniquement, le forçage atmosphérique
+   d'entraînement est parfait, celui de production ne le sera pas.** Le vent
+   10 m (seule feature de forçage restante — la pression n'y est plus, voir
+   « Pistes testées et écartées » ci-dessous) est appris, pour ces stations,
+   sur la **réanalyse ERA5** (0,25°, ECMWF, connue après coup ;
+   `scripts/build_dataset.py`, chemin tide) et sera servi avec une **prévision
+   ARPEGE Europe** (0,1°, Météo-France), qui porte une erreur de lead time que
+   la réanalyse n'a pas. Ce n'est **pas** une équivalence : deux familles de
    modèles, deux grilles, et une partie du gain ci-dessous ne survivra pas au
-   passage en opérationnel. Même catégorie de compromis que la réserve 1, et
-   même issue : il se résorbera quand le run quotidien aura accumulé assez de
-   ses propres prévisions pour ré-entraîner dessus. Détail dans
-   `docs/data-sources.md` §4bis.
+   passage en opérationnel. Les 4 stations `wave` ré-entraînées ici n'ont pas
+   ce skew : leur vent d'entraînement vient déjà des 3 mêmes modèles de
+   prévision que le serve (Historical Forecast API, voir
+   `docs/data-sources.md` §4bis). Même catégorie de compromis que la réserve 1
+   pour les stations `tide`, et même issue : il se résorbera quand le run
+   quotidien aura accumulé assez de ses propres prévisions pour ré-entraîner
+   dessus. Détail dans `docs/data-sources.md` §4bis.
 3. **Le gate de +5 % s'applique quand même**, mais il se lit
    « +5 % mesuré sur analyse, avec un vent parfait », pas « +5 % en
    opérationnel ».
-4. **Sur 4 des 6 stations, plus de la moitié du gain
+4. **Sur 1 des 4 stations ré-entraînées, plus de la
+   moitié du gain
    affiché n'est qu'une correction de biais constant** — chaque baseline dérive
    sur la fenêtre de test, et retirer ce seul offset capte déjà l'essentiel du
    gain. Le chiffre à citer est donc **« Gain hors biais »**, jamais « Gain
    affiché ». Détail par station (biais obs − baseline, puis les deux gains) :
 
-   * `pierres-noires` : biais -0.253 m — gain affiché +65.8%, **hors biais +26.4%**
-   * `belle-ile` : biais -0.134 m — gain affiché +50.1%, **hors biais +24.5%**
-   * `anglet` : biais +0.019 m — gain affiché +5.7%, **hors biais +8.4%**
-   * `cherbourg` : biais -0.050 m — gain affiché +2.4%, **hors biais -5.2%**
-   * `brest` : biais -0.072 m — gain affiché +22.9%, **hors biais -5.4%**
-   * `saint-malo` : biais -0.012 m — gain affiché -13.3%, **hors biais -14.1%**
+   * `pierres-noires` : biais -0.007 m — gain affiché +25.8%, **hors biais +25.9%**
+   * `belle-ile` : biais -0.043 m — gain affiché +14.1%, **hors biais +11.7%**
+   * `anglet` : biais -0.030 m — gain affiché +9.8%, **hors biais +5.4%**
+   * `cherbourg` : biais -0.066 m — gain affiché +19.3%, **hors biais +3.0%**
 
-   Stations dont le gain affiché vaut **au moins le double** de son gain hors biais : `pierres-noires`, `belle-ile`, `cherbourg`, `brest` — leur chiffre de tête est d'abord du débiaisage.
-   Stations où le modèle **ne bat pas** ce simple débiaisage : `cherbourg`, `brest`, `saint-malo` — il n'y apporte rien de plus qu'une constante, à ne pas présenter comme du skill météo-océanique.
+   Stations dont le gain affiché vaut **au moins le double** de son gain hors biais : `cherbourg` — leur chiffre de tête est d'abord du débiaisage.
+   Stations `weak` dans `gate.json` (le modèle **ne bat pas** ce simple débiaisage) : `brest`, `saint-malo` — il n'y apporte rien de plus qu'une constante, à ne pas présenter comme du skill météo-océanique.
 5. **Stations sous le gate — à ne pas publier en l'état.** Le modèle n'y
    atteint pas les +5% exigés : il ne trouve pas de signal exploitable
    dans les features actuelles. Le forçage vent 10 m (`wind_u10`/`wind_v10`)
@@ -105,8 +154,10 @@ source, pas ce tableau, que le publisher doit lire.
    ce que chaque feature apporte réellement (p. ex.
    `--ablate wind_u10,wind_v10`).
 
-   * `cherbourg` (wave) : 14246 lignes de train, MAE baseline 0.110 → modèle 0.107 (+2.4% affiché, -5.2% hors biais)
-   * `saint-malo` (tide) : 7243 lignes de train, MAE baseline 0.117 → modèle 0.132 (-13.3% affiché, -14.1% hors biais)
+   * `cherbourg` (wave) : 14488 lignes de train, MAE baseline 0.087 → modèle 0.070 (+19.3% affiché, +3.0% hors biais)
+
+   Hors de ce run, `gate.json` garde sous le gate : saint-malo —
+   station(s) non ré-entraînée(s) ici, verdict inchangé.
 
 
 ## Pistes testées et écartées

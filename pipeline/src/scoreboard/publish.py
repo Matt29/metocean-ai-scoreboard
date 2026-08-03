@@ -90,14 +90,28 @@ def write_stations(out_dir: Path, stations: list[Station], gate: dict) -> dict:
     return payload
 
 
-def write_latest(out_dir: Path, station_id: str, issued: str, series: list[dict]) -> dict:
-    """`data/<id>/latest.json` — full overwrite, no history kept here."""
+def write_latest(
+    out_dir: Path,
+    station_id: str,
+    issued: str,
+    series: list[dict],
+    baseline_model: str | None = None,
+) -> dict:
+    """`data/<id>/latest.json` — full overwrite, no history kept here.
+
+    `baseline_model` (the Open-Meteo wave model this issue's baseline came from)
+    is *additive*: absent for tide, absent for anything issued before Task 6, and
+    it does not move `schema_version` — the live site reads the other keys and
+    must keep working untouched.
+    """
     payload = {
         "schema_version": SCHEMA_VERSION,
         "station": station_id,
         "issued": issued,
         "series": series,
     }
+    if baseline_model:
+        payload["baseline_model"] = baseline_model
     _atomic_write(out_dir / station_id / "latest.json", payload)
     return payload
 
@@ -123,6 +137,25 @@ def upsert_history(out_dir: Path, station_id: str, day_entry: dict) -> dict:
     return payload
 
 
+def _current_baseline_model(days: list[dict]) -> str | None:
+    """The baseline this station serves *now*: the one named by its most recent
+    day entry that names one.
+
+    Derived from the history itself rather than passed in from the artefact, so
+    there is exactly one source of truth: the days being averaged *are* the
+    record of which baseline produced them. `None` for tide (harmonic, never
+    named) and for a history written entirely before Task 6.
+    """
+    return next(
+        (
+            d["baseline_model"]
+            for d in sorted(days, key=lambda d: d["date"], reverse=True)
+            if d.get("baseline_model")
+        ),
+        None,
+    )
+
+
 def compute_scores(days: list[dict]) -> dict:
     """MAE aggregates over "ok" days only — a "missing" day must not move them.
 
@@ -130,8 +163,20 @@ def compute_scores(days: list[dict]) -> dict:
     wall-clock, so the function stays deterministic from its input): "7d"
     means every ok day within 7 calendar days of that anchor, regardless of
     gaps — not simply the last 7 ok entries.
+
+    Days produced against a *different* baseline than the current one are
+    excluded outright: `mae_baseline` (and therefore the gain the site shows)
+    is only meaningful against one baseline at a time, and averaging MFWAM days
+    with best-wave-model days would publish a hybrid number nobody could
+    interpret. Those days stay in `history.json` and keep being served for
+    their series — they simply do not feed the windows. Expect the wave windows
+    to empty out the day the baseline changes and refill from there; an empty
+    window already yields `None`, not a division by zero.
     """
     ok = [d for d in days if d.get("status") == "ok"]
+    current = _current_baseline_model(days)
+    if current is not None:
+        ok = [d for d in ok if d.get("baseline_model") == current]
     # Among the "ok" days, how many were reconstructed a posteriori by
     # `scoreboard backfill` rather than scored the day after a live run — the
     # site surfaces this as "dont N jours reconstitués" (résolution 2).

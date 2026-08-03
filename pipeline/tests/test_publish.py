@@ -12,7 +12,7 @@ from scoreboard.config import Station
 
 STATIONS = [
     Station(id="a", name="A", kind="wave", lat=1.0, lon=2.0,
-            source="candhis", source_id="0001", baseline="mfwam"),
+            source="candhis", source_id="0001", baseline="marine-best"),
     Station(id="b", name="B", kind="tide", lat=3.0, lon=4.0,
             source="shom", source_id="0002", baseline="harmonic"),
 ]
@@ -172,3 +172,94 @@ def test_scores_json_has_schema_version_and_aggregates(tmp_path):
     assert row["n_days"] == 3
     assert row["mae_ia_7d"] == pytest.approx(0.1)
     assert row["mae_baseline_all"] == pytest.approx(0.2)
+
+
+# --- Task 6 fix 2: score windows are per baseline_model ---------------------
+
+
+def _ok_day(date_str, mae_ia, mae_baseline, baseline_model=None):
+    entry = {
+        "date": date_str, "status": "ok", "series": [],
+        "mae_ia": mae_ia, "mae_baseline": mae_baseline,
+        "n_points": 1, "max_lead_h": 1,
+    }
+    if baseline_model:
+        entry["baseline_model"] = baseline_model
+    return entry
+
+
+def test_windows_ignore_days_scored_against_a_previous_baseline():
+    """Merge-day scenario: 3 legacy MFWAM days then 2 on the new best model.
+    Averaging them would publish a hybrid gain nobody labelled."""
+    days = [
+        _ok_day("2026-07-28", 0.90, 1.00),  # legacy: no baseline_model key
+        _ok_day("2026-07-29", 0.90, 1.00),
+        _ok_day("2026-07-30", 0.90, 1.00),
+        _ok_day("2026-07-31", 0.10, 0.20, "ewam"),
+        _ok_day("2026-08-01", 0.30, 0.40, "ewam"),
+    ]
+
+    row = publish.compute_scores(days)
+
+    assert row["n_days"] == 2  # only the comparable days
+    assert row["mae_ia_7d"] == 0.2  # (0.10 + 0.30) / 2, legacy days excluded
+    assert row["mae_baseline_7d"] == 0.3
+    assert row["mae_ia_all"] == 0.2  # "all" is a window too, not a loophole
+
+
+def test_a_third_baseline_supersedes_the_second():
+    """Only the *current* baseline counts — an intermediate one is dropped too."""
+    days = [
+        _ok_day("2026-07-30", 0.90, 1.00, "mfwam"),
+        _ok_day("2026-07-31", 0.10, 0.20, "ewam"),
+        _ok_day("2026-08-01", 0.50, 0.60, "ncep_gfswave025"),
+    ]
+
+    row = publish.compute_scores(days)
+
+    assert row["n_days"] == 1
+    assert row["mae_ia_all"] == 0.5
+
+
+def test_only_legacy_days_left_yields_empty_windows_not_a_crash():
+    """The day after the switch: the newest day names a baseline no older day
+    has, so every window is empty. Nulls, no ZeroDivisionError."""
+    days = [
+        _ok_day("2026-07-30", 0.90, 1.00),
+        _ok_day("2026-07-31", 0.90, 1.00),
+        {"date": "2026-08-01", "status": "missing", "baseline_model": "ewam"},
+    ]
+
+    row = publish.compute_scores(days)
+
+    assert row["n_days"] == 0
+    for label in ("7d", "30d", "all"):
+        assert row[f"mae_ia_{label}"] is None
+        assert row[f"mae_baseline_{label}"] is None
+
+
+def test_tide_history_without_baseline_model_is_unaffected():
+    """No day names a baseline (harmonic) → the pre-Task-6 behaviour, verbatim."""
+    days = [
+        _ok_day("2026-07-30", 0.10, 0.20),
+        _ok_day("2026-07-31", 0.30, 0.40),
+    ]
+
+    row = publish.compute_scores(days)
+
+    assert row["n_days"] == 2
+    assert row["mae_ia_all"] == 0.2
+    assert row["mae_baseline_all"] == 0.3
+
+
+def test_backfilled_count_follows_the_same_window():
+    days = [
+        _ok_day("2026-07-30", 0.90, 1.00) | {"backfilled": True},
+        _ok_day("2026-07-31", 0.10, 0.20, "ewam") | {"backfilled": True},
+        _ok_day("2026-08-01", 0.30, 0.40, "ewam"),
+    ]
+
+    row = publish.compute_scores(days)
+
+    assert row["n_days"] == 2
+    assert row["n_days_backfilled"] == 1  # the legacy backfilled day is out

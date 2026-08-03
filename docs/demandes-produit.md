@@ -134,13 +134,37 @@ stations Météo-France.
   ARPEGE vs obs station — nouveau `kind` dans `stations.toml`, nouvelle source
   obs, nouveau baseline) ou simple vérification des features des modèles
   existants ? Les deux ne coûtent pas du tout pareil.
-- **La source obs** : API Météo-France (données d'observation / climatologiques).
-  Le projet `~/Documents/DEV/OCEANO/API_METEO_FRANCE` a déjà l'outillage ARPEGE ;
-  la partie *observations stations* reste à sonder — disponibilité réelle par
+- **La source obs** : l'« API Ciblée Données d'Observation » Météo-France
+  (portail Open Data, doc Confluence `OpenDataMeteoFrance`), qui couvre aussi
+  les **bouées Météo-France** — candidates comme obs supplémentaires. La clé
+  API Météo-France de `~/Documents/DEV/meteodata_hub` est **déjà habilitée**
+  sur ce périmètre (fait par Matthieu le 2026-08-03). Le projet
+  `~/Documents/DEV/OCEANO/API_METEO_FRANCE` a l'outillage ARPEGE ; la partie
+  *observations stations/bouées* reste à sonder — disponibilité réelle par
   station à vérifier par requêtes effectives, pas sur la page de doc (leçon
   Open-Meteo du 2026-08-03 : une API peut répondre 200 avec des null partout).
 - **L'angle produit** : la sélection « sites EMR » est un argument de prospection
   — le choix des points est une décision commerciale autant que technique.
+
+### Sondage effectué le 2026-08-03 (rapport : `.superpowers/sdd/2026-08-03-retrain-multi-modeles/sondage-bouees-mf.md`)
+
+Auth vérifiée (header `apikey`, `public-api.meteofrance.fr`, token valide
+jusqu'en 2029). Verdicts, mesurés en non-null sur requêtes réelles :
+
+- **Vent : faisable.** 2 151 stations DPObs (RADOME) ; candidates proches des
+  stations houle : Biarritz (9,5 km d'Anglet), Cherbourg-Homet (3,9 km) ;
+  zones EMR couvertes. Latence ~2 min (compatible scoring 09:30 UTC). Quotas
+  ~50-60 req/min, un fetch quotidien est négligeable.
+- **Houle : la donnée existe, la couverture manque** (corrigé après relecture
+  de la doc par Matthieu). `/liste-bouees` + `/bouees` fonctionnent avec la
+  même clé : Hs/période/direction horaires non-null, rétention 24 h, pas
+  d'archive. Mais 9 bouées seulement — 8 en Méditerranée, 1 en Atlantique
+  (Gascogne, 327 km d'Anglet, 556 km de Cherbourg) → aucun renfort possible
+  pour les stations actuelles. À ressortir si des stations Méditerranée (ou
+  un produit EMR flottant Med) entrent au scoreboard.
+- **Limite historique** : temps réel = fenêtre glissante ~3-4 jours ;
+  l'archive longue relève d'une autre API (climatologie, non souscrite). Pour
+  entraîner un jour sur ces vents, commencer à archiver tôt ou souscrire.
 
 ### Préalable
 
@@ -150,19 +174,68 @@ backfill) — la stabiliser d'abord sur les variables existantes.
 
 ---
 
+## 4. Bouées Météo-France = nouvelles stations scorées + carte interactive
+
+**Demande** (2026-08-03, soir ; précisée le même soir). Deux volets :
+
+1. **Intégrer les 9 bouées MF** (8 Méditerranée + Gascogne) **au réseau
+   d'observation du scoreboard, comme Candhis** : nouvelles stations `wave` à
+   part entière — prévision IA + baseline meilleur modèle physique + gate +
+   verdict, vérifiées chaque jour contre l'obs bouée (`/bouees` : Hs,
+   période, direction, horaire). Pas un simple affichage d'observations.
+2. **Carte interactive sur le dashboard du site** pour voir directement les
+   bouées et les stations.
+
+### Le chemin imposé par la rétention 24 h de `/bouees`
+
+- **Scoring quotidien : faisable dès le premier jour.** La fenêtre de 24 h
+  suffit à vérifier la prévision d'hier — même mécanique que Candhis.
+- **Entraînement : bloqué par l'historique d'obs.** Les baselines
+  historiques existent (l'archive Open-Meteo Marine couvre la Méditerranée),
+  mais il n'y a AUCUNE archive d'obs bouées MF via cette API. Donc :
+  **archiver les obs dès l'ajout des stations** (le cron quotidien les
+  committe, même mécanique que `data_forecast_archive/`), servir d'abord en
+  « baseline seule » (gate non passé, non publié — le mécanisme existe),
+  puis entraîner quand ~2-3 mois d'obs sont accumulés.
+- Nouveau module source `sources/mfbuoy.py` (auth `apikey`, quotas ~50-60
+  req/min largement suffisants) ; `kind = "wave"` réutilise toute la chaîne
+  multi-modèles du chantier 2026-08. Vérifier la couverture Marine API sur
+  chaque point Med par sondage non-null avant d'inscrire une bouée.
+- **Positions** : `/liste-bouees` les fournit — jamais en dur.
+
+### Carte
+
+Contrainte design system ODC (skill `oceandata-design`, alias sémantiques,
+verdict jamais par la couleur seule). Lib carto à cadrer avec la contrainte
+site statique pré-rendu (fond de carte, tuiles vs vectoriel embarqué).
+
+### Préalable
+
+Après la mise en prod du ré-entraînement multi-modèles (chantier en cours) et
+sa vérification cron. **L'archivage des obs bouées peut démarrer tôt** (il
+conditionne la date du premier entraînement Med) ; la carte passe avant ou
+avec la demande 1 (graphiques).
+
+---
+
 ## Ordre suggéré
 
 1. Vérifier les premiers jours scorés non reconstitués.
 2. ~~Étendre la mesure aux échéances 25–48 h.~~ Fait le 2026-08-03 (`pending`
    + `_rescore_pending`).
-3. Ré-entraîner sur les prévisions archivées. **Mise à jour 2026-08-03** : plus
-   besoin d'attendre un mois de collecte propre — l'API Historical Forecast
-   d'Open-Meteo sert `meteofrance_arpege_europe` (vraies prévisions, format
-   identique au live) complet depuis ~2025 (vérifié par sondage, station Brest).
-   Limites vérifiées le même jour : leads courts seulement (concaténation des
-   runs les plus frais), et la Previous Runs API (leads stratifiés 1–7 j) n'a
-   **pas** ARPEGE — seulement `ecmwf_ifs025`. Auto-hébergement possible pour
-   lever les quotas si le volume l'exige.
+3. ~~Ré-entraîner sur les prévisions archivées~~ — **fait (2026-08-03)** pour
+   les vagues : retrain multi-modèles Task 7, baseline vague basculée sur
+   Open-Meteo Marine (meilleur des 5 modèles par station), CMEMS/MFWAM
+   retiré du pipeline (voir `docs/data-sources.md` § 4ter). **Mise à jour
+   2026-08-03** : plus besoin d'attendre un mois de collecte propre —
+   l'API Historical Forecast d'Open-Meteo sert `meteofrance_arpege_europe`
+   (vraies prévisions, format identique au live) complet depuis ~2025 (vérifié
+   par sondage, station Brest). Limites vérifiées le même jour : leads courts
+   seulement (concaténation des runs les plus frais), et la Previous Runs API
+   (leads stratifiés 1–7 j) n'a **pas** ARPEGE — seulement `ecmwf_ifs025`.
+   Reste ouvert pour le **vent** (skew ERA5-train/ARPEGE-serve toujours actif,
+   voir § 2 ci-dessus) : auto-hébergement possible pour lever les quotas si le
+   volume l'exige.
 4. Alors seulement : les graphiques (1) sur des chiffres opérationnels, la
    décision d'horizon (2) sur un modèle dont on connaît le skill réel, et les
    stations de vent (3).

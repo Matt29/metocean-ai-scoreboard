@@ -6,9 +6,10 @@ import pytest
 
 from scoreboard.config import Station
 from scoreboard.dataset import assemble
-from scoreboard.features import FEATURE_COLUMNS, build_features
+from scoreboard.features import FEATURE_COLUMNS, WAVE_FEATURE_COLUMNS, build_features
 from scoreboard.sources import SourceError
-from scoreboard.sources.wind import FORCING_COLUMNS
+from scoreboard.sources.marine import MODEL_COLUMNS
+from scoreboard.sources.wind import FORCING_COLUMNS, MULTI_FORCING_COLUMNS
 
 T0 = pd.Timestamp("2026-07-30 06:00", tz="UTC")
 
@@ -179,6 +180,99 @@ def test_obs_strictly_before_window_still_yields_zero_mean_err():
     assert not feats.isna().any().any()
 
 
+# --- wave multi-model block ---------------------------------------------
+
+
+def _wave_models_frame(index):
+    """5 constant, distinct model columns -> a known row-wise spread."""
+    return pd.DataFrame({c: float(i) for i, c in enumerate(MODEL_COLUMNS)}, index=index)
+
+
+def _forcing_multi(hours_before=24, hours_after=48):
+    idx = pd.date_range(
+        T0 - pd.Timedelta(hours=hours_before),
+        periods=hours_before + hours_after + 1,
+        freq="1h",
+        tz="UTC",
+    )
+    return pd.DataFrame({c: 3.0 for c in MULTI_FORCING_COLUMNS}, index=idx)
+
+
+def test_wave_features_columns_and_spread():
+    baseline = _baseline()
+    feats = build_features(
+        baseline,
+        _series(T0 - pd.Timedelta(hours=24), 25, 1.3),
+        T0,
+        _forcing_multi(),
+        wave_models=_wave_models_frame(baseline.index),
+    )
+    assert list(feats.columns) == WAVE_FEATURE_COLUMNS
+    assert WAVE_FEATURE_COLUMNS == (
+        ["baseline", "lead_h", "last_err", "mean_err_24h", "hour_sin", "hour_cos"]
+        + MODEL_COLUMNS
+        + ["model_spread"]
+        + MULTI_FORCING_COLUMNS
+    )
+    assert np.allclose(feats["model_spread"], np.std([0, 1, 2, 3, 4]))
+    for i, col in enumerate(MODEL_COLUMNS):
+        assert np.allclose(feats[col], float(i))
+    assert np.allclose(feats[MULTI_FORCING_COLUMNS], 3.0)
+    assert not feats.isna().any().any()
+
+
+def test_short_hs_gap_is_interpolated_not_zero_filled():
+    """0 m of sea does not exist: a short hole must not become a 0.0 spread spike."""
+    baseline = _baseline()
+    wm = _wave_models_frame(baseline.index)
+    col = MODEL_COLUMNS[-1]  # constant at 4.0
+    # 3 consecutive hours after t0: the middle one has no sample within the 1h
+    # align tolerance, so without interpolation it falls back to 0.0.
+    wm.loc[T0 + pd.Timedelta(hours=10) : T0 + pd.Timedelta(hours=12), col] = np.nan
+    feats = build_features(
+        baseline,
+        _series(T0 - pd.Timedelta(hours=24), 25, 1.3),
+        T0,
+        _forcing_multi(),
+        wave_models=wm,
+    )
+    assert np.allclose(feats[col], 4.0)
+    assert np.allclose(feats["model_spread"], np.std([0, 1, 2, 3, 4]))
+
+
+def test_wave_model_under_coverage_raises():
+    baseline = _baseline()
+    wm = _wave_models_frame(baseline.index)
+    wm.iloc[:, 0] = np.nan
+    with pytest.raises(SourceError):
+        build_features(
+            baseline,
+            _series(T0 - pd.Timedelta(hours=24), 25, 1.3),
+            T0,
+            _forcing_multi(),
+            wave_models=wm,
+        )
+
+
+def test_wave_path_requires_multi_model_forcing():
+    """The single-model forcing frame is not enough for the wave path."""
+    baseline = _baseline()
+    with pytest.raises(SourceError):
+        build_features(
+            baseline,
+            _series(T0 - pd.Timedelta(hours=24), 25, 1.3),
+            T0,
+            _forcing(),
+            wave_models=_wave_models_frame(baseline.index),
+        )
+
+
+def test_without_wave_models_tide_path_byte_identical():
+    """The current (tide) path must not move by a single column."""
+    feats = build_features(_baseline(), _series(T0 - pd.Timedelta(hours=24), 25, 1.3), T0, _forcing())
+    assert list(feats.columns) == FEATURE_COLUMNS
+
+
 # --- dataset.assemble ---------------------------------------------------
 
 WAVE_STATION = Station(
@@ -189,7 +283,7 @@ WAVE_STATION = Station(
     lon=-4.0,
     source="candhis",
     source_id="00000",
-    baseline="mfwam",
+    baseline="marine-best",
 )
 
 

@@ -11,7 +11,7 @@ lat = 48.2903328
 lon = -4.9683332
 source = "candhis"
 source_id = "02911"
-baseline = "mfwam"
+baseline = "marine-best"
 
 [[station]]
 id = "belle-ile"
@@ -21,7 +21,7 @@ lat = 47.2849998
 lon = -3.2850001
 source = "candhis"
 source_id = "05602"
-baseline = "mfwam"
+baseline = "marine-best"
 
 [[station]]
 id = "anglet"
@@ -31,7 +31,7 @@ lat = 43.5321655
 lon = -1.6150000
 source = "candhis"
 source_id = "06402"
-baseline = "mfwam"
+baseline = "marine-best"
 
 [[station]]
 id = "cherbourg"
@@ -41,7 +41,7 @@ lat = 49.6940600
 lon = -1.6213680
 source = "candhis"
 source_id = "05008"
-baseline = "mfwam"
+baseline = "marine-best"
 
 [[station]]
 id = "brest"
