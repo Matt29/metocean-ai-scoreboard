@@ -9,29 +9,16 @@ import requests
 
 from scoreboard.config import Station
 from scoreboard.sources import SourceError
-from scoreboard.sources.wind import (
-    FORCING_COLUMNS,
-    STANDARD_PRESSURE_HPA,
-    fetch_wind_forecast,
-    fetch_wind_history,
-)
+from scoreboard.sources.wind import FORCING_COLUMNS, fetch_wind_forecast, fetch_wind_history
 
 ST = Station(id="pierres-noires", name="PN", kind="wave", lat=48.29, lon=-4.97,
              source="candhis", source_id="02911", baseline="mfwam")
 
 
-def payload(times, speeds, dirs, pressures=None):
-    pressures = [1013.25] * len(times) if pressures is None else pressures
+def payload(times, speeds, dirs):
     return {
-        "hourly_units": {
-            "wind_speed_10m": "m/s", "wind_direction_10m": "°", "pressure_msl": "hPa",
-        },
-        "hourly": {
-            "time": times,
-            "wind_speed_10m": speeds,
-            "wind_direction_10m": dirs,
-            "pressure_msl": pressures,
-        },
+        "hourly_units": {"wind_speed_10m": "m/s", "wind_direction_10m": "°"},
+        "hourly": {"time": times, "wind_speed_10m": speeds, "wind_direction_10m": dirs},
     }
 
 
@@ -56,7 +43,7 @@ def test_history_parses_and_converts_to_uv():
     df = fetch_wind_history(ST, date(2026, 6, 1), date(2026, 6, 1),
                             session=make_session(payload(TIMES, SPEEDS, DIRS)))
 
-    assert list(df.columns) == FORCING_COLUMNS == ["wind_u10", "wind_v10", "pressure_anom"]
+    assert list(df.columns) == FORCING_COLUMNS == ["wind_u10", "wind_v10"]
     assert df.index.name == "time"
     assert str(df.index.tz) == "UTC"
     assert len(df) == 4
@@ -65,38 +52,13 @@ def test_history_parses_and_converts_to_uv():
     assert not df.isna().any().any()
 
 
-def test_pressure_is_returned_as_anomaly_to_standard_atmosphere():
-    """Anomaly, not raw hPa: 0.0 then means 'standard atmosphere, no surge forcing',
-    the same neutral as calm wind — see features.py."""
-    raw = [1013.25, 1000.0, 1030.0, 980.5]
-    df = fetch_wind_history(ST, date(2026, 6, 1), date(2026, 6, 1),
-                            session=make_session(payload(TIMES, SPEEDS, DIRS, raw)))
-
-    assert STANDARD_PRESSURE_HPA == 1013.25
-    assert np.allclose(df["pressure_anom"], [0.0, -13.25, 16.75, -32.75], atol=1e-9)
-
-
-def test_pressure_is_requested_in_the_same_call_as_the_wind():
-    """One request, three variables — the whole point of extending this fetcher."""
+def test_one_request_per_station_with_every_forcing_variable():
+    """Open-Meteo has a free-tier quota: all variables ride in a single call."""
     session = make_session(payload(TIMES, SPEEDS, DIRS))
     fetch_wind_history(ST, date(2026, 6, 1), date(2026, 6, 2), session=session)
     assert session.get.call_count == 1
     hourly = session.get.call_args.kwargs["params"]["hourly"].split(",")
-    assert set(hourly) == {"wind_speed_10m", "wind_direction_10m", "pressure_msl"}
-
-
-def test_forecast_requests_pressure_too():
-    session = make_session(payload(TIMES, SPEEDS, DIRS))
-    fetch_wind_forecast(ST, session=session)
-    assert session.get.call_count == 1
-    assert "pressure_msl" in session.get.call_args.kwargs["params"]["hourly"]
-
-
-def test_payload_without_pressure_raises_source_error():
-    body = payload(TIMES, SPEEDS, DIRS)
-    del body["hourly"]["pressure_msl"]
-    with pytest.raises(SourceError):
-        fetch_wind_history(ST, date(2026, 6, 1), date(2026, 6, 1), session=make_session(body))
+    assert set(hourly) == {"wind_speed_10m", "wind_direction_10m"}
 
 
 def test_history_requests_ms_units_and_utc():
@@ -118,11 +80,10 @@ def test_forecast_uses_arpege_europe_model():
 
 
 def test_missing_hourly_values_are_dropped_not_nan():
-    body = payload(TIMES, [10.0, None, 10.0, 10.0], [0, 90, None, 270],
-                   [1013.25, 1013.25, 1013.25, None])
+    body = payload(TIMES, [10.0, None, 10.0, 10.0], [0, 90, None, 270])
     df = fetch_wind_history(ST, date(2026, 6, 1), date(2026, 6, 1), session=make_session(body))
     assert not df.isna().any().any()
-    assert len(df) == 1  # only the 00 UTC hour has all three variables
+    assert len(df) == 2
 
 
 def test_duplicate_timestamps_are_dropped():

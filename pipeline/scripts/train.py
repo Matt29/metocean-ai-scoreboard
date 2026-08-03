@@ -124,14 +124,16 @@ def _failure_notes(rows: list[dict]) -> list[str]:
     notes = [
         "5. **Stations sous le gate — à ne pas publier en l'état.** Le modèle n'y",
         f"   atteint pas les +{GATE:.0%} exigés : il ne trouve pas de signal exploitable",
-        "   dans les features actuelles. Le forçage atmosphérique en fait désormais",
-        "   partie — vent 10 m (`wind_u10`/`wind_v10`, Task 7B) et anomalie de pression",
-        "   au niveau de la mer (`pressure_anom`, Task 7C) —, et ces ajouts ont payé sur",
-        "   certaines stations mais **pas** sur celles ci-dessous, donc l'explication est",
-        "   ailleurs : historique d'entraînement trop court, forçage local mal représenté",
-        "   par la maille du modèle atmosphérique, ou grandeur encore absente. À trancher",
+        "   dans les features actuelles. Le forçage vent 10 m (`wind_u10`/`wind_v10`)",
+        "   en fait partie depuis Task 7B — il a payé sur les stations de houle exposée",
+        "   mais **pas** sur celles ci-dessous — et la pression au niveau de la mer, le",
+        "   candidat suivant le plus évident, a été testée et écartée (voir la section",
+        "   « Pistes testées et écartées »). L'explication est donc ailleurs :",
+        "   historique d'entraînement trop court, forçage local mal représenté par la",
+        "   maille du modèle atmosphérique, ou grandeur encore absente. À trancher",
         "   station par station, mesure à l'appui — `train.py --ablate <colonnes>` chiffre",
-        "   ce que chaque feature apporte réellement (p. ex. `--ablate pressure_anom`).",
+        "   ce que chaque feature apporte réellement (p. ex.",
+        "   `--ablate wind_u10,wind_v10`).",
         "",
     ]
     notes += [
@@ -141,6 +143,44 @@ def _failure_notes(rows: list[dict]) -> list[str]:
         for r in failing
     ]
     return notes + [""]
+
+
+def _rejected_leads() -> list[str]:
+    """Résultat négatif figé (Task 7C) — écrit pour qu'on ne le re-tente pas à l'aveugle.
+
+    Chiffres non recalculés à chaque run : ils décrivent une expérience datée, sur
+    une fenêtre datée. Le code de mesure, lui, est toujours là (`--ablate`).
+    """
+    return [
+        "",
+        "## Pistes testées et écartées",
+        "",
+        "* **Pression au niveau de la mer** (`pressure_msl` Open-Meteo, servie dans la",
+        "  même requête que le vent, ajoutée comme anomalie à 1013,25 hPa). Motivation :",
+        "  le baromètre inverse (~1 cm de niveau par hPa) est le premier moteur de la",
+        "  surcote, donc du résidu à prédire sur les stations `tide`. **Mesurée le",
+        "  2026-08-03 par ablation à fenêtre identique, elle dégrade 5 stations sur 6 et",
+        "  a été retirée.** Δ de gain hors biais dus à la seule pression :",
+        "",
+        "  | station | kind | Δ pression |",
+        "  |---|---|---|",
+        "  | pierres-noires | wave | −2,0 pts |",
+        "  | belle-ile | wave | −1,0 pt |",
+        "  | anglet | wave | −2,4 pts |",
+        "  | cherbourg | wave | −5,1 pts |",
+        "  | brest | tide | −2,0 pts |",
+        "  | saint-malo | tide | **+4,8 pts** (mais reste sous le gate) |",
+        "",
+        "  Seule `saint-malo` en profite, sans repasser au-dessus de son propre",
+        "  débiaisage ; `anglet` tombait sous le gate à cause d'elle. Lecture la plus",
+        "  simple : sur un historique court, une colonne sans effet direct sur les",
+        "  stations `wave` ajoute surtout de la variance. Conditionner la feature au",
+        "  `kind` de la station a été écarté : cela créerait deux chemins de",
+        "  construction de features, alors que l'unicité de ce chemin est la garantie",
+        "  centrale du projet contre le train/serve skew.",
+        "  Détail : `.superpowers/sdd/2026-07-30-scoreboard-metocean-ia/task-7C-report.md`.",
+        "",
+    ]
 
 
 def write_report(rows: list[dict], test_days: int) -> None:
@@ -271,6 +311,7 @@ def write_report(rows: list[dict], test_days: int) -> None:
         ),
     ]
     lines += _failure_notes(rows)
+    lines += _rejected_leads()
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text("\n".join(lines))
 
@@ -283,7 +324,7 @@ def main() -> int:
         default="",
         metavar="COLS",
         help="comma-separated feature columns to zero — measures what they actually buy "
-        f"(e.g. 'pressure_anom' or 'wind_u10,wind_v10'). Choices: {','.join(FEATURE_COLUMNS)}",
+        f"(e.g. 'wind_u10,wind_v10'). Choices: {','.join(FEATURE_COLUMNS)}",
     )
     args = ap.parse_args()
 

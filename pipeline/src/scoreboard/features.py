@@ -5,15 +5,15 @@ first act. Nothing downstream can see an observation posterior to `t0`, whatever
 the caller passes in. That structural truncation (not caller discipline) is what
 guarantees training and serving see the same thing.
 
-`forcing` (10 m wind + MSL pressure anomaly, see `sources.wind`) is the one input
-legitimately allowed to carry values posterior to `t0`: it is a *forecast* of the
-atmospheric forcing at each lead's valid time, exactly what production has at
-issue time. It is never an observation, so it cannot leak.
+`forcing` (10 m wind, see `sources.wind`) is the one input legitimately allowed
+to carry values posterior to `t0`: it is a *forecast* of the atmospheric forcing
+at each lead's valid time, exactly what production has at issue time. It is
+never an observation, so it cannot leak.
 `forcing` is a required argument, not an option with a default — and a required
 argument is not enough on its own: a *degraded* forcing frame (None, empty, wrong
 columns, truncated horizon) would otherwise yield an all-zero forcing vector,
 which is not "neutral" but out-of-distribution for a model trained on real
-forcing, and indistinguishable from a genuine calm standard atmosphere. So
+forcing, and indistinguishable from a genuine calm. So
 coverage is checked per column and `SourceError` is raised below
 `_MIN_FORCING_COVERAGE`: the daily run marks the station missing and does not
 publish it, rather than publishing a silently wrong correction.
@@ -36,18 +36,17 @@ FEATURE_COLUMNS = [
     # Atmospheric forcing at the lead's valid time (see `sources.wind`).
     # 10 m wind components, m/s, eastward / northward. u/v rather than
     # speed+direction: direction is circular and u/v handle it natively.
+    # MSL pressure was tried here in Task 7C and measured non-contributive
+    # (see `docs/model-eval.md`) — do not re-add it without new evidence.
     "wind_u10",
     "wind_v10",
-    # MSL pressure anomaly to the standard atmosphere, hPa. The inverse-barometer
-    # driver of the storm surge the tide stations' residual is made of.
-    "pressure_anom",
 ]
 
-# 0.0 on every forcing column means calm + standard atmosphere, i.e. "no
-# atmospheric forcing correction" — the neutral fallback, consistent with the
-# never-NaN contract. It is only ever reached inside the coverage floor below.
+# 0.0 on every forcing column means calm, i.e. "no atmospheric forcing
+# correction" — the neutral fallback, consistent with the never-NaN contract.
+# It is only ever reached inside the coverage floor below.
 _NEUTRAL_FORCING = 0.0
-_FORCING_COLUMNS = ("wind_u10", "wind_v10", "pressure_anom")
+_FORCING_COLUMNS = ("wind_u10", "wind_v10")
 # Both providers deliver a gap-free hourly grid, so a few missing hours are a
 # blip while a third of the horizon missing is a degraded fetch, not weather.
 _MIN_FORCING_COVERAGE = 0.9

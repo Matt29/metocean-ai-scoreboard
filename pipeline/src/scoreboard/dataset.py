@@ -23,8 +23,8 @@ def assemble(
 
     `obs` is the station's observation frame (hourly); `baseline` holds the
     official forecast / harmonic prediction in its first column; `forcing` holds
-    the hourly `wind_u10`/`wind_v10`/`pressure_anom` columns (see
-    `sources.wind`). Target is the observation at the same valid time.
+    the hourly `wind_u10`/`wind_v10` columns (see `sources.wind`). Target is the
+    observation at the same valid time.
     """
     if station.kind not in OBS_COLUMN:
         raise ValueError(f"unsupported station kind: {station.kind!r}")

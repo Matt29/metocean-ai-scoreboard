@@ -23,12 +23,10 @@ def _baseline(hours_before=24, hours_after=48, value=1.0):
     return _series(start, hours_before + hours_after + 1, value)
 
 
-def _forcing(u=3.0, v=-4.0, p=-8.0, hours_before=24, hours_after=48, start=None):
+def _forcing(u=3.0, v=-4.0, hours_before=24, hours_after=48, start=None):
     start = T0 - pd.Timedelta(hours=hours_before) if start is None else start
     idx = pd.date_range(start, periods=hours_before + hours_after + 1, freq="1h", tz="UTC")
-    return pd.DataFrame(
-        {"wind_u10": float(u), "wind_v10": float(v), "pressure_anom": float(p)}, index=idx
-    )
+    return pd.DataFrame({"wind_u10": float(u), "wind_v10": float(v)}, index=idx)
 
 
 def _empty_forcing():
@@ -47,43 +45,40 @@ def test_columns_exactly_as_specified():
         "hour_cos",
         "wind_u10",
         "wind_v10",
-        "pressure_anom",
     ]
 
 
 def test_forcing_is_sampled_at_each_lead_valid_time():
     idx = pd.date_range(T0 - pd.Timedelta(hours=24), periods=73, freq="1h", tz="UTC")
     forcing = pd.DataFrame(
-        {
-            "wind_u10": np.arange(73.0),
-            "wind_v10": -np.arange(73.0),
-            "pressure_anom": np.arange(73.0) / 10.0,
-        },
-        index=idx,
+        {"wind_u10": np.arange(73.0), "wind_v10": -np.arange(73.0)}, index=idx
     )
     feats = build_features(_baseline(), _series(T0 - pd.Timedelta(hours=24), 25, 1.3), T0, forcing)
 
     # lead h maps to index position 24 + h in the forcing frame
     assert np.allclose(feats["wind_u10"], 24 + np.arange(1, 49))
     assert np.allclose(feats["wind_v10"], -(24 + np.arange(1, 49)))
-    assert np.allclose(feats["pressure_anom"], (24 + np.arange(1, 49)) / 10.0)
 
 
 @pytest.mark.parametrize(
-    "degraded", [None, "empty", "no_columns", "no_pressure", "half", "half_pressure"]
+    "degraded", [None, "empty", "no_columns", "one_column", "half", "half_one_column"]
 )
 def test_degraded_forcing_raises_instead_of_silently_zeroing(degraded):
-    """A model trained on real forcing must never be served an all-zero vector."""
-    half_pressure = _forcing()
-    half_pressure.loc[half_pressure.index > T0 + pd.Timedelta(hours=24), "pressure_anom"] = np.nan
+    """A model trained on real forcing must never be served an all-zero vector.
+
+    The guard is per column: one missing or thin column is enough to raise, so a
+    forcing variable added later inherits it for free.
+    """
+    half_v = _forcing()
+    half_v.loc[half_v.index > T0 + pd.Timedelta(hours=24), "wind_v10"] = np.nan
     forcing = {
         None: None,
         "empty": _empty_forcing(),
         "no_columns": pd.DataFrame({"gust": [1.0]}, index=pd.DatetimeIndex([T0], tz="UTC")),
-        "no_pressure": _forcing().drop(columns=["pressure_anom"]),
+        "one_column": _forcing().drop(columns=["wind_v10"]),
         # covers only the first 24h of a 48h horizon -> 50% < _MIN_FORCING_COVERAGE
         "half": _forcing(hours_before=0, hours_after=24, start=T0),
-        "half_pressure": half_pressure,
+        "half_one_column": half_v,
     }[degraded]
     with pytest.raises(SourceError):
         build_features(_baseline(), _series(T0 - pd.Timedelta(hours=24), 25, 1.3), T0, forcing)
@@ -97,7 +92,6 @@ def test_a_few_missing_forcing_hours_are_tolerated_as_neutral_zero():
     # the two edge holes are filled by the 1h-tolerance neighbour; only the
     # middle one has no valid sample within tolerance and falls back to neutral
     assert (feats["wind_u10"] == 0.0).sum() == 1
-    assert (feats["pressure_anom"] == 0.0).sum() == 1
 
 
 def test_assemble_skips_issues_whose_forcing_coverage_is_too_thin():
@@ -107,7 +101,7 @@ def test_assemble_skips_issues_whose_forcing_coverage_is_too_thin():
     x, y = assemble(WAVE_STATION, obs, baseline, truncated, issue_hours=[6])
     assert not x.empty
     assert len(x) < len(assemble(WAVE_STATION, obs, baseline, forcing, issue_hours=[6])[0])
-    assert not ((x["wind_u10"] == 0.0) & (x["pressure_anom"] == 0.0)).all()
+    assert not ((x["wind_u10"] == 0.0) & (x["wind_v10"] == 0.0)).all()
 
 
 def test_constant_case_errors_and_leads():
@@ -207,7 +201,6 @@ def _history(days=5):
         {
             "wind_u10": np.full(len(idx), 3.0),
             "wind_v10": np.full(len(idx), -4.0),
-            "pressure_anom": np.full(len(idx), -8.0),
         },
         index=idx,
     )

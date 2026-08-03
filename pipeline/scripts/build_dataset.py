@@ -15,9 +15,8 @@ Sources and documented compromises
   optimistic. Accepted for v1 (there is no free archive of past MFWAM runs);
   the public scoreboard is scored on real forecasts, not on this proxy.
 * Atmospheric forcing (Open-Meteo / ERA5): ONE archive request per station over
-  the whole window, carrying hourly 10 m wind (converted to u/v) *and* mean sea
-  level pressure (as an anomaly). **Documented train/serve skew**:
-  training uses the ERA5 *reanalysis*, while the daily run will use the ARPEGE
+  the whole window, hourly 10 m wind converted to u/v. **Documented train/serve
+  skew**: training uses the ERA5 *reanalysis*, while the daily run will use ARPEGE
   *forecast* (`sources.wind.fetch_wind_forecast`). Same category of compromise
   as the MFWAM analysis-as-forecast proxy above — a mean-bias-type skew, not an
   equivalence — and it resorbs the same way, by accumulating real forecast runs.
@@ -85,7 +84,7 @@ def build_wave(stations: list[Station], start: date, end: date) -> dict[str, tup
     for st in stations:
         obs = fetch_wave_obs(st, start)  # single deep request (quota-friendly)
         obs = obs[["hs"]].resample("1h").mean()  # 30-min native -> hourly
-        forcing = fetch_wind_history(st, start, end)  # single ERA5 request (wind + pressure)
+        forcing = fetch_wind_history(st, start, end)  # single ERA5 request
         out[st.id] = assemble(st, obs, baselines[st.id], forcing)
         print(
             f"  {st.id}: obs {len(obs)}h, baseline {len(baselines[st.id])}h, "
@@ -112,7 +111,7 @@ def build_tide(
             horizon_hours=HORIZON_H,
         )
         eval_obs = obs.loc[baseline_s.index]
-        forcing = fetch_wind_history(st, start, end)  # single ERA5 request (wind + pressure)
+        forcing = fetch_wind_history(st, start, end)  # single ERA5 request
         out[st.id] = assemble(st, eval_obs, pd.DataFrame({"level_baseline": baseline_s}), forcing)
         print(
             f"  {st.id}: forcing {len(forcing)}h, obs {len(level)}h "
