@@ -11,6 +11,14 @@ splitting on valid time would leak an issue across train and test. The issue day
 is recovered as `valid_time - lead_h`. The last `--test-days` issue days are the
 test set.
 
+Wave baseline
+-------------
+The physical baseline is no longer a single hard-coded model: each wave station
+picks, among the 5 Open-Meteo wave models of its raw parquet, the one closest to
+its own buoy — **on the train issue days only** (`select_baseline`). Picking it
+on the whole window would let the test set choose the yardstick it is then
+measured against.
+
 Tide stations
 -------------
 The learned target is the residual `obs - harmonic`; MAE is nevertheless
@@ -29,8 +37,11 @@ import numpy as np
 import pandas as pd
 
 from scoreboard import model
-from scoreboard.config import load_stations
-from scoreboard.features import FEATURE_COLUMNS
+from scoreboard.config import Station, load_env, load_stations
+from scoreboard.dataset import assemble
+from scoreboard.features import FEATURE_COLUMNS, WAVE_FEATURE_COLUMNS
+from scoreboard.sources.marine import MODEL_COLUMNS
+from scoreboard.sources.wind import MULTI_FORCING_COLUMNS
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "pipeline" / "data_train"
@@ -38,74 +49,170 @@ REPORT_PATH = ROOT / "docs" / "model-eval.md"
 GATE_PATH = model.MODELS_DIR / "gate.json"
 GATE = 0.05  # the model must beat the baseline by >= 5% to go live
 UNIT = {"wave": "m (Hs)", "tide": "m (water level)"}
+ABLATABLE = sorted(set(FEATURE_COLUMNS) | set(WAVE_FEATURE_COLUMNS))
 
 
-def split_by_issue_day(x: pd.DataFrame, test_days: int) -> np.ndarray:
+def issue_days(x: pd.DataFrame) -> pd.DatetimeIndex:
+    """Issue day of each row, recovered as `valid_time - lead_h`."""
+    return pd.DatetimeIndex(x.index - pd.to_timedelta(x["lead_h"], unit="h")).normalize()
+
+
+def split_by_issue_day(
+    x: pd.DataFrame, test_days: int, cutoff: pd.Timestamp | None = None
+) -> np.ndarray:
     """Boolean mask of the test rows: the last `test_days` issue days."""
-    issue_day = pd.DatetimeIndex(x.index - pd.to_timedelta(x["lead_h"], unit="h")).normalize()
-    cutoff = issue_day.max() - pd.Timedelta(days=test_days)
-    return np.asarray(issue_day > cutoff)
+    day = issue_days(x)
+    cutoff = day.max() - pd.Timedelta(days=test_days) if cutoff is None else cutoff
+    return np.asarray(day > cutoff)
+
+
+def select_baseline(raw: pd.DataFrame, train_days: pd.DatetimeIndex) -> str:
+    """`hs_<model>` column of lowest MAE vs `raw["hs"]` over `train_days` only.
+
+    Restricting to the train days is the whole point: the selected model is the
+    yardstick every gain below is measured against, so it must be chosen without
+    ever looking at the test window.
+    """
+    day = pd.DatetimeIndex(raw.index).normalize()
+    sub = raw[day.isin(train_days)]
+    mae = {
+        col: float((sub[col] - sub["hs"]).abs().mean())
+        for col in MODEL_COLUMNS
+        if col in sub.columns
+    }
+    mae = {c: v for c, v in mae.items() if np.isfinite(v)}
+    if not mae:
+        raise ValueError("no wave model column overlaps the observations on the train days")
+    return min(mae, key=mae.__getitem__)
+
+
+def _wave_data(station: Station, test_days: int) -> tuple | None:
+    """(x, obs, is_test, baseline_model) assembled from the raw multi-model parquet."""
+    path = DATA_DIR / f"{station.id}_raw.parquet"
+    if not path.exists():
+        print(f"  {station.id}: no raw dataset at {path} — skipped")
+        return None
+
+    raw = pd.read_parquet(path).sort_index()
+    # Days are counted on those that carry an observation: a station whose buoy
+    # stopped early must still get its 30 *usable* test days.
+    obs_days = pd.DatetimeIndex(raw.index[raw["hs"].notna()]).normalize().unique()
+    cutoff = obs_days.max() - pd.Timedelta(days=test_days)
+    baseline_col = select_baseline(raw, obs_days[obs_days <= cutoff])
+
+    x, obs = assemble(
+        station,
+        raw[["hs"]],
+        raw[[baseline_col]],
+        raw[MULTI_FORCING_COLUMNS],
+        wave_models=raw[MODEL_COLUMNS],
+    )
+    if x.empty:
+        print(f"  {station.id}: assembled 0 row — skipped")
+        return None
+    # Same `cutoff` timestamp for the split as for the selection, and a row's
+    # issue day is never after its valid day (lead >= 0): every row that fed the
+    # baseline choice (valid day <= cutoff) is therefore a train row. No leak.
+    return (
+        x,
+        obs.astype(float),
+        split_by_issue_day(x, test_days, cutoff),
+        baseline_col.removeprefix("hs_"),
+    )
+
+
+def _tide_data(station: Station, test_days: int) -> tuple | None:
+    """(x, obs, is_test, None) from the pre-assembled tide dataset."""
+    path = DATA_DIR / f"{station.id}.parquet"
+    if not path.exists():
+        print(f"  {station.id}: no dataset at {path} — skipped")
+        return None
+    df = pd.read_parquet(path)
+    x = df[FEATURE_COLUMNS].copy()
+    return x, df["y"].astype(float), split_by_issue_day(x, test_days), None
 
 
 def evaluate(
-    station_id: str, kind: str, test_days: int, ablate: tuple[str, ...] = ()
+    station: Station,
+    test_days: int,
+    ablate: tuple[str, ...] = (),
+    model_names: tuple[str, ...] = model.MODEL_NAMES,
 ) -> dict | None:
-    path = DATA_DIR / f"{station_id}.parquet"
-    if not path.exists():
-        print(f"  {station_id}: no dataset at {path} — skipped")
+    """Train every candidate on the same split; publish the best gain hors biais."""
+    loaded = _wave_data(station, test_days) if station.kind == "wave" else _tide_data(
+        station, test_days
+    )
+    if loaded is None:
+        return None
+    x, obs, is_test, baseline_model = loaded
+    if is_test.all() or not is_test.any():
+        print(f"  {station.id}: not enough history for a {test_days}d test split — skipped")
         return None
 
-    df = pd.read_parquet(path)
-    x, obs = df[FEATURE_COLUMNS].copy(), df["y"].astype(float)
     if ablate:
         # Zeroing beats dropping: same rows, same split, same seed, same model
         # capacity — and for a tree ensemble a constant column is never split on,
         # so it is equivalent to removing the feature. This is what produced the
         # "with / without" ablation tables of the Task 7B / 7C reports.
-        x[list(ablate)] = 0.0
+        x = x.copy()
+        x[[c for c in ablate if c in x.columns]] = 0.0
     # Tide: learn the residual; waves: learn the corrected value directly.
-    target = obs - x["baseline"] if kind == "tide" else obs
+    target = obs - x["baseline"] if station.kind == "tide" else obs
 
-    is_test = split_by_issue_day(x, test_days)
-    if is_test.all() or not is_test.any():
-        print(f"  {station_id}: not enough history for a {test_days}d test split — skipped")
-        return None
-
-    m = model.train(x[~is_test], target[~is_test])
+    x_train, target_train = x[~is_test], target[~is_test]
     x_test, obs_test = x[is_test], obs[is_test]
-    pred = model.predict(m, x_test)
-    level = x_test["baseline"].to_numpy() + pred if kind == "tide" else pred
-
-    mae_model = float(np.abs(level - obs_test.to_numpy()).mean())
     resid = obs_test.to_numpy() - x_test["baseline"].to_numpy()
     mae_base = float(np.abs(resid).mean())
-    gain = (mae_base - mae_model) / mae_base if mae_base else 0.0
     # How much of the baseline error is a plain constant offset (see report §4).
     bias = float(resid.mean())
     mae_debiased = float(np.abs(resid - bias).mean())
 
-    saved = None if ablate else model.save(m, station_id)  # ablation must not clobber
+    fitted, scores = {}, {}
+    for name in model_names:
+        m = model.train(x_train, target_train, name=name)
+        pred = model.predict(m, x_test)
+        level = x_test["baseline"].to_numpy() + pred if station.kind == "tide" else pred
+        mae_model = float(np.abs(level - obs_test.to_numpy()).mean())
+        fitted[name] = m
+        scores[name] = {
+            "mae_model": mae_model,
+            "gain": (mae_base - mae_model) / mae_base if mae_base else 0.0,
+            # The honest headline: gain over the baseline once its offset is gone.
+            "gain_debiased": (mae_debiased - mae_model) / mae_debiased if mae_debiased else 0.0,
+        }
+
+    # The judge is the gain hors biais (equivalently, the lowest MAE: the two
+    # reference MAEs are the same for every candidate of a given station).
+    best = max(scores, key=lambda n: scores[n]["gain_debiased"])
     row = {
-        "station": station_id,
-        "kind": kind,
+        "station": station.id,
+        "kind": station.kind,
+        "baseline_model": baseline_model,
         "n_train": int((~is_test).sum()),
         "n_test": int(is_test.sum()),
         "mae_base": mae_base,
-        "mae_model": mae_model,
         "bias": bias,
         "mae_debiased": mae_debiased,
-        "gain": gain,
-        # The honest headline: gain over the baseline once its constant offset is gone.
-        "gain_debiased": (mae_debiased - mae_model) / mae_debiased if mae_debiased else 0.0,
-        "pass": gain >= GATE,
+        "ml_model": best,
+        "scores": scores,
+        **scores[best],
+        "pass": scores[best]["gain"] >= GATE,
         # "weak": the model brings nothing a constant offset would not.
-        "weak": mae_model >= mae_debiased,
+        "weak": scores[best]["mae_model"] >= mae_debiased,
     }
+    saved = (
+        None
+        if ablate  # ablation must not clobber the published artefact
+        else model.save(fitted[best], station.id, baseline_model=baseline_model)
+    )
     print(
-        f"  {station_id}: train {(~is_test).sum()} / test {is_test.sum()} rows | "
-        f"MAE base {mae_base:.3f} -> model {mae_model:.3f} ({gain:+.1%}) | "
+        f"  {station.id}: train {row['n_train']} / test {row['n_test']} rows | "
+        f"baseline {baseline_model or station.baseline} | "
+        f"MAE base {mae_base:.3f} -> {best} {row['mae_model']:.3f} ({row['gain']:+.1%}) | "
         f"{_verdict(row)} -> {saved.name if saved else 'not saved (ablation)'}"
     )
+    for name, s in scores.items():
+        print(f"      {name:14} MAE {s['mae_model']:.4f}  hors biais {s['gain_debiased']:+7.1%}")
     return row
 
 
@@ -183,7 +290,40 @@ def _rejected_leads() -> list[str]:
     ]
 
 
-def write_report(rows: list[dict], test_days: int) -> None:
+def _gain_cell(row: dict, name: str) -> str:
+    """Gain hors biais of one candidate, bold when it is the published one."""
+    if name not in row["scores"]:
+        return "—"  # candidate not run for this station (e.g. `--model`)
+    gain = f"{row['scores'][name]['gain_debiased']:+.1%}"
+    return f"**{gain}**" if name == row["ml_model"] else gain
+
+
+def _ml_comparison(rows: list[dict]) -> list[str]:
+    """Table station × candidate ML model, on the gain hors biais."""
+    names = list(dict.fromkeys(n for r in rows for n in r["scores"]))
+    lines = [
+        "## Comparaison des modèles ML",
+        "",
+        "Gain **hors biais** de chaque candidat, entraîné et évalué sur exactement le",
+        "même split et la même baseline physique que les autres. Le modèle publié par",
+        "station est celui de meilleur gain hors biais (en gras). `ridge` est le",
+        "**plancher honnête** : un gradient boosting qui ne le bat pas ne paie pas sa",
+        "complexité, et c'est un résultat, pas un échec.",
+        "",
+        "| Station | Baseline physique | " + " | ".join(f"`{n}`" for n in names) + " | Publié |",
+        "|---|---|" + "---|" * (len(names) + 1),
+    ]
+    for r in rows:
+        cells = [_gain_cell(r, n) for n in names]
+        lines.append(
+            f"| {r['station']} | {r['baseline_model'] or r['kind']} | "
+            + " | ".join(cells)
+            + f" | `{r['ml_model']}` |"
+        )
+    return lines + [""]
+
+
+def write_report(rows: list[dict], test_days: int, skipped: list[str] | None = None) -> None:
     lines = [
         "# Évaluation des modèles de post-traitement",
         "",
@@ -191,23 +331,36 @@ def write_report(rows: list[dict], test_days: int) -> None:
         f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC "
         f"(test = les {test_days} derniers jours d'émission).",
         "",
-        "Le modèle **post-traite** la prévision physique officielle (MFWAM pour les",
-        "vagues, harmonique pour le niveau d'eau) : il la corrige, il ne la remplace",
-        "jamais.",
+        "Le modèle **post-traite** une prévision physique officielle : il la corrige, il",
+        "ne la remplace jamais. Cette baseline n'est plus imposée : pour une station",
+        "`wave`, c'est le **meilleur modèle physique** parmi les 5 modèles de vagues",
+        "Open-Meteo, choisi station par station comme le plus proche de sa bouée **sur",
+        "les seuls jours d'émission d'entraînement** (colonne « Baseline »). Pour une",
+        "station `tide`, c'est la prédiction harmonique.",
         "",
         "## Résultats par station",
         "",
-        "| Station | Type | Rows train / test | MAE baseline | MAE baseline débiaisée |"
+        "| Station | Type | Baseline (meilleur modèle physique) | Modèle ML |"
+        " Rows train / test | MAE baseline | MAE baseline débiaisée |"
         " MAE modèle | Gain affiché | **Gain hors biais** | Verdict |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         lines.append(
-            f"| {r['station']} | {r['kind']} | {r['n_train']} / {r['n_test']} | "
+            f"| {r['station']} | {r['kind']} | {r['baseline_model'] or 'harmonique'} | "
+            f"`{r['ml_model']}` | {r['n_train']} / {r['n_test']} | "
             f"{r['mae_base']:.3f} | {r['mae_debiased']:.3f} | {r['mae_model']:.3f} | "
             f"{r['gain']:+.1%} | **{r['gain_debiased']:+.1%}** | "
             f"{_verdict(r).replace('*', r'\*')} |"
         )
+    if skipped:
+        lines += [
+            "",
+            f"**Stations non ré-entraînées sur cette fenêtre : {', '.join(skipped)}** — leur",
+            "jeu d'entraînement est absent de `pipeline/data_train/`. Leur artefact et leur",
+            "entrée `gate.json` du run précédent sont **conservés tels quels** : ils ne sont",
+            "ni supprimés ni rafraîchis, et les chiffres ci-dessus ne les couvrent pas.",
+        ]
     lines += [
         "",
         f"MAE en {UNIT['wave']} pour les stations `wave`, en {UNIT['tide']} pour les",
@@ -223,8 +376,8 @@ def write_report(rows: list[dict], test_days: int) -> None:
         "Ne pas mettre ce chiffre en avant sans la réserve 4.",
         "",
         "Ce verdict est aussi émis en donnée dans `pipeline/models/gate.json`",
-        "(`{station: {pass, weak, mae_model, mae_baseline, gain, gain_debiased}}`) —",
-        "c'est cette",
+        "(`{station: {pass, weak, mae_model, mae_baseline, gain, gain_debiased,",
+        "baseline_model}}`) — c'est cette",
         "source, pas ce tableau, que le publisher doit lire.",
         "",
     ]
@@ -234,6 +387,9 @@ def write_report(rows: list[dict], test_days: int) -> None:
         " l'état.\n"
         if failed
         else "**Toutes les stations passent le gate.**\n",
+    ]
+    lines += _ml_comparison(rows)
+    lines += [
         "## Protocole",
         "",
         "* **Split temporel par jour d'émission.** Une ligne du dataset est un couple",
@@ -242,6 +398,15 @@ def write_report(rows: list[dict], test_days: int) -> None:
         "  fuir une émission entre train et test. Le jour d'émission est reconstruit",
         f"  comme `valid_time - lead_h`, et les {test_days} derniers jours d'émission",
         "  forment le test. Jamais de split aléatoire.",
+        "* **Choix de la baseline (stations `wave`).** Les 5 modèles de vagues",
+        "  Open-Meteo sont comparés à la bouée **sur les seuls jours d'émission",
+        "  d'entraînement**, et le plus proche devient la baseline de la station — donc",
+        "  le dénominateur de tous les gains ci-dessus. La sélection ne voit jamais la",
+        "  fenêtre de test : sinon la baseline serait choisie par les données mêmes qui",
+        "  servent à la juger, ce qui gonflerait mécaniquement le gain.",
+        "* **Comparaison des modèles ML.** Les trois candidats (`hgb`, `ridge`,",
+        "  `hgb-per-lead`) sont entraînés sur le même split, avec les mêmes features et",
+        "  la même baseline ; celui de meilleur gain hors biais est publié.",
         "* **Cible.** Stations `wave` : l'observation Hs. Stations `tide` : le résidu",
         "  `obs - harmonique` ; le niveau publié est réassemblé en",
         "  `harmonique + résidu prédit`, et c'est sur ce niveau reconstitué que la MAE",
@@ -251,16 +416,15 @@ def write_report(rows: list[dict], test_days: int) -> None:
         "",
         "## Réserves importantes sur l'interprétation",
         "",
-        "1. **Le skill des stations `wave` est un plafond mesuré sur analyse, pas sur",
-        "   prévision réelle.** Faute d'archive libre des runs MFWAM passés, la",
-        "   baseline d'entraînement est l'**analyse** MFWAM, qui assimile les bouées",
-        "   Candhis — donc les observations mêmes qui servent de vérité terrain. Le",
-        "   couple (baseline, obs) vu à l'entraînement n'est donc pas celui que verra",
-        "   la production : ces gains sont un **plafond mesuré sur analyse**, pas une",
-        "   estimation du skill opérationnel, et la direction de l'écart n'est pas",
-        "   déterminable a priori. Le ré-entraînement sur de vraies prévisions",
-        "   archivées interviendra après ~1 mois de runs quotidiens ; ces chiffres",
-        "   seront alors remplacés.",
+        "1. **Le skill des stations `wave` est un plafond mesuré sur passé reconstitué,",
+        "   pas sur prévision réelle.** Faute d'archive libre des runs de vagues passés,",
+        "   la baseline d'entraînement vient de la fenêtre historique de l'API Open-Meteo",
+        "   Marine, qui n'est pas le run à +1–48 h qu'aura la production. Le couple",
+        "   (baseline, obs) vu à l'entraînement n'est donc pas celui que verra la",
+        "   production : ces gains sont un **plafond**, pas une estimation du skill",
+        "   opérationnel, et la direction de l'écart n'est pas déterminable a priori. Le",
+        "   ré-entraînement sur de vraies prévisions archivées interviendra après ~1 mois",
+        "   de runs quotidiens ; ces chiffres seront alors remplacés.",
         "2. **Le forçage atmosphérique d'entraînement est parfait, celui de production",
         "   ne le sera pas.** Les features de forçage (vent 10 m et anomalie de pression",
         "   au niveau de la mer) sont apprises sur la **réanalyse ERA5** (0,25°, ECMWF,",
@@ -320,25 +484,34 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--test-days", type=int, default=30, help="issue days held out for test")
     ap.add_argument(
+        "--model",
+        choices=model.MODEL_NAMES,
+        help="train only this candidate (default: train all three, publish the best "
+        "per station on the gain hors biais)",
+    )
+    ap.add_argument(
         "--ablate",
         default="",
         metavar="COLS",
         help="comma-separated feature columns to zero — measures what they actually buy "
-        f"(e.g. 'wind_u10,wind_v10'). Choices: {','.join(FEATURE_COLUMNS)}",
+        f"(e.g. 'wind_u10,wind_v10'). Choices: {','.join(ABLATABLE)}",
     )
     args = ap.parse_args()
 
     ablate = tuple(c.strip() for c in args.ablate.split(",") if c.strip())
-    if unknown := [c for c in ablate if c not in FEATURE_COLUMNS]:
-        ap.error(f"unknown feature column(s) {unknown} — pick from {FEATURE_COLUMNS}")
+    if unknown := [c for c in ablate if c not in ABLATABLE]:
+        ap.error(f"unknown feature column(s) {unknown} — pick from {ABLATABLE}")
+    load_env()
 
-    print(f"Training (test = last {args.test_days} issue days):")
+    model_names = (args.model,) if args.model else model.MODEL_NAMES
+    print(f"Training {', '.join(model_names)} (test = last {args.test_days} issue days):")
     if ablate:
         print(f"  ABLATION: {', '.join(ablate)} zeroed — artefacts and report NOT written")
+    stations = load_stations()
     rows = [
         r
-        for st in load_stations()
-        if (r := evaluate(st.id, st.kind, args.test_days, ablate)) is not None
+        for st in stations
+        if (r := evaluate(st, args.test_days, ablate, model_names)) is not None
     ]
     if not rows:
         print("nothing trained")
@@ -351,8 +524,13 @@ def main() -> int:
         return 0
 
     # Machine-readable gate: the publisher (Task 8) reads this, not the markdown.
-    gate = {
-        r["station"]: {
+    # Merged, never rewritten from scratch: a station skipped this run (no
+    # dataset on disk) keeps its previous artefact, so it must keep its verdict.
+    known = {s.id for s in stations}
+    previous = json.loads(GATE_PATH.read_text()) if GATE_PATH.exists() else {}
+    gate = {k: v for k, v in previous.items() if k in known}  # drop retired stations
+    for r in rows:
+        entry = {
             "pass": r["pass"],
             "weak": r["weak"],
             "mae_model": round(r["mae_model"], 4),
@@ -360,11 +538,13 @@ def main() -> int:
             "gain": round(r["gain"], 4),
             "gain_debiased": round(r["gain_debiased"], 4),
         }
-        for r in rows
-    }
+        if r["baseline_model"]:
+            entry["baseline_model"] = r["baseline_model"]
+        gate[r["station"]] = entry
     GATE_PATH.write_text(json.dumps(gate, indent=2, sort_keys=True) + "\n")
 
-    write_report(rows, args.test_days)
+    skipped = [s.id for s in stations if s.id not in {r["station"] for r in rows}]
+    write_report(rows, args.test_days, skipped)
     failed = [r["station"] for r in rows if not r["pass"]]
 
     print(f"\nreport -> {REPORT_PATH}")

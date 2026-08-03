@@ -19,6 +19,7 @@ import pytest
 
 from scoreboard import backfill, daily, publish
 from scoreboard.config import Station
+from scoreboard.features import FEATURE_COLUMNS
 from scoreboard.sources import SourceError
 
 TODAY = date(2026, 7, 30)  # backfill replays up to (but not including) TODAY
@@ -36,6 +37,9 @@ GATE = {
 
 
 class _FakePipe:
+    # Like every fitted sklearn estimator — `model.predict` reorders on it.
+    feature_names_in_ = np.asarray(FEATURE_COLUMNS)
+
     def predict(self, x):
         return np.zeros(len(x))
 

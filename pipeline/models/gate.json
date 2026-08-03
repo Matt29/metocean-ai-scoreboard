@@ -1,17 +1,19 @@
 {
   "anglet": {
-    "gain": 0.0567,
-    "gain_debiased": 0.0837,
-    "mae_baseline": 0.1019,
-    "mae_model": 0.0962,
+    "baseline_model": "meteofrance_wave",
+    "gain": 0.0978,
+    "gain_debiased": 0.0543,
+    "mae_baseline": 0.1178,
+    "mae_model": 0.1063,
     "pass": true,
     "weak": false
   },
   "belle-ile": {
-    "gain": 0.5013,
-    "gain_debiased": 0.2445,
-    "mae_baseline": 0.1537,
-    "mae_model": 0.0766,
+    "baseline_model": "ewam",
+    "gain": 0.1676,
+    "gain_debiased": 0.1438,
+    "mae_baseline": 0.1174,
+    "mae_model": 0.0978,
     "pass": true,
     "weak": false
   },
@@ -24,18 +26,20 @@
     "weak": true
   },
   "cherbourg": {
-    "gain": 0.0238,
-    "gain_debiased": -0.052,
-    "mae_baseline": 0.11,
-    "mae_model": 0.1074,
-    "pass": false,
-    "weak": true
+    "baseline_model": "ewam",
+    "gain": 0.1932,
+    "gain_debiased": 0.0305,
+    "mae_baseline": 0.0869,
+    "mae_model": 0.0701,
+    "pass": true,
+    "weak": false
   },
   "pierres-noires": {
-    "gain": 0.6576,
-    "gain_debiased": 0.2642,
-    "mae_baseline": 0.2602,
-    "mae_model": 0.0891,
+    "baseline_model": "ncep_gfswave025",
+    "gain": 0.2578,
+    "gain_debiased": 0.2588,
+    "mae_baseline": 0.213,
+    "mae_model": 0.1581,
     "pass": true,
     "weak": false
   },

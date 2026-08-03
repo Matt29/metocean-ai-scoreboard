@@ -12,6 +12,7 @@ import pytest
 
 from scoreboard import daily
 from scoreboard.config import Station
+from scoreboard.features import FEATURE_COLUMNS
 from scoreboard.sources import SourceError
 
 RUN_DATE = date(2026, 7, 30)
@@ -28,7 +29,14 @@ GATE = {
 
 
 class _FakePipe:
-    """Predicts a constant residual — enough to exercise the plumbing."""
+    """Predicts a constant residual — enough to exercise the plumbing.
+
+    Carries `feature_names_in_` like every fitted sklearn estimator: that is
+    what `model.predict` reorders on, so a fake without it would not exercise
+    the real serving path.
+    """
+
+    feature_names_in_ = np.asarray(FEATURE_COLUMNS)
 
     def predict(self, x):
         return np.zeros(len(x))
