@@ -328,4 +328,14 @@ def test_daily_run_after_backfill_does_not_destroy_the_backfilled_day(tmp_path, 
     daily.run(TODAY, tmp_path, stations=[WAVE], gate=GATE, archive_dir=tmp_path / "archive")
 
     days_after_daily = {d["date"]: d for d in _history_days(tmp_path, "wave-a")}
-    assert days_after_daily[since.isoformat()] == backfilled_day  # untouched, byte-for-byte
+    survived = days_after_daily[since.isoformat()]
+    # The day may legitimately *gain* verified points (`_rescore_pending`
+    # completes its still-pending leads against the fresh obs) — what blocker 2
+    # forbids is any downgrade: already-scored points must survive verbatim,
+    # status and backfilled flag included.
+    assert survived["status"] == "ok"
+    assert survived["backfilled"] is True
+    assert survived["n_points"] >= backfilled_day["n_points"]
+    assert survived["max_lead_h"] >= backfilled_day["max_lead_h"]
+    scored = {p["t"]: p for p in survived["series"]}
+    assert all(scored[p["t"]] == p for p in backfilled_day["series"])  # no point lost or altered

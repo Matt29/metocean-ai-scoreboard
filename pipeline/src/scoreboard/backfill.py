@@ -154,6 +154,13 @@ def _backfill_station(
         entry["backfilled"] = True
         publish.upsert_history(out_dir, station.id, entry)
         replayed.append(d.isoformat())
+
+    # Same sweep as daily's `_run_station`: `score_series` (above and in past
+    # runs) leaves 25-48h leads "pending" until their obs exist — the deep obs
+    # already in memory are the richest this station will ever see, so complete
+    # (or age out) whatever is still pending while we hold them. Without this,
+    # a station driven only by backfill would carry orphaned pending forever.
+    daily._rescore_pending(station, obs, out_dir, today)
     return replayed
 
 

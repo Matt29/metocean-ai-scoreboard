@@ -1,0 +1,38 @@
+name: ci
+
+# Path-scoped: the repo also gets daily data-only commits from the `daily`
+# cron workflow (data/, pipeline/data_forecast_archive/) — those must never
+# trigger CI, so only pipeline/** and this workflow file are watched.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pipeline/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    paths:
+      - "pipeline/**"
+      - ".github/workflows/ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          working-directory: pipeline
+
+      - name: uv sync
+        working-directory: pipeline
+        run: uv sync --locked
+
+      - name: pytest
+        working-directory: pipeline
+        run: uv run pytest -q
+
+      - name: ruff
+        working-directory: pipeline
+        run: uv run ruff check src scripts tests

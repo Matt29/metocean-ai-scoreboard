@@ -25,4 +25,30 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# This ruff version selects its full rule catalogue by default (not just the
+# classic E/F baseline). The codebase was written before ruff was wired into
+# CI, so a handful of exotic/style rules fire; ignored here to get a green
+# baseline without touching src/scripts/tests in this PR (see task scope).
+ignore = [
+    "F401",   # a few genuinely unused imports (candhis.py, test_archive.py) — real
+              # findings, left for a follow-up cleanup PR rather than fixed here
+    "I001",   # import-sort ordering — formatting concern, out of scope ("lint only")
+    "UP017",  # datetime.timezone.utc vs datetime.UTC — stylistic preference
+    "UP037",  # quoted forward-ref annotation — stylistic, not a bug
+    "DTZ011", # flags date.today() as tz-naive; deliberate for this pipeline's
+              # calendar-day semantics (daily runs, no cross-timezone concern)
+    "EXE001", # shebang-without-exec-bit — irrelevant, scripts are run via `uv run`/import
+    "ISC004", # implicit string concat inside a list literal — deliberate multi-line
+              # markdown string building in train.py, not a bug
+    "RUF046", # unnecessary int() around an already-int value — defensive cast, harmless
+    "RUF059", # unused variable from a tuple unpack in a test — harmless
+    "RUF100", # one stale `noqa` comment (mfwam.py) — real finding, left for cleanup
 ]

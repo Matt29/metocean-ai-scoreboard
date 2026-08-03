@@ -322,6 +322,113 @@ def test_scored_day_carries_n_points_and_max_lead_h(tmp_path, patched_sources):
     assert scored_day["max_lead_h"] >= 1
 
 
+def test_score_series_keeps_unmatched_leads_as_pending():
+    """A lead with no obs yet must be kept for later verification, not dropped."""
+    issued = pd.Timestamp("2026-07-30T06:00:00Z")
+    series = [
+        {"t": daily.iso(issued + pd.Timedelta(hours=h)), "ia": 1.1, "baseline": 1.0}
+        for h in range(1, 49)
+    ]
+    # Covers leads 1-24 exactly, plus lead 25 via the 1h nearest-match tolerance.
+    obs = _hourly(issued, periods=25, value=1.2)
+
+    entry = daily.score_series(obs, series, issued)
+
+    assert entry["status"] == "ok"
+    assert entry["n_points"] == 25
+    assert entry["max_lead_h"] == 25
+    assert len(entry["pending"]) == 23
+    assert all("obs" not in p for p in entry["pending"])
+
+
+def _obs_capped_at_run(run_day):
+    """Wave obs mock that stops at the run's own issuance instant — the real
+    world: scoring yesterday's issue never sees obs beyond 'now'."""
+    def _fetch(station, start):
+        now = pd.Timestamp(run_day, tz="UTC") + pd.Timedelta(hours=daily.ISSUE_HOUR)
+        hours = int((now - pd.Timestamp(start, tz="UTC")) / pd.Timedelta("1h"))
+        return _wave_obs_df(start, hours)
+    return _fetch
+
+
+def test_third_run_completes_the_25_48h_leads(tmp_path, patched_sources):
+    """The 25-48h half of an issue meets its obs one day after
+    `_score_previous_issue` scored the 1-24h half — `_rescore_pending` must
+    finish the job instead of leaving the tail forever unverified."""
+    days = [RUN_DATE, date(2026, 7, 31), date(2026, 8, 1)]
+    for d in days[:2]:
+        patched_sources.setattr(daily, "fetch_wave_obs", _obs_capped_at_run(d))
+        daily.run(d, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+
+    history = json.loads((tmp_path / "wave-a" / "history.json").read_text())
+    scored = next(d for d in history["days"] if d["date"] == RUN_DATE.isoformat())
+    assert scored["max_lead_h"] == 24
+    assert len(scored["pending"]) == 24
+
+    patched_sources.setattr(daily, "fetch_wave_obs", _obs_capped_at_run(days[2]))
+    daily.run(days[2], tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+
+    history = json.loads((tmp_path / "wave-a" / "history.json").read_text())
+    scored = next(d for d in history["days"] if d["date"] == RUN_DATE.isoformat())
+    assert scored["max_lead_h"] == 48
+    assert scored["n_points"] == 48
+    assert "pending" not in scored
+    scores = json.loads((tmp_path / "scores.json").read_text())
+    row = next(r for r in scores["stations"] if r["id"] == "wave-a")
+    assert row["n_days"] == 2  # completing a day must not double-count it
+
+
+def test_rescore_entry_is_a_noop_without_new_obs_and_never_downgrades():
+    entry = {
+        "date": "2026-07-30",
+        "status": "ok",
+        "series": [{"t": "2026-07-30T07:00:00Z", "obs": 1.2, "ia": 1.1, "baseline": 1.0}],
+        "mae_ia": 0.1,
+        "mae_baseline": 0.2,
+        "n_points": 1,
+        "max_lead_h": 1,
+        "pending": [{"t": "2026-08-01T06:00:00Z", "ia": 1.3, "baseline": 1.4}],
+    }
+    # Obs that cover neither the matched point nor the pending one: strict no-op.
+    far_obs = _hourly("2026-08-05", periods=4, value=9.9)
+    assert daily.rescore_entry(entry, far_obs) is entry
+
+    # Obs covering only the pending lead: the old matched point survives verbatim.
+    new_obs = _hourly("2026-08-01T06:00:00Z", periods=2, value=1.5)
+    rescored = daily.rescore_entry(entry, new_obs)
+    assert rescored["n_points"] == 2
+    assert rescored["max_lead_h"] == 48
+    assert "pending" not in rescored
+    assert rescored["series"][0] == entry["series"][0]
+
+
+def test_stale_pending_is_dropped_after_max_age(tmp_path, patched_sources):
+    """Leads whose obs window has passed for good must stop being carried."""
+    from datetime import timedelta
+
+    from scoreboard import publish
+
+    old_day = RUN_DATE - timedelta(days=daily.PENDING_MAX_AGE_DAYS + 1)
+    entry = {
+        "date": old_day.isoformat(),
+        "status": "ok",
+        "series": [{"t": f"{old_day}T07:00:00Z", "obs": 1.2, "ia": 1.1, "baseline": 1.0}],
+        "mae_ia": 0.1,
+        "mae_baseline": 0.2,
+        "n_points": 1,
+        "max_lead_h": 1,
+        "pending": [{"t": f"{old_day}T20:00:00Z", "ia": 1.3, "baseline": 1.4}],
+    }
+    publish.upsert_history(tmp_path, "wave-a", entry)
+
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+
+    history = json.loads((tmp_path / "wave-a" / "history.json").read_text())
+    stale = next(d for d in history["days"] if d["date"] == entry["date"])
+    assert "pending" not in stale
+    assert stale["series"] == entry["series"]  # scored points untouched
+
+
 def test_harmonic_fit_below_30_days_of_tide_obs_marks_the_station_missing(
     tmp_path, patched_sources
 ):

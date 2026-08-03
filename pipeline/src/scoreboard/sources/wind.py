@@ -25,7 +25,7 @@ import pandas as pd
 import requests
 
 from scoreboard.config import Station
-from scoreboard.sources import SourceError
+from scoreboard.sources import SourceError, make_session
 
 FORCING_COLUMNS = ["wind_u10", "wind_v10"]
 
@@ -41,7 +41,7 @@ log = logging.getLogger(__name__)
 
 
 def _fetch(url: str, params: dict, station: Station, session) -> pd.DataFrame:
-    session = session or requests.Session()
+    session = session or make_session()
     try:
         resp = session.get(url, params=params, timeout=_TIMEOUT)
         payload = resp.json()

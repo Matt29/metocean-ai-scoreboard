@@ -66,6 +66,13 @@ TIDE_FIT_LOOKBACK_DAYS = 90  # utide needs months, not days, to separate constit
 MIN_TIDE_FIT_DAYS = 30  # same hard floor as scripts/build_dataset.py's `24 * 30`
 BASELINE_LOOKBACK_H = 24
 BASELINE_HORIZON_H = 48
+# A day scored the morning after its issue only meets ~24h of its own leads —
+# the 25-48h tail stays "pending" in its history entry and is completed by
+# `_rescore_pending` on later runs, as obs catch up. Beyond this age, every
+# lead of the issue (<= +48h = date+2d) predates the daily obs window
+# (`run_date - OBS_LOOKBACK_DAYS`), so no daily run can ever match it again:
+# drop the dead weight instead of carrying it forever.
+PENDING_MAX_AGE_DAYS = OBS_LOOKBACK_DAYS + 2
 GATE_PATH = model.MODELS_DIR / "gate.json"
 
 
@@ -149,34 +156,124 @@ def score_series(obs: pd.Series, series: list[dict], issued_ts: pd.Timestamp) ->
     matched = obs.reindex(times, method="nearest", tolerance=pd.Timedelta("1h"))
     keep = matched.notna()
 
-    if not keep.any():
-        return {"date": day, "status": "missing"}
-
-    mae_ia, mae_baseline = publish.score_day(matched[keep], ia[keep], baseline[keep])
-    out_series = [
-        {
-            "t": iso(t),
-            "obs": round(float(matched[t]), 4),
-            "ia": round(float(ia[t]), 4),
-            "baseline": round(float(baseline[t]), 4),
-        }
-        for t in times[keep]
+    # Leads with no obs yet (typically 25-48h the morning after the issue) are
+    # kept as "pending" so `_rescore_pending` can complete the day on a later
+    # run instead of silently never verifying them.
+    pending = [
+        {"t": iso(t), "ia": round(float(ia[t]), 4), "baseline": round(float(baseline[t]), 4)}
+        for t in times[~keep]
     ]
-    lead_hours = (times[keep] - issued_ts) / pd.Timedelta(hours=1)
-    return {
-        "date": day,
+
+    if not keep.any():
+        entry = {"date": day, "status": "missing"}
+    else:
+        mae_ia, mae_baseline = publish.score_day(matched[keep], ia[keep], baseline[keep])
+        out_series = [
+            {
+                "t": iso(t),
+                "obs": round(float(matched[t]), 4),
+                "ia": round(float(ia[t]), 4),
+                "baseline": round(float(baseline[t]), 4),
+            }
+            for t in times[keep]
+        ]
+        lead_hours = (times[keep] - issued_ts) / pd.Timedelta(hours=1)
+        entry = {
+            "date": day,
+            "status": "ok",
+            "series": out_series,
+            "mae_ia": round(mae_ia, 4),
+            "mae_baseline": round(mae_baseline, 4),
+            "n_points": int(keep.sum()),
+            # Ne couvre que les leads matchés par les obs disponibles au moment
+            # du scoring (typiquement <= 24h en run quotidien — voir
+            # `_fetch_obs`/`OBS_LOOKBACK_DAYS` — mais le plein horizon en
+            # backfill, voir `backfill.py`). Les leads restants partent en
+            # "pending" ci-dessous et sont complétés par `_rescore_pending`
+            # quand leurs obs arrivent — `max_lead_h` monte alors vers 48.
+            "max_lead_h": int(round(lead_hours.max())),
+        }
+    if pending:
+        entry["pending"] = pending
+    return entry
+
+
+def rescore_entry(entry: dict, obs: pd.Series, *, drop_pending_before: date | None = None) -> dict:
+    """Complete a partially scored day: match its `pending` leads against `obs`.
+
+    Merge, never re-match: points already in `series` were scored against the
+    obs available then and are kept verbatim — re-matching them against today's
+    (shorter) obs window would silently *lose* matches, exactly the downgrade
+    bug `backfill.py`'s module docstring documents (Task 9, blocker 2). Only
+    the still-pending leads meet the fresh obs; the MAE/`n_points`/`max_lead_h`
+    are then recomputed over the merged series (from the stored rounded values,
+    so a rerun with no new match is a strict no-op — returns `entry` as-is,
+    never a mutated copy).
+
+    `drop_pending_before`: a day issued before this date has leads entirely
+    older than any obs window a future run will fetch — whatever is still
+    unmatched *after* the merge is dead weight and is dropped, so every caller
+    (daily sweep, backfill sweep) gets the same aging rule for free.
+    """
+    pending = entry.get("pending") or []
+    if not pending:
+        return entry
+    stale = drop_pending_before is not None and date.fromisoformat(entry["date"]) < drop_pending_before
+    times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in pending])
+    matched = obs.reindex(times, method="nearest", tolerance=pd.Timedelta("1h"))
+    keep = matched.notna()
+    if not keep.any():
+        if not stale:
+            return entry
+        return {k: v for k, v in entry.items() if k != "pending"}
+
+    issued_ts = pd.Timestamp(entry["date"], tz="UTC") + pd.Timedelta(hours=ISSUE_HOUR)
+    newly = [
+        {"t": p["t"], "obs": round(float(matched[t]), 4), "ia": p["ia"], "baseline": p["baseline"]}
+        for p, t, ok in zip(pending, times, keep)
+        if ok
+    ]
+    series = sorted((entry.get("series") or []) + newly, key=lambda p: p["t"])
+    mae_ia, mae_baseline = publish.score_day(
+        [p["obs"] for p in series], [p["ia"] for p in series], [p["baseline"] for p in series]
+    )
+    lead_hours = [(pd.Timestamp(p["t"]) - issued_ts) / pd.Timedelta(hours=1) for p in series]
+    new_entry = {
+        "date": entry["date"],
         "status": "ok",
-        "series": out_series,
+        "series": series,
         "mae_ia": round(mae_ia, 4),
         "mae_baseline": round(mae_baseline, 4),
-        "n_points": int(keep.sum()),
-        # Réserve : ne couvre que les leads matchés par les obs disponibles au
-        # moment du scoring (typiquement <= 24h en run quotidien — voir
-        # `_fetch_obs`/`OBS_LOOKBACK_DAYS` — mais le plein horizon en backfill,
-        # voir `backfill.py`), pas le plein horizon 48h de `gate.mae_model` —
-        # pas comparable tel quel.
-        "max_lead_h": int(round(lead_hours.max())),
+        "n_points": len(series),
+        "max_lead_h": int(round(max(lead_hours))),
     }
+    still_pending = [p for p, ok in zip(pending, keep) if not ok]
+    if still_pending and not stale:
+        new_entry["pending"] = still_pending
+    if entry.get("backfilled"):
+        new_entry["backfilled"] = True
+    return new_entry
+
+
+def _rescore_pending(station: Station, obs: pd.Series, out_dir: Path, run_date: date) -> None:
+    """Complete every history day still carrying `pending` leads — this is what
+    makes the 25-48h half of an issue *verified* rather than merely displayed:
+    those leads only meet their obs two days after issuance, one day after
+    `_score_previous_issue` has come and gone. Called from both scoring paths
+    (daily's `_run_station` and backfill's `_backfill_station`) — wherever
+    `score_series` can write `pending`, this sweep must be reachable too."""
+    history = publish.read_history(out_dir, station.id)
+    if not history:
+        return
+    cutoff = run_date - timedelta(days=PENDING_MAX_AGE_DAYS)
+    for entry in history["days"]:
+        if not entry.get("pending"):
+            continue
+        if date.fromisoformat(entry["date"]) >= run_date:
+            continue  # this run's own issue: no obs beyond what already scored it
+        new_entry = rescore_entry(entry, obs, drop_pending_before=cutoff)
+        if new_entry != entry:
+            publish.upsert_history(out_dir, station.id, new_entry)
 
 
 def _score_previous_issue(station: Station, obs: pd.Series, out_dir: Path, run_date: date) -> None:
@@ -245,6 +342,7 @@ def _run_station(
         # not abort today's inference below — scoring the past and issuing
         # today are independent, so a failure here is swallowed, not raised.
         _score_previous_issue(station, obs, out_dir, run_date)
+        _rescore_pending(station, obs, out_dir, run_date)
     except Exception as exc:  # noqa: BLE001
         log.warning("%s: scoring the previous issue failed: %s", station.id, exc)
 

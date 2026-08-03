@@ -69,6 +69,15 @@ dizaine de jours avant qu'une courbe d'écart veuille dire quelque chose.
 **Demande.** « Ajouter une brique nowcasting, faire une prévi plus poussée
 J+24 h. »
 
+### Ce qui est déjà en ligne (précision du 2026-08-03)
+
+La prévision J+24 h — et même J+48 h — **est déjà publiée et affichée** :
+`latest.json` porte la série complète jusqu'à +48 h (`BASELINE_HORIZON_H` dans
+`daily.py`) et `StationChart.jsx` la trace (« la prévision +48 h en cours, que
+rien n'a encore vérifiée »). La demande ne porte donc pas sur *produire* cette
+échéance : elle existe. Ce qui manque est sa **vérification** (ci-dessous) et,
+séparément, l'éventuel nowcasting 0–6 h.
+
 ### Ce que c'est réellement
 
 Pas un ajout de front : une **itération de modélisation**. Deux réserves de
@@ -80,15 +89,17 @@ l'observation qui vient d'arriver. « J+24 h » est de la prévision à courte
 la latence d'ingestion des observations (Candhis, SHOM/REFMAR), la prévision 24 h
 sur la qualité du forçage atmosphérique. Trancher lequel est visé avant de coder.
 
-**L'état du scoreboard.** Le pipeline **ne score même pas les échéances
-25–48 h** aujourd'hui — le contrat l'annonce via `n_points` et `max_lead_h`.
-Étendre l'horizon affiché sans étendre la mesure produirait une prévision que rien
-ne vérifie, exactement ce que ce produit refuse de faire.
+**L'état du scoreboard.** ~~Le pipeline ne score même pas les échéances
+25–48 h aujourd'hui~~ — **résolu le 2026-08-03** : les leads non couverts par
+les obs au moment du scoring partent en `pending` dans l'entrée `history.json`
+et sont complétés par les runs suivants quand leurs obs arrivent
+(`daily._rescore_pending`). `max_lead_h` monte vers 48 en ~2 jours ; les tout
+premiers jours complets arrivent donc autour du 2026-08-05.
 
 ### Préalable
 
-Scorer l'horizon existant jusqu'à 48 h avant d'en promettre un nouveau. C'est un
-travail sur `pipeline/`, pas sur le site.
+~~Scorer l'horizon existant jusqu'à 48 h~~ — fait (ci-dessus). Reste le
+préalable de la section 1 : des jours scorés non reconstitués, en nombre.
 
 ### Le vrai levier, une fois là
 
@@ -114,7 +125,8 @@ et infirmée).
 ## Ordre suggéré
 
 1. Vérifier les premiers jours scorés non reconstitués.
-2. Étendre la mesure aux échéances 25–48 h.
+2. ~~Étendre la mesure aux échéances 25–48 h.~~ Fait le 2026-08-03 (`pending`
+   + `_rescore_pending`).
 3. Ré-entraîner sur les prévisions archivées (≥ 1 mois de collecte).
 4. Alors seulement : les graphiques (1) sur des chiffres opérationnels, et la
    décision d'horizon (2) sur un modèle dont on connaît le skill réel.

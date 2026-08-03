@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -35,6 +36,7 @@ from scoreboard.config import Station
 
 SCHEMA_VERSION = 1
 MAX_HISTORY_DAYS = 90
+# Window sizes in calendar days (not "ok" day counts) — see compute_scores().
 _SCORE_WINDOWS = {"7d": 7, "30d": 30, "all": None}
 
 
@@ -122,14 +124,25 @@ def upsert_history(out_dir: Path, station_id: str, day_entry: dict) -> dict:
 
 
 def compute_scores(days: list[dict]) -> dict:
-    """MAE aggregates over "ok" days only — a "missing" day must not move them."""
+    """MAE aggregates over "ok" days only — a "missing" day must not move them.
+
+    Windows are calendar-based, anchored on the latest "ok" date (not
+    wall-clock, so the function stays deterministic from its input): "7d"
+    means every ok day within 7 calendar days of that anchor, regardless of
+    gaps — not simply the last 7 ok entries.
+    """
     ok = [d for d in days if d.get("status") == "ok"]
     # Among the "ok" days, how many were reconstructed a posteriori by
     # `scoreboard backfill` rather than scored the day after a live run — the
     # site surfaces this as "dont N jours reconstitués" (résolution 2).
     row = {"n_days": len(ok), "n_days_backfilled": sum(1 for d in ok if d.get("backfilled"))}
+    anchor = max((date.fromisoformat(d["date"]) for d in ok), default=None)
     for label, n in _SCORE_WINDOWS.items():
-        window = ok[-n:] if n else ok
+        if n and anchor is not None:
+            cutoff = anchor - timedelta(days=n)
+            window = [d for d in ok if date.fromisoformat(d["date"]) > cutoff]
+        else:
+            window = ok
         row[f"mae_ia_{label}"] = round(sum(d["mae_ia"] for d in window) / len(window), 4) if window else None
         row[f"mae_baseline_{label}"] = (
             round(sum(d["mae_baseline"] for d in window) / len(window), 4) if window else None

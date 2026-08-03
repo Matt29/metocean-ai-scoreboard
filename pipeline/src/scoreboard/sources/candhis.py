@@ -7,7 +7,7 @@ import pandas as pd
 import requests
 
 from scoreboard.config import Station
-from scoreboard.sources import SourceError
+from scoreboard.sources import SourceError, make_session
 
 _BASE_URL = "https://candhis.cerema.fr/API/v1/getCampTR.php"
 _TIMEOUT = 30
@@ -16,7 +16,7 @@ _TIMEOUT = 30
 def fetch_wave_obs(
     station: Station, date_start: date, session: requests.Session | None = None
 ) -> pd.DataFrame:
-    session = session or requests.Session()
+    session = session or make_session()
     try:
         resp = session.get(
             _BASE_URL,

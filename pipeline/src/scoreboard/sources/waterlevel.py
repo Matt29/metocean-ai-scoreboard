@@ -6,7 +6,7 @@ import pandas as pd
 import requests
 
 from scoreboard.config import Station
-from scoreboard.sources import SourceError
+from scoreboard.sources import SourceError, make_session
 
 _BASE_URL = "https://services.data.shom.fr/maregraphie/observation/json"
 _TIMEOUT = 30
@@ -20,7 +20,7 @@ def fetch_tide_obs(
     date_end: date | None = None,
 ) -> pd.DataFrame:
     """Water level, hourly UTC. Spans over 30 days are fetched in chunks (API cap)."""
-    session = session or requests.Session()
+    session = session or make_session()
     date_end = date_end or date_start + timedelta(days=1)
 
     rows: list[dict] = []

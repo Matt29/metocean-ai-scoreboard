@@ -111,6 +111,28 @@ def test_missing_day_does_not_move_the_aggregated_scores(tmp_path):
     assert after["n_days"] == 3  # the missing day does not count
 
 
+# --- (e) windows are calendar-based, not "last N ok days" ---------------
+
+
+def test_score_windows_are_calendar_based_not_count_based():
+    # anchor = the latest ok date = 2026-07-30 (anchor-1 below). ok days also
+    # at anchor-5 and anchor-20 — only anchor-1 and anchor-5 fall within 7
+    # calendar days of the anchor, even though all three are the 3 most
+    # recent "ok" entries (the old `ok[-3:]` behavior would include all of them).
+    days = [
+        _day("2026-07-11", mae_ia=0.9, mae_baseline=0.9),  # anchor-20 (outside 7d)
+        _day("2026-07-26", mae_ia=0.2, mae_baseline=0.4),  # anchor-5 (inside 7d)
+        _day("2026-07-30", mae_ia=0.4, mae_baseline=0.6),  # anchor-1 == anchor (inside 7d)
+    ]
+    row = publish.compute_scores(days)
+    # 7d window: only the anchor-5 and anchor days (2 entries), not anchor-20.
+    assert row["mae_ia_7d"] == pytest.approx((0.2 + 0.4) / 2)
+    assert row["mae_baseline_7d"] == pytest.approx((0.4 + 0.6) / 2)
+    # 30d window includes all three.
+    assert row["mae_ia_30d"] == pytest.approx((0.9 + 0.2 + 0.4) / 3)
+    assert row["n_days"] == 3
+
+
 # --- schema contract -----------------------------------------------------
 
 
