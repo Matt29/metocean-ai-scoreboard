@@ -47,14 +47,20 @@ def split_by_issue_day(x: pd.DataFrame, test_days: int) -> np.ndarray:
     return np.asarray(issue_day > cutoff)
 
 
-def evaluate(station_id: str, kind: str, test_days: int) -> dict | None:
+def evaluate(station_id: str, kind: str, test_days: int, ablate_wind: bool = False) -> dict | None:
     path = DATA_DIR / f"{station_id}.parquet"
     if not path.exists():
         print(f"  {station_id}: no dataset at {path} — skipped")
         return None
 
     df = pd.read_parquet(path)
-    x, obs = df[FEATURE_COLUMNS], df["y"].astype(float)
+    x, obs = df[FEATURE_COLUMNS].copy(), df["y"].astype(float)
+    if ablate_wind:
+        # Zeroing beats dropping: same rows, same split, same seed, same model
+        # capacity — and for a tree ensemble a constant column is never split on,
+        # so it is equivalent to removing the feature. This is what produced the
+        # "with / without wind" table of the Task 7B report.
+        x[["wind_u10", "wind_v10"]] = 0.0
     # Tide: learn the residual; waves: learn the corrected value directly.
     target = obs - x["baseline"] if kind == "tide" else obs
 
@@ -72,11 +78,11 @@ def evaluate(station_id: str, kind: str, test_days: int) -> dict | None:
     resid = obs_test.to_numpy() - x_test["baseline"].to_numpy()
     mae_base = float(np.abs(resid).mean())
     gain = (mae_base - mae_model) / mae_base if mae_base else 0.0
-    # How much of the baseline error is a plain constant offset (see report §3).
+    # How much of the baseline error is a plain constant offset (see report §4).
     bias = float(resid.mean())
     mae_debiased = float(np.abs(resid - bias).mean())
 
-    saved = model.save(m, station_id)
+    saved = None if ablate_wind else model.save(m, station_id)  # ablation must not clobber
     row = {
         "station": station_id,
         "kind": kind,
@@ -96,7 +102,7 @@ def evaluate(station_id: str, kind: str, test_days: int) -> dict | None:
     print(
         f"  {station_id}: train {(~is_test).sum()} / test {is_test.sum()} rows | "
         f"MAE base {mae_base:.3f} -> model {mae_model:.3f} ({gain:+.1%}) | "
-        f"{_verdict(row)} -> {saved.name}"
+        f"{_verdict(row)} -> {saved.name if saved else 'not saved (ablation)'}"
     )
     return row
 
@@ -112,13 +118,18 @@ def _failure_notes(rows: list[dict]) -> list[str]:
     """Réserve 4, entièrement dérivée des chiffres — aucune station codée en dur."""
     failing = [r for r in rows if not r["pass"]]
     if not failing:
-        return ["4. **Aucune station sous le gate sur cette fenêtre de test.**", ""]
+        return ["5. **Aucune station sous le gate sur cette fenêtre de test.**", ""]
     notes = [
-        "4. **Stations sous le gate — à ne pas publier en l'état.** Le modèle n'y",
+        "5. **Stations sous le gate — à ne pas publier en l'état.** Le modèle n'y",
         f"   atteint pas les +{GATE:.0%} exigés : il ne trouve pas de signal exploitable",
-        "   dans les features actuelles. Deux causes à trancher station par station —",
-        "   historique d'entraînement trop court, ou absence d'une feature de forçage",
-        "   (vent ARPEGE) sans laquelle le résidu restant est imprévisible.",
+        "   dans les features actuelles. Le forçage vent 10 m (`wind_u10`/`wind_v10`)",
+        "   fait désormais partie de ces features — son ajout en Task 7B a payé sur les",
+        "   stations de houle exposée mais **pas** sur les stations ci-dessous, donc",
+        "   l'explication est ailleurs : historique d'entraînement trop court, forçage",
+        "   local mal représenté par la maille du modèle de vent, ou grandeur encore",
+        "   absente (pression au niveau de la mer pour la surcote). À trancher station",
+        "   par station, mesure à l'appui — `train.py --ablate-wind` chiffre ce que le",
+        "   vent apporte réellement à chacune.",
         "",
     ]
     notes += [
@@ -160,14 +171,14 @@ def write_report(rows: list[dict], test_days: int) -> None:
         f"MAE en {UNIT['wave']} pour les stations `wave`, en {UNIT['tide']} pour les",
         "stations `tide`. « MAE baseline débiaisée » = MAE de la baseline après retrait",
         "de son seul biais moyen sur la fenêtre de test — c'est le garde-fou de la",
-        "réserve 3 : un modèle qui ne bat pas cette colonne n'apporte rien de plus",
+        "réserve 4 : un modèle qui ne bat pas cette colonne n'apporte rien de plus",
         "qu'une constante. Gate de mise en ligne : **+5 % de MAE gagnée** sur la",
         "baseline. Une station FAIL reste entraînée et son artefact reste versionné,",
         "mais elle ne doit pas être publiée telle quelle sur le scoreboard.",
         "",
         "**`PASS*`** = la station passe le gate mais **ne bat pas sa propre baseline",
         "débiaisée** : son gain affiché est essentiellement une constante, pas du skill.",
-        "Ne pas mettre ce chiffre en avant sans la réserve 3.",
+        "Ne pas mettre ce chiffre en avant sans la réserve 4.",
         "",
         "Ce verdict est aussi émis en donnée dans `pipeline/models/gate.json`",
         "(`{station: {pass, weak, mae_model, mae_baseline, gain, gain_debiased}}`) —",
@@ -208,14 +219,25 @@ def write_report(rows: list[dict], test_days: int) -> None:
         "   déterminable a priori. Le ré-entraînement sur de vraies prévisions",
         "   archivées interviendra après ~1 mois de runs quotidiens ; ces chiffres",
         "   seront alors remplacés.",
-        "2. **Le gate de +5 % s'applique quand même**, mais il se lit",
-        "   « +5 % mesuré sur analyse », pas « +5 % en opérationnel ».",
+        "2. **Le vent d'entraînement est un vent parfait, celui de production ne le",
+        "   sera pas.** La feature vent est apprise sur la **réanalyse ERA5** (0,25°,",
+        "   ECMWF, vent connu après coup) et sera servie avec une **prévision ARPEGE",
+        "   Europe** (0,1°, Météo-France), qui porte une erreur de lead time que la",
+        "   réanalyse n'a pas. Ce n'est **pas** une équivalence : deux familles de",
+        "   modèles, deux grilles, et une partie du gain ci-dessous ne survivra pas au",
+        "   passage en opérationnel. Même catégorie de compromis que la réserve 1, et",
+        "   même issue : il se résorbera quand le run quotidien aura accumulé assez de",
+        "   ses propres prévisions pour ré-entraîner dessus. Détail dans",
+        "   `docs/data-sources.md` §4bis.",
+        "3. **Le gate de +5 % s'applique quand même**, mais il se lit",
+        "   « +5 % mesuré sur analyse, avec un vent parfait », pas « +5 % en",
+        "   opérationnel ».",
     ]
     # Tout est dérivé : la fermeté de la phrase suit les chiffres, elle ne les précède pas.
     inflated = [r for r in rows if r["gain"] > 0 and r["gain_debiased"] < 0.5 * r["gain"]]
     weak = [r["station"] for r in rows if r["weak"]]
     lines += [
-        f"3. **Sur {len(inflated)} des {len(rows)} stations, plus de la moitié du gain",
+        f"4. **Sur {len(inflated)} des {len(rows)} stations, plus de la moitié du gain",
         "   affiché n'est qu'une correction de biais constant** — chaque baseline dérive",
         "   sur la fenêtre de test, et retirer ce seul offset capte déjà l'essentiel du",
         "   gain. Le chiffre à citer est donc **« Gain hors biais »**, jamais « Gain",
@@ -253,17 +275,30 @@ def write_report(rows: list[dict], test_days: int) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--test-days", type=int, default=30, help="issue days held out for test")
+    ap.add_argument(
+        "--ablate-wind",
+        action="store_true",
+        help="zero the wind columns — measures what the wind feature actually buys",
+    )
     args = ap.parse_args()
 
     print(f"Training (test = last {args.test_days} issue days):")
+    if args.ablate_wind:
+        print("  ABLATION: wind columns zeroed — artefacts and report NOT written")
     rows = [
         r
         for st in load_stations()
-        if (r := evaluate(st.id, st.kind, args.test_days)) is not None
+        if (r := evaluate(st.id, st.kind, args.test_days, args.ablate_wind)) is not None
     ]
     if not rows:
         print("nothing trained")
         return 1
+
+    if args.ablate_wind:
+        print("\nablation, gain hors biais:")
+        for r in rows:
+            print(f"  {r['station']:16} {r['gain_debiased']:+8.1%}  MAE {r['mae_model']:.4f}")
+        return 0
 
     # Machine-readable gate: the publisher (Task 8) reads this, not the markdown.
     gate = {

@@ -7,6 +7,7 @@ import pytest
 from scoreboard.config import Station
 from scoreboard.dataset import assemble
 from scoreboard.features import FEATURE_COLUMNS, build_features
+from scoreboard.sources import SourceError
 from scoreboard.sources.wind import WIND_COLUMNS
 
 T0 = pd.Timestamp("2026-07-30 06:00", tz="UTC")
@@ -57,29 +58,38 @@ def test_wind_is_sampled_at_each_lead_valid_time():
     assert np.allclose(feats["wind_v10"], -(24 + np.arange(1, 49)))
 
 
-def test_missing_wind_gives_neutral_zero_not_nan():
-    feats = build_features(
-        _baseline(), _series(T0 - pd.Timedelta(hours=24), 25, 1.3), T0, _empty_wind()
-    )
-    assert (feats["wind_u10"] == 0.0).all()
-    assert (feats["wind_v10"] == 0.0).all()
-    assert not feats.isna().any().any()
+@pytest.mark.parametrize("degraded", [None, "empty", "no_columns", "half"])
+def test_degraded_wind_raises_instead_of_silently_zeroing(degraded):
+    """A model trained on real wind must never be served an all-zero vector."""
+    wind = {
+        None: None,
+        "empty": _empty_wind(),
+        "no_columns": pd.DataFrame({"gust": [1.0]}, index=pd.DatetimeIndex([T0], tz="UTC")),
+        # covers only the first 24h of a 48h horizon -> 50% < _MIN_WIND_COVERAGE
+        "half": _wind(hours_before=0, hours_after=24, start=T0),
+    }[degraded]
+    with pytest.raises(SourceError):
+        build_features(_baseline(), _series(T0 - pd.Timedelta(hours=24), 25, 1.3), T0, wind)
 
 
-def test_partially_covering_wind_falls_back_to_zero_on_the_gap():
-    # wind stops 24h into the horizon: later leads get the neutral value, never NaN
-    wind = _wind(hours_before=0, hours_after=24, start=T0)
-    feats = build_features(_baseline(), _series(T0 - pd.Timedelta(hours=24), 25, 1.3), T0, wind)
-    assert not feats.isna().any().any()
-    assert (feats.loc[feats["lead_h"] <= 24, "wind_u10"] == 3.0).all()
-    assert (feats.loc[feats["lead_h"] > 25, "wind_u10"] == 0.0).all()
-
-
-def test_nan_wind_rows_give_neutral_zero():
+def test_a_few_missing_wind_hours_are_tolerated_as_neutral_zero():
     wind = _wind()
-    wind.iloc[30] = np.nan
+    wind.iloc[30:33] = np.nan  # 3 leads out of 48 -> above the coverage floor
     feats = build_features(_baseline(), _series(T0 - pd.Timedelta(hours=24), 25, 1.3), T0, wind)
     assert not feats.isna().any().any()
+    # the two edge holes are filled by the 1h-tolerance neighbour; only the
+    # middle one has no valid sample within tolerance and falls back to neutral
+    assert (feats["wind_u10"] == 0.0).sum() == 1
+
+
+def test_assemble_skips_issues_whose_wind_coverage_is_too_thin():
+    """A wind gap drops the affected issue from training — it never trains on zeros."""
+    obs, baseline, wind = _history(days=5)
+    truncated = wind[wind.index < wind.index[0] + pd.Timedelta(days=3)]
+    x, y = assemble(WAVE_STATION, obs, baseline, truncated, issue_hours=[6])
+    assert not x.empty
+    assert len(x) < len(assemble(WAVE_STATION, obs, baseline, wind, issue_hours=[6])[0])
+    assert not ((x["wind_u10"] == 0.0) & (x["wind_v10"] == 0.0)).all()
 
 
 def test_constant_case_errors_and_leads():

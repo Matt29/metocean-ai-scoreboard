@@ -77,6 +77,14 @@ def test_missing_hourly_values_are_dropped_not_nan():
     assert len(df) == 2
 
 
+def test_duplicate_timestamps_are_dropped():
+    """A duplicated index would blow up the nearest-reindex in features.py."""
+    body = payload(TIMES + [TIMES[0]], SPEEDS + [3.0], DIRS + [45])
+    df = fetch_wind_history(ST, date(2026, 6, 1), date(2026, 6, 1), session=make_session(body))
+    assert not df.index.has_duplicates
+    assert np.isclose(df["wind_u10"].iloc[0], EXPECTED_U[0])  # first wins, like candhis
+
+
 def test_network_error_raises_source_error():
     s = Mock()
     s.get.side_effect = requests.ConnectionError("boom")

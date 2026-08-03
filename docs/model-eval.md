@@ -1,6 +1,6 @@
 # Évaluation des modèles de post-traitement
 
-Généré par `pipeline/scripts/train.py` le 2026-08-03 09:15 UTC (test = les 30 derniers jours d'émission).
+Généré par `pipeline/scripts/train.py` le 2026-08-03 09:26 UTC (test = les 30 derniers jours d'émission).
 
 Le modèle **post-traite** la prévision physique officielle (MFWAM pour les
 vagues, harmonique pour le niveau d'eau) : il la corrige, il ne la remplace
@@ -20,14 +20,14 @@ jamais.
 MAE en m (Hs) pour les stations `wave`, en m (water level) pour les
 stations `tide`. « MAE baseline débiaisée » = MAE de la baseline après retrait
 de son seul biais moyen sur la fenêtre de test — c'est le garde-fou de la
-réserve 3 : un modèle qui ne bat pas cette colonne n'apporte rien de plus
+réserve 4 : un modèle qui ne bat pas cette colonne n'apporte rien de plus
 qu'une constante. Gate de mise en ligne : **+5 % de MAE gagnée** sur la
 baseline. Une station FAIL reste entraînée et son artefact reste versionné,
 mais elle ne doit pas être publiée telle quelle sur le scoreboard.
 
 **`PASS*`** = la station passe le gate mais **ne bat pas sa propre baseline
 débiaisée** : son gain affiché est essentiellement une constante, pas du skill.
-Ne pas mettre ce chiffre en avant sans la réserve 3.
+Ne pas mettre ce chiffre en avant sans la réserve 4.
 
 Ce verdict est aussi émis en donnée dans `pipeline/models/gate.json`
 (`{station: {pass, weak, mae_model, mae_baseline, gain, gain_debiased}}`) —
@@ -63,9 +63,20 @@ source, pas ce tableau, que le publisher doit lire.
    déterminable a priori. Le ré-entraînement sur de vraies prévisions
    archivées interviendra après ~1 mois de runs quotidiens ; ces chiffres
    seront alors remplacés.
-2. **Le gate de +5 % s'applique quand même**, mais il se lit
-   « +5 % mesuré sur analyse », pas « +5 % en opérationnel ».
-3. **Sur 4 des 6 stations, plus de la moitié du gain
+2. **Le vent d'entraînement est un vent parfait, celui de production ne le
+   sera pas.** La feature vent est apprise sur la **réanalyse ERA5** (0,25°,
+   ECMWF, vent connu après coup) et sera servie avec une **prévision ARPEGE
+   Europe** (0,1°, Météo-France), qui porte une erreur de lead time que la
+   réanalyse n'a pas. Ce n'est **pas** une équivalence : deux familles de
+   modèles, deux grilles, et une partie du gain ci-dessous ne survivra pas au
+   passage en opérationnel. Même catégorie de compromis que la réserve 1, et
+   même issue : il se résorbera quand le run quotidien aura accumulé assez de
+   ses propres prévisions pour ré-entraîner dessus. Détail dans
+   `docs/data-sources.md` §4bis.
+3. **Le gate de +5 % s'applique quand même**, mais il se lit
+   « +5 % mesuré sur analyse, avec un vent parfait », pas « +5 % en
+   opérationnel ».
+4. **Sur 4 des 6 stations, plus de la moitié du gain
    affiché n'est qu'une correction de biais constant** — chaque baseline dérive
    sur la fenêtre de test, et retirer ce seul offset capte déjà l'essentiel du
    gain. Le chiffre à citer est donc **« Gain hors biais »**, jamais « Gain
@@ -80,11 +91,16 @@ source, pas ce tableau, que le publisher doit lire.
 
    Stations dont le gain affiché vaut **au moins le double** de son gain hors biais : `pierres-noires`, `belle-ile`, `cherbourg`, `brest` — leur chiffre de tête est d'abord du débiaisage.
    Stations où le modèle **ne bat pas** ce simple débiaisage : `cherbourg`, `brest`, `saint-malo` — il n'y apporte rien de plus qu'une constante, à ne pas présenter comme du skill météo-océanique.
-4. **Stations sous le gate — à ne pas publier en l'état.** Le modèle n'y
+5. **Stations sous le gate — à ne pas publier en l'état.** Le modèle n'y
    atteint pas les +5% exigés : il ne trouve pas de signal exploitable
-   dans les features actuelles. Deux causes à trancher station par station —
-   historique d'entraînement trop court, ou absence d'une feature de forçage
-   (vent ARPEGE) sans laquelle le résidu restant est imprévisible.
+   dans les features actuelles. Le forçage vent 10 m (`wind_u10`/`wind_v10`)
+   fait désormais partie de ces features — son ajout en Task 7B a payé sur les
+   stations de houle exposée mais **pas** sur les stations ci-dessous, donc
+   l'explication est ailleurs : historique d'entraînement trop court, forçage
+   local mal représenté par la maille du modèle de vent, ou grandeur encore
+   absente (pression au niveau de la mer pour la surcote). À trancher station
+   par station, mesure à l'appui — `train.py --ablate-wind` chiffre ce que le
+   vent apporte réellement à chacune.
 
    * `cherbourg` (wave) : 14246 lignes de train, MAE baseline 0.110 → modèle 0.107 (+2.4% affiché, -5.2% hors biais)
    * `saint-malo` (tide) : 7243 lignes de train, MAE baseline 0.117 → modèle 0.132 (-13.3% affiché, -14.1% hors biais)

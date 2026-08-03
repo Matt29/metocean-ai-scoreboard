@@ -8,15 +8,21 @@ guarantees training and serving see the same thing.
 `wind` is the one input legitimately allowed to carry values posterior to `t0`:
 it is a *forecast* of the atmospheric forcing at each lead's valid time, exactly
 what production has at issue time. It is never an observation, so it cannot leak.
-`wind` is a required argument, not an option with a default: a caller that
-silently omitted it would ship a train/serve skew, which is the failure mode
-this whole module exists to prevent.
+`wind` is a required argument, not an option with a default — and a required
+argument is not enough on its own: a *degraded* wind frame (None, empty, wrong
+columns, truncated horizon) would otherwise yield an all-zero wind vector, which
+is not "neutral" but out-of-distribution for a model trained on real wind, and
+indistinguishable from a genuine calm. So coverage is checked and `SourceError`
+is raised below `_MIN_WIND_COVERAGE`: the daily run marks the station missing
+and does not publish it, rather than publishing a silently wrong correction.
 """
 
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+
+from scoreboard.sources import SourceError
 
 FEATURE_COLUMNS = [
     "baseline",
@@ -34,6 +40,9 @@ FEATURE_COLUMNS = [
 ]
 
 _NEUTRAL_WIND = 0.0
+# Both providers deliver a gap-free hourly grid, so a few missing hours are a
+# blip while a third of the horizon missing is a degraded fetch, not weather.
+_MIN_WIND_COVERAGE = 0.9
 
 _ALIGN_TOLERANCE = pd.Timedelta("1h")
 
@@ -46,15 +55,17 @@ def _aligned_baseline(baseline: pd.Series, times: pd.DatetimeIndex) -> pd.Series
 
 
 def _aligned_wind(wind: pd.DataFrame, col: str, times: pd.DatetimeIndex) -> np.ndarray:
-    """Wind component sampled at each valid time; `_NEUTRAL_WIND` where unavailable."""
-    if wind is None or wind.empty or col not in wind.columns:
-        return np.full(len(times), _NEUTRAL_WIND)
+    """Wind component at each valid time; raises below `_MIN_WIND_COVERAGE`."""
+    if wind is None or col not in getattr(wind, "columns", []):
+        raise SourceError("wind", f"wind frame missing column {col!r}")
     series = wind[col].astype(float).dropna().sort_index()
-    if series.empty:
-        return np.full(len(times), _NEUTRAL_WIND)
-    return series.reindex(times, method="nearest", tolerance=_ALIGN_TOLERANCE).fillna(
-        _NEUTRAL_WIND
-    ).to_numpy()
+    aligned = series.reindex(times, method="nearest", tolerance=_ALIGN_TOLERANCE)
+    coverage = float(aligned.notna().mean()) if len(times) else 1.0
+    if coverage < _MIN_WIND_COVERAGE:
+        raise SourceError(
+            "wind", f"{col} covers {coverage:.0%} of the horizon (< {_MIN_WIND_COVERAGE:.0%})"
+        )
+    return aligned.fillna(_NEUTRAL_WIND).to_numpy()
 
 
 def _finite(value: float) -> float:

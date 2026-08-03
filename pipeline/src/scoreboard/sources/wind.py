@@ -12,6 +12,7 @@ direction in degrees is circular and unusable as a raw model feature.
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 
 import numpy as np
@@ -28,6 +29,8 @@ _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 _MODEL = "meteofrance_arpege_europe"
 _HOURLY = "wind_speed_10m,wind_direction_10m"
 _TIMEOUT = 30
+
+log = logging.getLogger(__name__)
 
 
 def _fetch(url: str, params: dict, station: Station, session) -> pd.DataFrame:
@@ -55,6 +58,23 @@ def _fetch(url: str, params: dict, station: Station, session) -> pd.DataFrame:
         raise SourceError(station.id, f"open-meteo payload missing {exc}") from exc
 
     df = df.dropna().set_index("time").sort_index()
+    # Same guard as candhis.py: a duplicated index makes the nearest-reindex in
+    # features.py raise instead of returning features.
+    df = df[~df.index.duplicated(keep="first")]
+
+    # Open-Meteo snaps to its own grid (ERA5 0.25 deg, ARPEGE 0.1 deg). Log the
+    # resolved cell: a distant or non-zero-elevation cell is land-contaminated,
+    # exactly the bug already fixed for MFWAM in 0740e81. `elevation` is the
+    # cheapest land signal the API exposes.
+    grid_lat, grid_lon = payload.get("latitude"), payload.get("longitude")
+    if grid_lat is not None and grid_lon is not None:
+        log.info(
+            "%s: wind cell (%.3f, %.3f) vs station (%.3f, %.3f), offset %.3f deg, elevation %s m",
+            station.id, grid_lat, grid_lon, station.lat, station.lon,
+            max(abs(grid_lat - station.lat), abs(grid_lon - station.lon)),
+            payload.get("elevation"),
+        )
+
     rad = np.deg2rad(df["direction"].to_numpy())
     speed = df["speed"].to_numpy()
     out = pd.DataFrame(

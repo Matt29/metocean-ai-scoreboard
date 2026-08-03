@@ -6,6 +6,7 @@ import pandas as pd
 
 from scoreboard.config import Station
 from scoreboard.features import FEATURE_COLUMNS, build_features
+from scoreboard.sources import SourceError
 
 OBS_COLUMN = {"wave": "hs", "tide": "level"}
 HORIZON_H = 48
@@ -48,7 +49,10 @@ def assemble(
             ]
             if window.empty:
                 continue
-            feats = build_features(window, obs_s, t0, wind)
+            try:
+                feats = build_features(window, obs_s, t0, wind)
+            except SourceError:
+                continue  # wind gap on this issue: drop it rather than train on zeros
             if feats.empty:
                 continue
             y = obs_s.reindex(feats.index)
