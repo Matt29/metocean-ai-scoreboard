@@ -1,5 +1,6 @@
-"""`uv run scoreboard daily [--date YYYY-MM-DD] [--dry-run]` and
-`uv run scoreboard backfill --since YYYY-MM-DD [--dry-run]` — argparse facade only."""
+"""`uv run scoreboard daily [--date YYYY-MM-DD] [--dry-run]`,
+`uv run scoreboard backfill --since YYYY-MM-DD [--dry-run]` and
+`uv run scoreboard archive-obs [--dry-run]` — argparse facade only."""
 
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ from pathlib import Path
 
 from scoreboard import archive, backfill, daily
 from scoreboard.config import load_env
+from scoreboard.sources import SourceError, mfbuoy
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 
@@ -21,10 +23,10 @@ def _resolve_out_dir(dry_run: bool) -> Path:
     return DATA_DIR
 
 
-def _resolve_archive_dir(dry_run: bool, out_dir: Path) -> Path:
-    # Same logic as `_resolve_out_dir`: a dry-run must never write into the
-    # committed `data_forecast_archive/` — it gets its own throwaway tmp dir.
-    return out_dir / "data_forecast_archive" if dry_run else archive.DEFAULT_ARCHIVE_DIR
+def _resolve_archive_dir(dry_run: bool, out_dir: Path, default: Path) -> Path:
+    # Same logic as `_resolve_out_dir`: a dry-run must never write into a
+    # committed archive directory — it gets its own throwaway tmp dir.
+    return out_dir / default.name if dry_run else default
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -45,13 +47,40 @@ def main(argv: list[str] | None = None) -> int:
         "--dry-run", action="store_true", help="write to a temp dir instead of data/"
     )
 
+    obs_parser = sub.add_parser(
+        "archive-obs", help="archive the Météo-France buoy observations before they age out"
+    )
+    obs_parser.add_argument(
+        "--dry-run", action="store_true", help="write to a temp dir instead of data_obs_archive/"
+    )
+
     args = parser.parse_args(argv)
     load_env()
     out_dir = _resolve_out_dir(args.dry_run)
 
+    if args.command == "archive-obs":
+        obs_dir = _resolve_archive_dir(args.dry_run, out_dir, archive.DEFAULT_OBS_ARCHIVE_DIR)
+        try:
+            obs, written = mfbuoy.run(obs_dir)
+        except SourceError as exc:
+            # Une panne Météo-France ne doit pas coûter au scoreboard son commit
+            # quotidien — mais elle doit rester VISIBLE : `::warning::` remonte
+            # en annotation Actions, là où un `continue-on-error` dans le YAML
+            # rendrait le run vert et muet. La fenêtre de 90 h couvre ~3,5 runs,
+            # donc le prochain rattrape ; c'est un avertissement, pas une
+            # urgence. Un vrai plantage, lui, passe et met le job au rouge.
+            print(f"::warning::archive-obs: {exc.msg}")
+            return 0
+        print(f"archive-obs -> {obs_dir}" + (" (dry-run)" if args.dry_run else ""))
+        # Non-null par bouée et par variable : la seule preuve que la donnée est
+        # là. Sortie de cron, donc lue quand quelque chose cloche.
+        print(mfbuoy.non_null_counts(obs).to_string())
+        print(f"  {len(written)} fichier(s) jour: {', '.join(p.name for p in written)}")
+        return 0
+
     if args.command == "daily":
         run_date = date.fromisoformat(args.date) if args.date else datetime.now(timezone.utc).date()
-        archive_dir = _resolve_archive_dir(args.dry_run, out_dir)
+        archive_dir = _resolve_archive_dir(args.dry_run, out_dir, archive.DEFAULT_ARCHIVE_DIR)
         summary = daily.run(run_date, out_dir, archive_dir=archive_dir)
         print(f"run {run_date} -> {out_dir}" + (" (dry-run)" if args.dry_run else ""))
         for station_id, result in summary.items():

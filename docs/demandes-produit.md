@@ -186,15 +186,34 @@ backfill) — la stabiliser d'abord sur les variables existantes.
 2. **Carte interactive sur le dashboard du site** pour voir directement les
    bouées et les stations.
 
-### Le chemin imposé par la rétention 24 h de `/bouees`
+### ✅ Archivage des obs démarré le 2026-08-03
+
+`uv run scoreboard archive-obs` tourne dans le cron quotidien depuis le
+2026-08-03 (`sources/mfbuoy.py`, sortie `pipeline/data_obs_archive/`, détail
+technique : `docs/data-sources.md` §4quater). Le compteur des ~2-3 mois est
+donc lancé — **premier entraînement Med envisageable vers 2026-10/11**.
+Deux corrections de cadrage issues du premier run réel :
+
+- **Rétention mesurée ~96 h, pas 24 h** (la doc Confluence se trompe). La
+  fenêtre demandée est de 90 h, soit ~3,5 runs de marge : un cron raté n'est
+  plus une perte définitive.
+- **BOUEE_SARDAIGNE ne sert aucune donnée de houle** (0 non-null sur 76 heures,
+  alors que vent/pression/température sont là). Compter sur **8 bouées
+  exploitables**, pas 9, tant que le comptage quotidien ne montre pas le
+  contraire.
+
+Reste à faire pour cette demande : inscription des bouées comme stations
+scorées (`stations.toml`, gate, verdict, publication) et carte.
+
+### Le chemin imposé par la rétention de `/bouees`
 
 - **Scoring quotidien : faisable dès le premier jour.** La fenêtre de 24 h
   suffit à vérifier la prévision d'hier — même mécanique que Candhis.
 - **Entraînement : bloqué par l'historique d'obs.** Les baselines
   historiques existent (l'archive Open-Meteo Marine couvre la Méditerranée),
   mais il n'y a AUCUNE archive d'obs bouées MF via cette API. Donc :
-  **archiver les obs dès l'ajout des stations** (le cron quotidien les
-  committe, même mécanique que `data_forecast_archive/`), servir d'abord en
+  **archiver les obs dès maintenant** (fait, cf. ci-dessus : le cron quotidien
+  les committe, même mécanique que `data_forecast_archive/`), servir d'abord en
   « baseline seule » (gate non passé, non publié — le mécanisme existe),
   puis entraîner quand ~2-3 mois d'obs sont accumulés.
 - Nouveau module source `sources/mfbuoy.py` (auth `apikey`, quotas ~50-60

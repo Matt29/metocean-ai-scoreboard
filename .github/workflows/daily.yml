@@ -71,12 +71,31 @@ jobs:
             uv run scoreboard daily
           fi
 
-      # Commit only what actually changed, and only the two directories the
-      # daily run is allowed to write: the public scoreboard payload (data/)
-      # and the served-forecast archive (pipeline/data_forecast_archive/) —
-      # the corpus a future retrain needs (see docs/data-sources.md §4bis).
+      # Buoy observations age out of the Météo-France API on a rolling ~96h
+      # window with no archive behind it (measured, see sources/mfbuoy.py), so
+      # every hour not captured here is lost for good — this is the only thing
+      # that makes the Med training corpus of demande produit 4 start counting.
+      #
+      # A Météo-France outage must never cost the scoreboard its daily commit,
+      # so `archive-obs` catches its own SourceError and emits `::warning::`
+      # instead of exiting non-zero (see cli.py). Deliberately NOT
+      # `continue-on-error: true`, which would swallow a real crash too and
+      # leave a write-only data path green and silent forever.
+      # Runs *after* `scoreboard daily` for the same order of priorities:
+      # scoring first, opportunistic collection second.
+      - name: archive buoy observations
+        working-directory: pipeline
+        env:
+          METEOFRANCE_API_KEY: ${{ secrets.METEOFRANCE_API_KEY }}
+        run: uv run scoreboard archive-obs
+
+      # Commit only what actually changed, and only the three directories the
+      # daily run is allowed to write: the public scoreboard payload (data/),
+      # the served-forecast archive (pipeline/data_forecast_archive/) and the
+      # buoy observation archive (pipeline/data_obs_archive/) — the corpora a
+      # future retrain needs (see docs/data-sources.md §4bis and §5).
       # Nothing else is ever staged.
-      - name: commit data + forecast archive
+      - name: commit data + archives
         env:
           BACKFILL_SINCE: ${{ inputs.backfill_since }}
         run: |
@@ -84,8 +103,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          if git status --porcelain -- data pipeline/data_forecast_archive | grep -q .; then
-            git add data pipeline/data_forecast_archive
+          if git status --porcelain -- data pipeline/data_forecast_archive pipeline/data_obs_archive | grep -q .; then
+            git add data pipeline/data_forecast_archive pipeline/data_obs_archive
             if [ -n "$BACKFILL_SINCE" ]; then
               git commit -m "chore(data): backfill since $BACKFILL_SINCE"
             else
@@ -94,5 +113,5 @@ jobs:
             git pull --rebase
             git push
           else
-            echo "no change in data/ or pipeline/data_forecast_archive/, nothing to commit"
+            echo "no change in data/ or the archives, nothing to commit"
           fi

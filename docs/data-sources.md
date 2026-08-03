@@ -360,6 +360,66 @@ comparaison faits en Task 0, rapport complet dans
   `t0` nominal du scoreboard, pas l'heure d'initialisation réelle du run
   vague sous-jacent.
 
+## 4quater. Météo-France DPObs `/bouees` — archive d'observations bouées (2026-08-03)
+
+Collecteur : `sources/mfbuoy.py` + `archive.write_obs_days`, commande
+`uv run scoreboard archive-obs`, branchée sur le cron quotidien après
+`scoreboard daily`. Sortie : `pipeline/data_obs_archive/<jour>.parquet`,
+committé (Actions est sans état).
+
+**Ce que ça fait, et ce que ça ne fait pas.** Ça archive uniquement les
+observations, pour que le compteur des ~2-3 mois d'historique nécessaires au
+premier entraînement Méditerranée démarre (demande produit 4). Les 9 bouées ne
+sont **pas** encore des stations scorées : ni `stations.toml`, ni gate, ni
+verdict, ni publication.
+
+**Rétention réelle : ~96 h, pas 24 h.** La doc Confluence annonce 24 h. Mesuré
+le 2026-08-03 sur la requête exacte : `date_debut` à T-24/30/36/48/72/96 h
+répond 200 avec une grille horaire complète (97 pas distincts à 96 h) ; à
+T-120 h et au-delà, HTTP 400 « Contrôle de date en erreur ». Le collecteur
+demande donc **90 h** (`mfbuoy.LOOKBACK_HOURS`), sous la limite dure, ce qui
+laisse ~3,5 runs quotidiens de marge : un cron raté se rattrape tout seul au
+lieu de laisser un trou définitif. La doc était fausse dans le sens favorable —
+raison de plus pour mesurer plutôt que lire.
+
+**Une requête par jour pour les 9 bouées** : `id_bouee` omis renvoie tout le
+réseau (~713 lignes sur 90 h). Les positions viennent du payload
+(`lat`/`lon`/`geo_id_wmo`/`name`), jamais en dur. Coût : 1 requête/jour contre
+un palier de dizaines par minute.
+
+**Idempotence par fusion sur (`geo_id_wmo`, `validity_time`)**, dernière
+écriture gagnante — et non par remplacement des lignes d'une bouée comme
+`archive.write_day`. La fenêtre du lendemain recouvre la fin de la veille : un
+remplacement effacerait les heures que seul le run précédent avait vues.
+Vérifié en réel (deux runs : 713 lignes, 0 doublon) et par test.
+
+**Comptage non-null par bouée et par variable à chaque run** (sortie de la
+commande) — un 200 OK ne prouve rien. Premier relevé, 2026-07-31 → 08-03 :
+
+| Bouée | heures | haut_vag | per_moy_vag | dir_vag |
+|---|---|---|---|---|
+| BOUEE_AJACCIO | 80 | 80 | 80 | 80 |
+| BOUEE_AZUR | 80 | 80 | 80 | 80 |
+| BOUEE_CALVI | 84 | 84 | 84 | 84 |
+| BOUEE_GASCOGNE | 84 | 84 | 84 | 84 |
+| BOUEE_LION | 75 | 75 | 75 | 75 |
+| BOUEE_PACA | 80 | 80 | 80 | 80 |
+| BOUEE_PROVENCE | 79 | 79 | 79 | 79 |
+| **BOUEE_SARDAIGNE** | 76 | **0** | **0** | **0** |
+| BOUEE_VECCHIO | 75 | 75 | 75 | 75 |
+
+**BOUEE_SARDAIGNE ne sert aucune donnée de vagues** sur les 90 h : la bouée est
+vivante (`t`, `ff`, `dd`, `pmer`, `tmer` non-null sur ses 76 heures), c'est le
+capteur de houle qui ne remonte rien. Le sondage Marine API la déclarait
+ELIGIBLE — à juste titre, mais il portait sur la couverture *modèle* à sa
+position, pas sur l'obs de la bouée. **8 bouées exploitables pour la houle, pas
+9**, jusqu'à preuve du contraire ; le comptage quotidien tranchera si c'est une
+panne ou un état permanent.
+
+Valeurs archivées **brutes**, sans filtre de plausibilité (contrairement à
+`candhis.fetch_wave_obs`) : ce corpus est la vérité terrain d'un futur
+entraînement, le filtrage appartient à qui le consomme.
+
 ## 5. Résumé des stations retenues
 
 Voir `pipeline/config/stations.toml` — 4 stations houle (Candhis) + 2
