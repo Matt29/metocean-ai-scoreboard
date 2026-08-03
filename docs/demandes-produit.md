@@ -174,36 +174,47 @@ backfill) — la stabiliser d'abord sur les variables existantes.
 
 ---
 
-## 4. Bouées Météo-France sur le site démo + carte interactive
+## 4. Bouées Météo-France = nouvelles stations scorées + carte interactive
 
-**Demande** (2026-08-03, soir). Deux volets :
+**Demande** (2026-08-03, soir ; précisée le même soir). Deux volets :
 
-1. **Compléter le site démo avec les 9 bouées MF** (8 Méditerranée + Gascogne)
-   — obs houle live via `/bouees` (Hs, période, direction, horaire).
+1. **Intégrer les 9 bouées MF** (8 Méditerranée + Gascogne) **au réseau
+   d'observation du scoreboard, comme Candhis** : nouvelles stations `wave` à
+   part entière — prévision IA + baseline meilleur modèle physique + gate +
+   verdict, vérifiées chaque jour contre l'obs bouée (`/bouees` : Hs,
+   période, direction, horaire). Pas un simple affichage d'observations.
 2. **Carte interactive sur le dashboard du site** pour voir directement les
-   bouées (et à terme les stations du scoreboard).
+   bouées et les stations.
 
-### Cadrage à faire avant d'implémenter
+### Le chemin imposé par la rétention 24 h de `/bouees`
 
-- **Rétention 24 h côté API** : sans archivage à nous, aucune série longue.
-  Si les bouées doivent un jour servir de vérité terrain (stations Med au
-  scoreboard, EMR flottant type Golfe du Lion — voir sondage §3), **commencer
-  à archiver dès la mise en ligne du volet 1** : un cron léger qui commit les
-  obs quotidiennes suffit (même mécanique que `data_forecast_archive/`).
-- **Statut éditorial** : ces bouées sont des *observations*, pas des
-  prévisions scorées — les présenter comme telles sur le site, sans les
-  mélanger au scoreboard IA (pas de gain, pas de verdict).
-- **Carte** : contrainte design system ODC (skill `oceandata-design`, alias
-  sémantiques, verdict jamais par la couleur seule). Choix de la lib carto à
-  cadrer (fond de carte, coût, offline/statique vs tuiles) — le site est
-  statique pré-rendu, la carte doit vivre avec ça.
-- **Positions des bouées** : `/liste-bouees` les fournit — jamais en dur.
+- **Scoring quotidien : faisable dès le premier jour.** La fenêtre de 24 h
+  suffit à vérifier la prévision d'hier — même mécanique que Candhis.
+- **Entraînement : bloqué par l'historique d'obs.** Les baselines
+  historiques existent (l'archive Open-Meteo Marine couvre la Méditerranée),
+  mais il n'y a AUCUNE archive d'obs bouées MF via cette API. Donc :
+  **archiver les obs dès l'ajout des stations** (le cron quotidien les
+  committe, même mécanique que `data_forecast_archive/`), servir d'abord en
+  « baseline seule » (gate non passé, non publié — le mécanisme existe),
+  puis entraîner quand ~2-3 mois d'obs sont accumulés.
+- Nouveau module source `sources/mfbuoy.py` (auth `apikey`, quotas ~50-60
+  req/min largement suffisants) ; `kind = "wave"` réutilise toute la chaîne
+  multi-modèles du chantier 2026-08. Vérifier la couverture Marine API sur
+  chaque point Med par sondage non-null avant d'inscrire une bouée.
+- **Positions** : `/liste-bouees` les fournit — jamais en dur.
+
+### Carte
+
+Contrainte design system ODC (skill `oceandata-design`, alias sémantiques,
+verdict jamais par la couleur seule). Lib carto à cadrer avec la contrainte
+site statique pré-rendu (fond de carte, tuiles vs vectoriel embarqué).
 
 ### Préalable
 
 Après la mise en prod du ré-entraînement multi-modèles (chantier en cours) et
-sa vérification cron. Passe avant ou avec la demande 1 (graphiques) — la carte
-est un bon véhicule pour les graphiques enrichis par station.
+sa vérification cron. **L'archivage des obs bouées peut démarrer tôt** (il
+conditionne la date du premier entraînement Med) ; la carte passe avant ou
+avec la demande 1 (graphiques).
 
 ---
 
