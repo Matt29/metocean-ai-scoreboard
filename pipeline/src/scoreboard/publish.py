@@ -100,6 +100,12 @@ def write_latest(out_dir: Path, station_id: str, issued: str, series: list[dict]
     return payload
 
 
+def read_history(out_dir: Path, station_id: str) -> dict | None:
+    """`history.json` as written by `upsert_history`, or `None` if it doesn't exist
+    yet — used by `backfill.py` to find which days are missing (résolution 5)."""
+    return _read(out_dir / station_id / "history.json")
+
+
 def upsert_history(out_dir: Path, station_id: str, day_entry: dict) -> dict:
     """`data/<id>/history.json` — replace-by-date (idempotent), capped at 90 days."""
     path = out_dir / station_id / "history.json"
@@ -118,7 +124,10 @@ def upsert_history(out_dir: Path, station_id: str, day_entry: dict) -> dict:
 def compute_scores(days: list[dict]) -> dict:
     """MAE aggregates over "ok" days only — a "missing" day must not move them."""
     ok = [d for d in days if d.get("status") == "ok"]
-    row = {"n_days": len(ok)}
+    # Among the "ok" days, how many were reconstructed a posteriori by
+    # `scoreboard backfill` rather than scored the day after a live run — the
+    # site surfaces this as "dont N jours reconstitués" (résolution 2).
+    row = {"n_days": len(ok), "n_days_backfilled": sum(1 for d in ok if d.get("backfilled"))}
     for label, n in _SCORE_WINDOWS.items():
         window = ok[-n:] if n else ok
         row[f"mae_ia_{label}"] = round(sum(d["mae_ia"] for d in window) / len(window), 4) if window else None

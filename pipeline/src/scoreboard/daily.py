@@ -72,7 +72,7 @@ def load_gate(path: Path | None = None) -> dict:
     return json.loads(path.read_text())
 
 
-def _iso(t: pd.Timestamp) -> str:
+def iso(t: pd.Timestamp) -> str:
     return t.isoformat().replace("+00:00", "Z")
 
 
@@ -126,6 +126,55 @@ def _baseline_window(station: Station, obs: pd.Series, t0: pd.Timestamp, mfwam: 
     return fitted.predict(window)
 
 
+def score_series(obs: pd.Series, series: list[dict], issued_ts: pd.Timestamp) -> dict:
+    """Pure scoring core (no I/O): match an issued `series` (`[{"t","ia","baseline"}]`)
+    against `obs` (nearest hour, 1h tolerance) and build the `history.json` day entry.
+
+    Shared by `_score_previous_issue` (reads `series` back off a `latest.json` written
+    a day earlier) and `backfill.py` (scores a freshly regenerated `series` immediately,
+    against the deep a-posteriori obs already held in memory — résolution 1, no second
+    scoring code path).
+    """
+    day = issued_ts.date().isoformat()
+    if not series:
+        return {"date": day, "status": "missing"}
+
+    times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in series])
+    ia = pd.Series([p["ia"] for p in series], index=times)
+    baseline = pd.Series([p["baseline"] for p in series], index=times)
+    matched = obs.reindex(times, method="nearest", tolerance=pd.Timedelta("1h"))
+    keep = matched.notna()
+
+    if not keep.any():
+        return {"date": day, "status": "missing"}
+
+    mae_ia, mae_baseline = publish.score_day(matched[keep], ia[keep], baseline[keep])
+    out_series = [
+        {
+            "t": iso(t),
+            "obs": round(float(matched[t]), 4),
+            "ia": round(float(ia[t]), 4),
+            "baseline": round(float(baseline[t]), 4),
+        }
+        for t in times[keep]
+    ]
+    lead_hours = (times[keep] - issued_ts) / pd.Timedelta(hours=1)
+    return {
+        "date": day,
+        "status": "ok",
+        "series": out_series,
+        "mae_ia": round(mae_ia, 4),
+        "mae_baseline": round(mae_baseline, 4),
+        "n_points": int(keep.sum()),
+        # Réserve : ne couvre que les leads matchés par les obs disponibles au
+        # moment du scoring (typiquement <= 24h en run quotidien — voir
+        # `_fetch_obs`/`OBS_LOOKBACK_DAYS` — mais le plein horizon en backfill,
+        # voir `backfill.py`), pas le plein horizon 48h de `gate.mae_model` —
+        # pas comparable tel quel.
+        "max_lead_h": int(round(lead_hours.max())),
+    }
+
+
 def _score_previous_issue(station: Station, obs: pd.Series, out_dir: Path, run_date: date) -> None:
     """Score a *previous* `latest.json` against today's freshly fetched obs.
 
@@ -143,49 +192,31 @@ def _score_previous_issue(station: Station, obs: pd.Series, out_dir: Path, run_d
     issued_ts = pd.Timestamp(prev["issued"])
     if issued_ts.date() >= run_date:
         return
-    prev_series = prev.get("series") or []
-    day = issued_ts.date().isoformat()
-    if not prev_series:
-        publish.upsert_history(out_dir, station.id, {"date": day, "status": "missing"})
-        return
+    entry = score_series(obs, prev.get("series") or [], issued_ts)
+    publish.upsert_history(out_dir, station.id, entry)
 
-    times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in prev_series])
-    ia = pd.Series([p["ia"] for p in prev_series], index=times)
-    baseline = pd.Series([p["baseline"] for p in prev_series], index=times)
-    matched = obs.reindex(times, method="nearest", tolerance=pd.Timedelta("1h"))
-    keep = matched.notna()
 
-    if not keep.any():
-        publish.upsert_history(out_dir, station.id, {"date": day, "status": "missing"})
-        return
-
-    mae_ia, mae_baseline = publish.score_day(matched[keep], ia[keep], baseline[keep])
-    series = [
-        {
-            "t": _iso(t),
-            "obs": round(float(matched[t]), 4),
-            "ia": round(float(ia[t]), 4),
-            "baseline": round(float(baseline[t]), 4),
-        }
-        for t in times[keep]
+def issue_series(
+    station: Station,
+    obs: pd.Series,
+    t0: pd.Timestamp,
+    mfwam: dict,
+    forcing: pd.DataFrame,
+    models_dir: Path | None,
+) -> list[dict]:
+    """Pure inference core (no I/O): baseline -> features -> model -> `[{"t","ia",
+    "baseline"}]`. Shared by `_run_station` (live forcing, today's issue) and
+    `backfill.py` (a-posteriori forcing/obs, a past day's issue) — one code path,
+    résolution 1's "ne duplique pas la logique de prédiction"."""
+    baseline = _baseline_window(station, obs, t0, mfwam)
+    feats = build_features(baseline, obs, t0, forcing)
+    pipe = model.load(station.id, models_dir=models_dir)
+    pred = model.predict(pipe, feats)
+    ia = feats["baseline"].to_numpy() + pred if station.kind == "tide" else pred
+    return [
+        {"t": iso(t), "ia": round(float(i), 4), "baseline": round(float(b), 4)}
+        for t, i, b in zip(feats.index, ia, feats["baseline"])
     ]
-    lead_hours = (times[keep] - issued_ts) / pd.Timedelta(hours=1)
-    publish.upsert_history(
-        out_dir,
-        station.id,
-        {
-            "date": day,
-            "status": "ok",
-            "series": series,
-            "mae_ia": round(mae_ia, 4),
-            "mae_baseline": round(mae_baseline, 4),
-            "n_points": int(keep.sum()),
-            # Réserve : ne couvre que les leads matchés par les obs de CE run
-            # (typiquement <= 24h — voir `_fetch_obs`/`OBS_LOOKBACK_DAYS`), pas
-            # le plein horizon 48h de `gate.mae_model` — pas comparable tel quel.
-            "max_lead_h": int(round(lead_hours.max())),
-        },
-    )
 
 
 def _run_station(
@@ -213,16 +244,8 @@ def _run_station(
         log.warning("%s: scoring the previous issue failed: %s", station.id, exc)
 
     try:
-        baseline = _baseline_window(station, obs, t0, mfwam)
         forcing = fetch_wind_forecast(station)
-        feats = build_features(baseline, obs, t0, forcing)
-        pipe = model.load(station.id, models_dir=models_dir)
-        pred = model.predict(pipe, feats)
-        ia = feats["baseline"].to_numpy() + pred if station.kind == "tide" else pred
-        series = [
-            {"t": _iso(t), "ia": round(float(i), 4), "baseline": round(float(b), 4)}
-            for t, i, b in zip(feats.index, ia, feats["baseline"])
-        ]
+        series = issue_series(station, obs, t0, mfwam, forcing, models_dir)
     except Exception as exc:  # noqa: BLE001 - SourceError, a missing model file,
         # sklearn/pandas/utide raising on a degenerate input: none of it may
         # escape and abort the other stations' loop iteration.
@@ -250,7 +273,7 @@ def run(
     stations = stations if stations is not None else load_stations()
     gate = gate if gate is not None else load_gate()
     t0 = pd.Timestamp(run_date, tz="UTC") + pd.Timedelta(hours=ISSUE_HOUR)
-    issued = _iso(t0)
+    issued = iso(t0)
 
     publish.write_stations(out_dir, stations, gate)
 
@@ -267,5 +290,5 @@ def run(
         st.id: _run_station(st, run_date, t0, issued, mfwam, out_dir, models_dir) for st in published
     }
 
-    publish.write_scores(out_dir, [s.id for s in published], _iso(pd.Timestamp(datetime.now(timezone.utc))))
+    publish.write_scores(out_dir, [s.id for s in published], iso(pd.Timestamp(datetime.now(timezone.utc))))
     return summary
