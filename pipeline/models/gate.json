@@ -1,49 +1,49 @@
 {
   "anglet": {
-    "gain": -0.0055,
-    "gain_debiased": 0.015,
-    "mae_baseline": 0.1042,
-    "mae_model": 0.1048,
-    "pass": false,
+    "gain": 0.0567,
+    "gain_debiased": 0.0837,
+    "mae_baseline": 0.1019,
+    "mae_model": 0.0962,
+    "pass": true,
     "weak": false
   },
   "belle-ile": {
-    "gain": 0.3849,
-    "gain_debiased": 0.121,
-    "mae_baseline": 0.1462,
-    "mae_model": 0.0899,
+    "gain": 0.5013,
+    "gain_debiased": 0.2445,
+    "mae_baseline": 0.1537,
+    "mae_model": 0.0766,
     "pass": true,
     "weak": false
   },
   "brest": {
-    "gain": 0.2845,
-    "gain_debiased": 0.0225,
+    "gain": 0.2288,
+    "gain_debiased": -0.0535,
     "mae_baseline": 0.0868,
-    "mae_model": 0.0621,
+    "mae_model": 0.0669,
     "pass": true,
-    "weak": false
+    "weak": true
   },
   "cherbourg": {
-    "gain": 0.1318,
-    "gain_debiased": 0.043,
-    "mae_baseline": 0.1283,
-    "mae_model": 0.1114,
-    "pass": true,
-    "weak": false
+    "gain": 0.0238,
+    "gain_debiased": -0.052,
+    "mae_baseline": 0.11,
+    "mae_model": 0.1074,
+    "pass": false,
+    "weak": true
   },
   "pierres-noires": {
-    "gain": 0.5775,
-    "gain_debiased": 0.146,
-    "mae_baseline": 0.2597,
-    "mae_model": 0.1097,
+    "gain": 0.6576,
+    "gain_debiased": 0.2642,
+    "mae_baseline": 0.2602,
+    "mae_model": 0.0891,
     "pass": true,
     "weak": false
   },
   "saint-malo": {
-    "gain": -0.3047,
-    "gain_debiased": -0.313,
+    "gain": -0.1335,
+    "gain_debiased": -0.1407,
     "mae_baseline": 0.1167,
-    "mae_model": 0.1522,
+    "mae_model": 0.1322,
     "pass": false,
     "weak": true
   }

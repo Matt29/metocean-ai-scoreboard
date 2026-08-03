@@ -1,6 +1,6 @@
 # Évaluation des modèles de post-traitement
 
-Généré par `pipeline/scripts/train.py` le 2026-08-03 08:55 UTC (test = les 30 derniers jours d'émission).
+Généré par `pipeline/scripts/train.py` le 2026-08-03 09:15 UTC (test = les 30 derniers jours d'émission).
 
 Le modèle **post-traite** la prévision physique officielle (MFWAM pour les
 vagues, harmonique pour le niveau d'eau) : il la corrige, il ne la remplace
@@ -10,12 +10,12 @@ jamais.
 
 | Station | Type | Rows train / test | MAE baseline | MAE baseline débiaisée | MAE modèle | Gain affiché | **Gain hors biais** | Verdict |
 |---|---|---|---|---|---|---|---|---|
-| pierres-noires | wave | 15286 / 1402 | 0.260 | 0.128 | 0.110 | +57.8% | **+14.6%** | PASS |
-| belle-ile | wave | 15810 / 1402 | 0.146 | 0.102 | 0.090 | +38.5% | **+12.1%** | PASS |
-| anglet | wave | 10768 / 1402 | 0.104 | 0.106 | 0.105 | -0.5% | **+1.5%** | FAIL |
-| cherbourg | wave | 14244 / 1368 | 0.128 | 0.116 | 0.111 | +13.2% | **+4.3%** | PASS |
-| brest | tide | 7243 / 1404 | 0.087 | 0.064 | 0.062 | +28.4% | **+2.3%** | PASS |
-| saint-malo | tide | 7243 / 1404 | 0.117 | 0.116 | 0.152 | -30.5% | **-31.3%** | FAIL |
+| pierres-noires | wave | 15286 / 1402 | 0.260 | 0.121 | 0.089 | +65.8% | **+26.4%** | PASS |
+| belle-ile | wave | 15810 / 1402 | 0.154 | 0.101 | 0.077 | +50.1% | **+24.5%** | PASS |
+| anglet | wave | 10960 / 1402 | 0.102 | 0.105 | 0.096 | +5.7% | **+8.4%** | PASS |
+| cherbourg | wave | 14246 / 1368 | 0.110 | 0.102 | 0.107 | +2.4% | **-5.2%** | FAIL |
+| brest | tide | 7243 / 1404 | 0.087 | 0.064 | 0.067 | +22.9% | **-5.4%** | PASS\* |
+| saint-malo | tide | 7243 / 1404 | 0.117 | 0.116 | 0.132 | -13.3% | **-14.1%** | FAIL |
 
 MAE en m (Hs) pour les stations `wave`, en m (water level) pour les
 stations `tide`. « MAE baseline débiaisée » = MAE de la baseline après retrait
@@ -34,7 +34,7 @@ Ce verdict est aussi émis en donnée dans `pipeline/models/gate.json`
 c'est cette
 source, pas ce tableau, que le publisher doit lire.
 
-**Stations sous le gate : anglet, saint-malo** — à ne pas mettre en ligne en l'état.
+**Stations sous le gate : cherbourg, saint-malo** — à ne pas mettre en ligne en l'état.
 
 ## Protocole
 
@@ -71,20 +71,20 @@ source, pas ce tableau, que le publisher doit lire.
    gain. Le chiffre à citer est donc **« Gain hors biais »**, jamais « Gain
    affiché ». Détail par station (biais obs − baseline, puis les deux gains) :
 
-   * `pierres-noires` : biais -0.247 m — gain affiché +57.8%, **hors biais +14.6%**
-   * `belle-ile` : biais -0.128 m — gain affiché +38.5%, **hors biais +12.1%**
-   * `anglet` : biais +0.011 m — gain affiché -0.5%, **hors biais +1.5%**
-   * `cherbourg` : biais -0.072 m — gain affiché +13.2%, **hors biais +4.3%**
-   * `brest` : biais -0.072 m — gain affiché +28.4%, **hors biais +2.3%**
-   * `saint-malo` : biais -0.012 m — gain affiché -30.5%, **hors biais -31.3%**
+   * `pierres-noires` : biais -0.253 m — gain affiché +65.8%, **hors biais +26.4%**
+   * `belle-ile` : biais -0.134 m — gain affiché +50.1%, **hors biais +24.5%**
+   * `anglet` : biais +0.019 m — gain affiché +5.7%, **hors biais +8.4%**
+   * `cherbourg` : biais -0.050 m — gain affiché +2.4%, **hors biais -5.2%**
+   * `brest` : biais -0.072 m — gain affiché +22.9%, **hors biais -5.4%**
+   * `saint-malo` : biais -0.012 m — gain affiché -13.3%, **hors biais -14.1%**
 
    Stations dont le gain affiché vaut **au moins le double** de son gain hors biais : `pierres-noires`, `belle-ile`, `cherbourg`, `brest` — leur chiffre de tête est d'abord du débiaisage.
-   Stations où le modèle **ne bat pas** ce simple débiaisage : `saint-malo` — il n'y apporte rien de plus qu'une constante, à ne pas présenter comme du skill météo-océanique.
+   Stations où le modèle **ne bat pas** ce simple débiaisage : `cherbourg`, `brest`, `saint-malo` — il n'y apporte rien de plus qu'une constante, à ne pas présenter comme du skill météo-océanique.
 4. **Stations sous le gate — à ne pas publier en l'état.** Le modèle n'y
    atteint pas les +5% exigés : il ne trouve pas de signal exploitable
    dans les features actuelles. Deux causes à trancher station par station —
    historique d'entraînement trop court, ou absence d'une feature de forçage
    (vent ARPEGE) sans laquelle le résidu restant est imprévisible.
 
-   * `anglet` (wave) : 10768 lignes de train, MAE baseline 0.104 → modèle 0.105 (-0.5% affiché, +1.5% hors biais)
-   * `saint-malo` (tide) : 7243 lignes de train, MAE baseline 0.117 → modèle 0.152 (-30.5% affiché, -31.3% hors biais)
+   * `cherbourg` (wave) : 14246 lignes de train, MAE baseline 0.110 → modèle 0.107 (+2.4% affiché, -5.2% hors biais)
+   * `saint-malo` (tide) : 7243 lignes de train, MAE baseline 0.117 → modèle 0.132 (-13.3% affiché, -14.1% hors biais)
