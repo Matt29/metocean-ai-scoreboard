@@ -221,6 +221,25 @@ def test_wave_features_columns_and_spread():
     assert not feats.isna().any().any()
 
 
+def test_short_hs_gap_is_interpolated_not_zero_filled():
+    """0 m of sea does not exist: a short hole must not become a 0.0 spread spike."""
+    baseline = _baseline()
+    wm = _wave_models_frame(baseline.index)
+    col = MODEL_COLUMNS[-1]  # constant at 4.0
+    # 3 consecutive hours after t0: the middle one has no sample within the 1h
+    # align tolerance, so without interpolation it falls back to 0.0.
+    wm.loc[T0 + pd.Timedelta(hours=10) : T0 + pd.Timedelta(hours=12), col] = np.nan
+    feats = build_features(
+        baseline,
+        _series(T0 - pd.Timedelta(hours=24), 25, 1.3),
+        T0,
+        _forcing_multi(),
+        wave_models=wm,
+    )
+    assert np.allclose(feats[col], 4.0)
+    assert np.allclose(feats["model_spread"], np.std([0, 1, 2, 3, 4]))
+
+
 def test_wave_model_under_coverage_raises():
     baseline = _baseline()
     wm = _wave_models_frame(baseline.index)

@@ -67,6 +67,9 @@ _NEUTRAL_FORCING = 0.0
 # Both providers deliver a gap-free hourly grid, so a few missing hours are a
 # blip while a third of the horizon missing is a degraded fetch, not weather.
 _MIN_FORCING_COVERAGE = 0.9
+# Hs only: hours of hole a linear-in-time interpolation may bridge. A sea state
+# barely moves over 3 h; beyond that we would be inventing a swell.
+_MAX_HS_GAP = 3
 
 _ALIGN_TOLERANCE = pd.Timedelta("1h")
 
@@ -146,9 +149,16 @@ def build_features(
 
     # Each model gets the forcing treatment: nearest-hour alignment and the same
     # 90% coverage floor, so a dead model raises instead of being served as flat
-    # water. Sub-10% gaps still fall back to 0.0 — the accepted trade-off already
-    # made for wind; the floor is what keeps those gaps rare.
-    _add_aligned(feats, wave_models, MODEL_COLUMNS)
+    # water. Short holes are interpolated in time first, because the 0.0 fallback
+    # is wrong for Hs: 0 m of sea does not exist, and an isolated zero would
+    # inflate `model_spread` exactly where the data is missing. The wind columns
+    # below keep the 0.0 fill — a 0 m/s wind is an ordinary calm. Holes longer
+    # than `_MAX_HS_GAP` stay NaN and are caught by the coverage floor.
+    _add_aligned(
+        feats,
+        wave_models.sort_index().interpolate(method="time", limit=_MAX_HS_GAP),
+        MODEL_COLUMNS,
+    )
     # Vectorised `_finite`: the guard above already forecloses NaN, kept because
     # "a feature is never NaN" is a contract, not an inference from the caller.
     feats["model_spread"] = np.nan_to_num(
