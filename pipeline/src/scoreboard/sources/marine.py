@@ -13,6 +13,7 @@ multi-model request (this module always requests all 5) suffixes every
 """
 from __future__ import annotations
 
+import logging
 from datetime import date
 
 import pandas as pd
@@ -25,6 +26,8 @@ WAVE_MODELS = ["meteofrance_wave", "ecmwf_wam025", "gwam", "ewam", "ncep_gfswave
 MODEL_COLUMNS = [f"hs_{m}" for m in WAVE_MODELS]
 _MARINE_URL = "https://marine-api.open-meteo.com/v1/marine"
 _TIMEOUT = 60
+
+log = logging.getLogger(__name__)
 
 
 def _fetch(params: dict, station: Station, session) -> pd.DataFrame:
@@ -51,7 +54,22 @@ def _fetch(params: dict, station: Station, session) -> pd.DataFrame:
     out = out.sort_index()
     # Same guard as candhis.py/wind.py: a duplicated index makes the
     # nearest-reindex in features.py raise instead of returning features.
-    return out[~out.index.duplicated(keep="first")]
+    out = out[~out.index.duplicated(keep="first")]
+
+    # Open-Meteo snaps to its own grid (ERA5 0.25 deg, ARPEGE 0.1 deg). Log the
+    # resolved cell: a distant or non-zero-elevation cell is land-contaminated,
+    # exactly the bug already fixed for MFWAM in 0740e81. `elevation` is the
+    # cheapest land signal the API exposes.
+    grid_lat, grid_lon = payload.get("latitude"), payload.get("longitude")
+    if grid_lat is not None and grid_lon is not None:
+        log.info(
+            "%s: wave cell (%.3f, %.3f) vs station (%.3f, %.3f), offset %.3f deg, elevation %s m",
+            station.id, grid_lat, grid_lon, station.lat, station.lon,
+            max(abs(grid_lat - station.lat), abs(grid_lon - station.lon)),
+            payload.get("elevation"),
+        )
+
+    return out
 
 
 def fetch_wave_models_history(
