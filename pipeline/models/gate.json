@@ -14,11 +14,11 @@
     "weak": false
   },
   "brest": {
-    "gain": 0.4886,
-    "mae_baseline": 0.4598,
-    "mae_model": 0.2352,
+    "gain": 0.2845,
+    "mae_baseline": 0.0868,
+    "mae_model": 0.0621,
     "pass": true,
-    "weak": true
+    "weak": false
   },
   "cherbourg": {
     "gain": 0.1318,
@@ -35,10 +35,10 @@
     "weak": false
   },
   "saint-malo": {
-    "gain": 0.2955,
-    "mae_baseline": 0.4548,
-    "mae_model": 0.3204,
-    "pass": true,
-    "weak": false
+    "gain": -0.3047,
+    "mae_baseline": 0.1167,
+    "mae_model": 0.1522,
+    "pass": false,
+    "weak": true
   }
 }

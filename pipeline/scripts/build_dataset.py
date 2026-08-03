@@ -16,9 +16,14 @@ Sources and documented compromises
   the public scoreboard is scored on real forecasts, not on this proxy.
 * Tide (REFMAR): raw high-frequency observations, chunked in 30-day requests
   (API caps a request at 31 days). Real archive depth is discovered at runtime.
-* Tide baseline (harmonic): fitted on the OLDEST `--fit-frac` of the station's
-  own observations; the dataset is assembled only on the remaining, later
-  window. The harmonic constants therefore never saw the evaluated hours.
+* Tide baseline (harmonic): **causal rolling fit** (`harmonic.causal_predict`).
+  A first model is fitted on the oldest `--fit-frac` of the station's own
+  observations, then refitted every `--refit-days` on the expanding history.
+  The model serving a given valid time is always fitted on observations strictly
+  anterior to the simulated issue — no leak, and it is what production will do
+  (Task 8 refits periodically on the whole archive). A single frozen fit made the
+  baseline dishonestly bad: utide extrapolates its secular trend, so a 6-month-old
+  fit carried a ~-0.3 m offset that the model was rewarded for merely removing.
 """
 
 from __future__ import annotations
@@ -33,7 +38,7 @@ import pandas as pd
 
 from scoreboard import harmonic
 from scoreboard.config import Station, load_stations
-from scoreboard.dataset import assemble
+from scoreboard.dataset import HORIZON_H, assemble
 from scoreboard.sources.candhis import fetch_wave_obs
 from scoreboard.sources.mfwam import _DATASET_ID, _VARIABLE, _extract_point
 from scoreboard.sources.waterlevel import fetch_tide_obs
@@ -77,7 +82,9 @@ def build_wave(stations: list[Station], start: date, end: date) -> dict[str, tup
     return out
 
 
-def build_tide(stations: list[Station], start: date, end: date, fit_frac: float) -> dict[str, tuple]:
+def build_tide(
+    stations: list[Station], start: date, end: date, fit_frac: float, refit_days: int
+) -> dict[str, tuple]:
     out = {}
     for st in stations:
         obs = fetch_tide_obs(st, start, date_end=end)
@@ -88,14 +95,16 @@ def build_tide(stations: list[Station], start: date, end: date, fit_frac: float)
             continue
 
         split = level.index[int(len(level) * fit_frac)]
-        model = harmonic.fit(level[level.index <= split], st.lat)
-        eval_obs = obs[obs.index > split]
-        baseline = pd.DataFrame({"level_baseline": model.predict(eval_obs.index)})
-        out[st.id] = assemble(st, eval_obs, baseline)
+        baseline_s = harmonic.causal_predict(
+            level, st.lat, obs.index, first_cutoff=split, refit_days=refit_days,
+            horizon_hours=HORIZON_H,
+        )
+        eval_obs = obs.loc[baseline_s.index]
+        out[st.id] = assemble(st, eval_obs, pd.DataFrame({"level_baseline": baseline_s}))
         print(
             f"  {st.id}: obs {len(level)}h "
             f"({level.index[0]:%Y-%m-%d} -> {level.index[-1]:%Y-%m-%d}), "
-            f"harmonic fitted on {split:%Y-%m-%d} and before"
+            f"harmonic refit every {refit_days}d from {split:%Y-%m-%d}"
         )
     return out
 
@@ -104,11 +113,16 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--days", type=int, default=365, help="history depth to request")
     ap.add_argument("--fit-frac", type=float, default=0.5, help="share of tide obs used to fit")
+    ap.add_argument(
+        "--refit-days", type=int, default=30, help="harmonic refit cadence (tide stations)"
+    )
+    # Candhis has a daily quota: `--kind tide` reruns the tide half without re-fetching waves.
+    ap.add_argument("--kind", choices=["wave", "tide"], help="build only this station kind")
     args = ap.parse_args()
 
     end = date.today()
     start = end - timedelta(days=args.days)
-    stations = load_stations()
+    stations = [s for s in load_stations() if args.kind in (None, s.kind)]
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"Window {start} -> {end}")
@@ -120,7 +134,7 @@ def main() -> int:
         datasets |= build_wave(waves, start, end)
     if tides:
         print("Tide (REFMAR + harmonic):")
-        datasets |= build_tide(tides, start, end, args.fit_frac)
+        datasets |= build_tide(tides, start, end, args.fit_frac, args.refit_days)
 
     print("\nrows written:")
     for station_id, (x, y) in datasets.items():

@@ -1,6 +1,6 @@
 # Évaluation des modèles de post-traitement
 
-Généré par `pipeline/scripts/train.py` le 2026-08-03 08:27 UTC (test = les 30 derniers jours d'émission).
+Généré par `pipeline/scripts/train.py` le 2026-08-03 08:44 UTC (test = les 30 derniers jours d'émission).
 
 Le modèle **post-traite** la prévision physique officielle (MFWAM pour les
 vagues, harmonique pour le niveau d'eau) : il la corrige, il ne la remplace
@@ -14,8 +14,8 @@ jamais.
 | belle-ile | wave | 15810 / 1402 | 0.146 | 0.102 | 0.090 | +38.5% | PASS |
 | anglet | wave | 10768 / 1402 | 0.104 | 0.106 | 0.105 | -0.5% | FAIL |
 | cherbourg | wave | 14244 / 1368 | 0.128 | 0.116 | 0.111 | +13.2% | PASS |
-| brest | tide | 7338 / 1404 | 0.460 | 0.207 | 0.235 | +48.9% | PASS\* |
-| saint-malo | tide | 7338 / 1404 | 0.455 | 0.400 | 0.320 | +29.5% | PASS |
+| brest | tide | 7243 / 1404 | 0.087 | 0.064 | 0.062 | +28.4% | PASS |
+| saint-malo | tide | 7243 / 1404 | 0.117 | 0.116 | 0.152 | -30.5% | FAIL |
 
 MAE en m (Hs) pour les stations `wave`, en m (water level) pour les
 stations `tide`. « MAE baseline débiaisée » = MAE de la baseline après retrait
@@ -33,7 +33,7 @@ Ce verdict est aussi émis en donnée dans `pipeline/models/gate.json`
 (`{station: {pass, weak, mae_model, mae_baseline, gain}}`) — c'est cette
 source, pas ce tableau, que le publisher doit lire.
 
-**Stations sous le gate : anglet** — à ne pas mettre en ligne en l'état.
+**Stations sous le gate : anglet, saint-malo** — à ne pas mettre en ligne en l'état.
 
 ## Protocole
 
@@ -64,25 +64,30 @@ source, pas ce tableau, que le publisher doit lire.
    seront alors remplacés.
 2. **Le gate de +5 % s'applique quand même**, mais il se lit
    « +5 % mesuré sur analyse », pas « +5 % en opérationnel ».
-3. **Une large part du gain, sur TOUTES les stations, n'est qu'une correction
-   de biais constant.** Chaque baseline dérive sur la fenêtre de test (pour
-   les stations `tide`, parce que l'harmonique a été fittée sur les 50 % les
-   plus anciens de l'historique ; pour les stations `wave`, biais MFWAM sur la
-   période). Biais mesuré (obs − baseline) par station :
+3. **Une part du gain peut n'être qu'une correction de biais constant.**
+   Chaque baseline peut dériver sur la fenêtre de test (biais MFWAM sur la
+   période pour les stations `wave` ; pour les stations `tide`, l'harmonique
+   est depuis Task 7A refittée tous les 30 jours sur l'historique antérieur à
+   l'émission, ce qui a ramené son biais de ~-0,45 m à ~-0,07 m).
+   Biais mesuré (obs − baseline) par station :
 
    * `pierres-noires` : biais -0.247 m
    * `belle-ile` : biais -0.128 m
    * `anglet` : biais +0.011 m
    * `cherbourg` : biais -0.072 m
-   * `brest` : biais -0.453 m
-   * `saint-malo` : biais -0.270 m
+   * `brest` : biais -0.072 m
+   * `saint-malo` : biais -0.012 m
 
    La colonne « MAE baseline débiaisée » du tableau isole ce qui reste une
    fois cette constante retirée : c'est elle, et non la MAE baseline brute,
    qui mesure le vrai apport du modèle.
-   Stations où le modèle **ne bat pas** ce simple débiaisage : `brest` — leur gain affiché est essentiellement une constante, à ne pas présenter comme du skill météo-océanique.
+   Stations où le modèle **ne bat pas** ce simple débiaisage : `saint-malo` — leur gain affiché est essentiellement une constante, à ne pas présenter comme du skill météo-océanique.
 4. **`anglet` a un historique court** (obs Candhis à partir du 2025-11-18,
    panne de bouée avant) : ~30 % de train en moins que les autres stations
-   vagues, et un test plus bruité. C'est la station qui échoue au gate.
-   Pistes avant de la publier : plus d'historique, ou une feature de vent
-   ARPEGE. Décision de re-spécification à prendre hors Task 7.
+   vagues, et un test plus bruité. Pistes avant de la publier : plus
+   d'historique, ou une feature de vent ARPEGE.
+5. **`saint-malo` échoue au gate depuis la baseline causale (Task 7A).** Une
+   fois l'harmonique refittée, il ne reste qu'un résidu météorologique de
+   ~0,12 m que le modèle dégrade au lieu de le corriger : sans feature de
+   forçage atmosphérique, il n'a rien à apprendre et n'ajoute que du bruit.
+   C'est le résultat honnête ; l'ancien +29,6 % n'était que du débiaisage.
