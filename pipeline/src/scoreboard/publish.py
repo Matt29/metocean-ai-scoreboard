@@ -137,6 +137,25 @@ def upsert_history(out_dir: Path, station_id: str, day_entry: dict) -> dict:
     return payload
 
 
+def _current_baseline_model(days: list[dict]) -> str | None:
+    """The baseline this station serves *now*: the one named by its most recent
+    day entry that names one.
+
+    Derived from the history itself rather than passed in from the artefact, so
+    there is exactly one source of truth: the days being averaged *are* the
+    record of which baseline produced them. `None` for tide (harmonic, never
+    named) and for a history written entirely before Task 6.
+    """
+    return next(
+        (
+            d["baseline_model"]
+            for d in sorted(days, key=lambda d: d["date"], reverse=True)
+            if d.get("baseline_model")
+        ),
+        None,
+    )
+
+
 def compute_scores(days: list[dict]) -> dict:
     """MAE aggregates over "ok" days only — a "missing" day must not move them.
 
@@ -144,8 +163,20 @@ def compute_scores(days: list[dict]) -> dict:
     wall-clock, so the function stays deterministic from its input): "7d"
     means every ok day within 7 calendar days of that anchor, regardless of
     gaps — not simply the last 7 ok entries.
+
+    Days produced against a *different* baseline than the current one are
+    excluded outright: `mae_baseline` (and therefore the gain the site shows)
+    is only meaningful against one baseline at a time, and averaging MFWAM days
+    with best-wave-model days would publish a hybrid number nobody could
+    interpret. Those days stay in `history.json` and keep being served for
+    their series — they simply do not feed the windows. Expect the wave windows
+    to empty out the day the baseline changes and refill from there; an empty
+    window already yields `None`, not a division by zero.
     """
     ok = [d for d in days if d.get("status") == "ok"]
+    current = _current_baseline_model(days)
+    if current is not None:
+        ok = [d for d in ok if d.get("baseline_model") == current]
     # Among the "ok" days, how many were reconstructed a posteriori by
     # `scoreboard backfill` rather than scored the day after a live run — the
     # site surfaces this as "dont N jours reconstitués" (résolution 2).
