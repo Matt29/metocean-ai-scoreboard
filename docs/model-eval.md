@@ -1,6 +1,6 @@
 # Évaluation des modèles de post-traitement
 
-Généré par `pipeline/scripts/train.py` le 2026-08-03 08:44 UTC (test = les 30 derniers jours d'émission).
+Généré par `pipeline/scripts/train.py` le 2026-08-03 08:55 UTC (test = les 30 derniers jours d'émission).
 
 Le modèle **post-traite** la prévision physique officielle (MFWAM pour les
 vagues, harmonique pour le niveau d'eau) : il la corrige, il ne la remplace
@@ -8,14 +8,14 @@ jamais.
 
 ## Résultats par station
 
-| Station | Type | Rows train / test | MAE baseline | MAE baseline débiaisée | MAE modèle | Gain | Verdict |
-|---|---|---|---|---|---|---|---|
-| pierres-noires | wave | 15286 / 1402 | 0.260 | 0.128 | 0.110 | +57.8% | PASS |
-| belle-ile | wave | 15810 / 1402 | 0.146 | 0.102 | 0.090 | +38.5% | PASS |
-| anglet | wave | 10768 / 1402 | 0.104 | 0.106 | 0.105 | -0.5% | FAIL |
-| cherbourg | wave | 14244 / 1368 | 0.128 | 0.116 | 0.111 | +13.2% | PASS |
-| brest | tide | 7243 / 1404 | 0.087 | 0.064 | 0.062 | +28.4% | PASS |
-| saint-malo | tide | 7243 / 1404 | 0.117 | 0.116 | 0.152 | -30.5% | FAIL |
+| Station | Type | Rows train / test | MAE baseline | MAE baseline débiaisée | MAE modèle | Gain affiché | **Gain hors biais** | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| pierres-noires | wave | 15286 / 1402 | 0.260 | 0.128 | 0.110 | +57.8% | **+14.6%** | PASS |
+| belle-ile | wave | 15810 / 1402 | 0.146 | 0.102 | 0.090 | +38.5% | **+12.1%** | PASS |
+| anglet | wave | 10768 / 1402 | 0.104 | 0.106 | 0.105 | -0.5% | **+1.5%** | FAIL |
+| cherbourg | wave | 14244 / 1368 | 0.128 | 0.116 | 0.111 | +13.2% | **+4.3%** | PASS |
+| brest | tide | 7243 / 1404 | 0.087 | 0.064 | 0.062 | +28.4% | **+2.3%** | PASS |
+| saint-malo | tide | 7243 / 1404 | 0.117 | 0.116 | 0.152 | -30.5% | **-31.3%** | FAIL |
 
 MAE en m (Hs) pour les stations `wave`, en m (water level) pour les
 stations `tide`. « MAE baseline débiaisée » = MAE de la baseline après retrait
@@ -30,7 +30,8 @@ débiaisée** : son gain affiché est essentiellement une constante, pas du skil
 Ne pas mettre ce chiffre en avant sans la réserve 3.
 
 Ce verdict est aussi émis en donnée dans `pipeline/models/gate.json`
-(`{station: {pass, weak, mae_model, mae_baseline, gain}}`) — c'est cette
+(`{station: {pass, weak, mae_model, mae_baseline, gain, gain_debiased}}`) —
+c'est cette
 source, pas ce tableau, que le publisher doit lire.
 
 **Stations sous le gate : anglet, saint-malo** — à ne pas mettre en ligne en l'état.
@@ -64,30 +65,26 @@ source, pas ce tableau, que le publisher doit lire.
    seront alors remplacés.
 2. **Le gate de +5 % s'applique quand même**, mais il se lit
    « +5 % mesuré sur analyse », pas « +5 % en opérationnel ».
-3. **Une part du gain peut n'être qu'une correction de biais constant.**
-   Chaque baseline peut dériver sur la fenêtre de test (biais MFWAM sur la
-   période pour les stations `wave` ; pour les stations `tide`, l'harmonique
-   est depuis Task 7A refittée tous les 30 jours sur l'historique antérieur à
-   l'émission, ce qui a ramené son biais de ~-0,45 m à ~-0,07 m).
-   Biais mesuré (obs − baseline) par station :
+3. **Sur 4 des 6 stations, plus de la moitié du gain
+   affiché n'est qu'une correction de biais constant** — chaque baseline dérive
+   sur la fenêtre de test, et retirer ce seul offset capte déjà l'essentiel du
+   gain. Le chiffre à citer est donc **« Gain hors biais »**, jamais « Gain
+   affiché ». Détail par station (biais obs − baseline, puis les deux gains) :
 
-   * `pierres-noires` : biais -0.247 m
-   * `belle-ile` : biais -0.128 m
-   * `anglet` : biais +0.011 m
-   * `cherbourg` : biais -0.072 m
-   * `brest` : biais -0.072 m
-   * `saint-malo` : biais -0.012 m
+   * `pierres-noires` : biais -0.247 m — gain affiché +57.8%, **hors biais +14.6%**
+   * `belle-ile` : biais -0.128 m — gain affiché +38.5%, **hors biais +12.1%**
+   * `anglet` : biais +0.011 m — gain affiché -0.5%, **hors biais +1.5%**
+   * `cherbourg` : biais -0.072 m — gain affiché +13.2%, **hors biais +4.3%**
+   * `brest` : biais -0.072 m — gain affiché +28.4%, **hors biais +2.3%**
+   * `saint-malo` : biais -0.012 m — gain affiché -30.5%, **hors biais -31.3%**
 
-   La colonne « MAE baseline débiaisée » du tableau isole ce qui reste une
-   fois cette constante retirée : c'est elle, et non la MAE baseline brute,
-   qui mesure le vrai apport du modèle.
-   Stations où le modèle **ne bat pas** ce simple débiaisage : `saint-malo` — leur gain affiché est essentiellement une constante, à ne pas présenter comme du skill météo-océanique.
-4. **`anglet` a un historique court** (obs Candhis à partir du 2025-11-18,
-   panne de bouée avant) : ~30 % de train en moins que les autres stations
-   vagues, et un test plus bruité. Pistes avant de la publier : plus
-   d'historique, ou une feature de vent ARPEGE.
-5. **`saint-malo` échoue au gate depuis la baseline causale (Task 7A).** Une
-   fois l'harmonique refittée, il ne reste qu'un résidu météorologique de
-   ~0,12 m que le modèle dégrade au lieu de le corriger : sans feature de
-   forçage atmosphérique, il n'a rien à apprendre et n'ajoute que du bruit.
-   C'est le résultat honnête ; l'ancien +29,6 % n'était que du débiaisage.
+   Stations dont le gain affiché vaut **au moins le double** de son gain hors biais : `pierres-noires`, `belle-ile`, `cherbourg`, `brest` — leur chiffre de tête est d'abord du débiaisage.
+   Stations où le modèle **ne bat pas** ce simple débiaisage : `saint-malo` — il n'y apporte rien de plus qu'une constante, à ne pas présenter comme du skill météo-océanique.
+4. **Stations sous le gate — à ne pas publier en l'état.** Le modèle n'y
+   atteint pas les +5% exigés : il ne trouve pas de signal exploitable
+   dans les features actuelles. Deux causes à trancher station par station —
+   historique d'entraînement trop court, ou absence d'une feature de forçage
+   (vent ARPEGE) sans laquelle le résidu restant est imprévisible.
+
+   * `anglet` (wave) : 10768 lignes de train, MAE baseline 0.104 → modèle 0.105 (-0.5% affiché, +1.5% hors biais)
+   * `saint-malo` (tide) : 7243 lignes de train, MAE baseline 0.117 → modèle 0.152 (-30.5% affiché, -31.3% hors biais)

@@ -50,6 +50,8 @@ def causal_predict(
     Consequence: values before `first_cutoff + horizon_hours` cannot be served
     causally and are absent from the returned series.
     """
+    if refit_days < 1:
+        raise ValueError(f"refit_days must be >= 1, got {refit_days}")
     # ponytail: refit every 30d rather than at every issue — the model serving t0 is
     # up to refit_days + horizon stale (~32 d). Refitting daily costs ~180 utide.solve
     # per station for a drift that is millimetric over a month; go per-issue only if

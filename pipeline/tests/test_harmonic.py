@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from scoreboard.harmonic import causal_predict, fit
 
@@ -68,3 +69,11 @@ def test_causal_predict_ignores_observations_after_the_issue():
     late = clean_pred.index > cut + pd.Timedelta(days=60)
     assert np.abs(clean_pred[late] - poisoned_pred[late]).mean() > 10.0
 
+
+
+def test_causal_predict_rejects_a_non_advancing_refit_cadence():
+    """`refit_days=0` would grow the cutoff list forever — fail fast instead."""
+    index = pd.date_range("2026-01-01", periods=60 * 24, freq="h", tz="UTC")
+    obs = _tide(index, index[0])
+    with pytest.raises(ValueError, match="refit_days"):
+        causal_predict(obs, LAT, index, first_cutoff=index[0], refit_days=0)

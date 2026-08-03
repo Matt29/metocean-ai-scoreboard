@@ -87,6 +87,8 @@ def evaluate(station_id: str, kind: str, test_days: int) -> dict | None:
         "bias": bias,
         "mae_debiased": mae_debiased,
         "gain": gain,
+        # The honest headline: gain over the baseline once its constant offset is gone.
+        "gain_debiased": (mae_debiased - mae_model) / mae_debiased if mae_debiased else 0.0,
         "pass": gain >= GATE,
         # "weak": the model brings nothing a constant offset would not.
         "weak": mae_model >= mae_debiased,
@@ -106,6 +108,28 @@ def _verdict(r: dict) -> str:
     return "PASS*" if r["weak"] else "PASS"
 
 
+def _failure_notes(rows: list[dict]) -> list[str]:
+    """Réserve 4, entièrement dérivée des chiffres — aucune station codée en dur."""
+    failing = [r for r in rows if not r["pass"]]
+    if not failing:
+        return ["4. **Aucune station sous le gate sur cette fenêtre de test.**", ""]
+    notes = [
+        "4. **Stations sous le gate — à ne pas publier en l'état.** Le modèle n'y",
+        f"   atteint pas les +{GATE:.0%} exigés : il ne trouve pas de signal exploitable",
+        "   dans les features actuelles. Deux causes à trancher station par station —",
+        "   historique d'entraînement trop court, ou absence d'une feature de forçage",
+        "   (vent ARPEGE) sans laquelle le résidu restant est imprévisible.",
+        "",
+    ]
+    notes += [
+        f"   * `{r['station']}` ({r['kind']}) : {r['n_train']} lignes de train, MAE "
+        f"baseline {r['mae_base']:.3f} → modèle {r['mae_model']:.3f} "
+        f"({r['gain']:+.1%} affiché, {r['gain_debiased']:+.1%} hors biais)"
+        for r in failing
+    ]
+    return notes + [""]
+
+
 def write_report(rows: list[dict], test_days: int) -> None:
     lines = [
         "# Évaluation des modèles de post-traitement",
@@ -121,14 +145,15 @@ def write_report(rows: list[dict], test_days: int) -> None:
         "## Résultats par station",
         "",
         "| Station | Type | Rows train / test | MAE baseline | MAE baseline débiaisée |"
-        " MAE modèle | Gain | Verdict |",
-        "|---|---|---|---|---|---|---|---|",
+        " MAE modèle | Gain affiché | **Gain hors biais** | Verdict |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         lines.append(
             f"| {r['station']} | {r['kind']} | {r['n_train']} / {r['n_test']} | "
             f"{r['mae_base']:.3f} | {r['mae_debiased']:.3f} | {r['mae_model']:.3f} | "
-            f"{r['gain']:+.1%} | {_verdict(r).replace('*', r'\*')} |"
+            f"{r['gain']:+.1%} | **{r['gain_debiased']:+.1%}** | "
+            f"{_verdict(r).replace('*', r'\*')} |"
         )
     lines += [
         "",
@@ -145,7 +170,8 @@ def write_report(rows: list[dict], test_days: int) -> None:
         "Ne pas mettre ce chiffre en avant sans la réserve 3.",
         "",
         "Ce verdict est aussi émis en donnée dans `pipeline/models/gate.json`",
-        "(`{station: {pass, weak, mae_model, mae_baseline, gain}}`) — c'est cette",
+        "(`{station: {pass, weak, mae_model, mae_baseline, gain, gain_debiased}}`) —",
+        "c'est cette",
         "source, pas ce tableau, que le publisher doit lire.",
         "",
     ]
@@ -184,40 +210,42 @@ def write_report(rows: list[dict], test_days: int) -> None:
         "   seront alors remplacés.",
         "2. **Le gate de +5 % s'applique quand même**, mais il se lit",
         "   « +5 % mesuré sur analyse », pas « +5 % en opérationnel ».",
-        "3. **Une part du gain peut n'être qu'une correction de biais constant.**",
-        "   Chaque baseline peut dériver sur la fenêtre de test (biais MFWAM sur la",
-        "   période pour les stations `wave` ; pour les stations `tide`, l'harmonique",
-        "   est depuis Task 7A refittée tous les 30 jours sur l'historique antérieur à",
-        "   l'émission, ce qui a ramené son biais de ~-0,45 m à ~-0,07 m).",
-        "   Biais mesuré (obs − baseline) par station :",
-        "",
     ]
-    for r in rows:
-        lines.append(f"   * `{r['station']}` : biais {r['bias']:+.3f} m")
+    # Tout est dérivé : la fermeté de la phrase suit les chiffres, elle ne les précède pas.
+    inflated = [r for r in rows if r["gain"] > 0 and r["gain_debiased"] < 0.5 * r["gain"]]
     weak = [r["station"] for r in rows if r["weak"]]
     lines += [
+        f"3. **Sur {len(inflated)} des {len(rows)} stations, plus de la moitié du gain",
+        "   affiché n'est qu'une correction de biais constant** — chaque baseline dérive",
+        "   sur la fenêtre de test, et retirer ce seul offset capte déjà l'essentiel du",
+        "   gain. Le chiffre à citer est donc **« Gain hors biais »**, jamais « Gain",
+        "   affiché ». Détail par station (biais obs − baseline, puis les deux gains) :",
         "",
-        "   La colonne « MAE baseline débiaisée » du tableau isole ce qui reste une",
-        "   fois cette constante retirée : c'est elle, et non la MAE baseline brute,",
-        "   qui mesure le vrai apport du modèle.",
+    ]
+    lines += [
+        f"   * `{r['station']}` : biais {r['bias']:+.3f} m — "
+        f"gain affiché {r['gain']:+.1%}, **hors biais {r['gain_debiased']:+.1%}**"
+        for r in rows
+    ]
+    lines += [
+        "",
+        (
+            "   Stations dont le gain affiché vaut **au moins le double** de son gain "
+            f"hors biais : {', '.join(f'`{r['station']}`' for r in inflated)} — leur "
+            "chiffre de tête est d'abord du débiaisage."
+            if inflated
+            else "   Aucune station n'a un gain affiché supérieur au double de son gain "
+            "hors biais."
+        ),
         (
             f"   Stations où le modèle **ne bat pas** ce simple débiaisage : "
-            f"{', '.join(f'`{s}`' for s in weak)} — leur gain affiché est essentiellement"
-            " une constante, à ne pas présenter comme du skill météo-océanique."
+            f"{', '.join(f'`{s}`' for s in weak)} — il n'y apporte rien de plus qu'une"
+            " constante, à ne pas présenter comme du skill météo-océanique."
             if weak
             else "   Toutes les stations battent ce simple débiaisage."
         ),
-        "4. **`anglet` a un historique court** (obs Candhis à partir du 2025-11-18,",
-        "   panne de bouée avant) : ~30 % de train en moins que les autres stations",
-        "   vagues, et un test plus bruité. Pistes avant de la publier : plus",
-        "   d'historique, ou une feature de vent ARPEGE.",
-        "5. **`saint-malo` échoue au gate depuis la baseline causale (Task 7A).** Une",
-        "   fois l'harmonique refittée, il ne reste qu'un résidu météorologique de",
-        "   ~0,12 m que le modèle dégrade au lieu de le corriger : sans feature de",
-        "   forçage atmosphérique, il n'a rien à apprendre et n'ajoute que du bruit.",
-        "   C'est le résultat honnête ; l'ancien +29,6 % n'était que du débiaisage.",
-        "",
     ]
+    lines += _failure_notes(rows)
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text("\n".join(lines))
 
@@ -245,6 +273,7 @@ def main() -> int:
             "mae_model": round(r["mae_model"], 4),
             "mae_baseline": round(r["mae_base"], 4),
             "gain": round(r["gain"], 4),
+            "gain_debiased": round(r["gain_debiased"], 4),
         }
         for r in rows
     }
