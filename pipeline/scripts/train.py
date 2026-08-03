@@ -47,7 +47,9 @@ def split_by_issue_day(x: pd.DataFrame, test_days: int) -> np.ndarray:
     return np.asarray(issue_day > cutoff)
 
 
-def evaluate(station_id: str, kind: str, test_days: int, ablate_wind: bool = False) -> dict | None:
+def evaluate(
+    station_id: str, kind: str, test_days: int, ablate: tuple[str, ...] = ()
+) -> dict | None:
     path = DATA_DIR / f"{station_id}.parquet"
     if not path.exists():
         print(f"  {station_id}: no dataset at {path} — skipped")
@@ -55,12 +57,12 @@ def evaluate(station_id: str, kind: str, test_days: int, ablate_wind: bool = Fal
 
     df = pd.read_parquet(path)
     x, obs = df[FEATURE_COLUMNS].copy(), df["y"].astype(float)
-    if ablate_wind:
+    if ablate:
         # Zeroing beats dropping: same rows, same split, same seed, same model
         # capacity — and for a tree ensemble a constant column is never split on,
         # so it is equivalent to removing the feature. This is what produced the
-        # "with / without wind" table of the Task 7B report.
-        x[["wind_u10", "wind_v10"]] = 0.0
+        # "with / without" ablation tables of the Task 7B / 7C reports.
+        x[list(ablate)] = 0.0
     # Tide: learn the residual; waves: learn the corrected value directly.
     target = obs - x["baseline"] if kind == "tide" else obs
 
@@ -82,7 +84,7 @@ def evaluate(station_id: str, kind: str, test_days: int, ablate_wind: bool = Fal
     bias = float(resid.mean())
     mae_debiased = float(np.abs(resid - bias).mean())
 
-    saved = None if ablate_wind else model.save(m, station_id)  # ablation must not clobber
+    saved = None if ablate else model.save(m, station_id)  # ablation must not clobber
     row = {
         "station": station_id,
         "kind": kind,
@@ -122,14 +124,14 @@ def _failure_notes(rows: list[dict]) -> list[str]:
     notes = [
         "5. **Stations sous le gate — à ne pas publier en l'état.** Le modèle n'y",
         f"   atteint pas les +{GATE:.0%} exigés : il ne trouve pas de signal exploitable",
-        "   dans les features actuelles. Le forçage vent 10 m (`wind_u10`/`wind_v10`)",
-        "   fait désormais partie de ces features — son ajout en Task 7B a payé sur les",
-        "   stations de houle exposée mais **pas** sur les stations ci-dessous, donc",
-        "   l'explication est ailleurs : historique d'entraînement trop court, forçage",
-        "   local mal représenté par la maille du modèle de vent, ou grandeur encore",
-        "   absente (pression au niveau de la mer pour la surcote). À trancher station",
-        "   par station, mesure à l'appui — `train.py --ablate-wind` chiffre ce que le",
-        "   vent apporte réellement à chacune.",
+        "   dans les features actuelles. Le forçage atmosphérique en fait désormais",
+        "   partie — vent 10 m (`wind_u10`/`wind_v10`, Task 7B) et anomalie de pression",
+        "   au niveau de la mer (`pressure_anom`, Task 7C) —, et ces ajouts ont payé sur",
+        "   certaines stations mais **pas** sur celles ci-dessous, donc l'explication est",
+        "   ailleurs : historique d'entraînement trop court, forçage local mal représenté",
+        "   par la maille du modèle atmosphérique, ou grandeur encore absente. À trancher",
+        "   station par station, mesure à l'appui — `train.py --ablate <colonnes>` chiffre",
+        "   ce que chaque feature apporte réellement (p. ex. `--ablate pressure_anom`).",
         "",
     ]
     notes += [
@@ -219,9 +221,10 @@ def write_report(rows: list[dict], test_days: int) -> None:
         "   déterminable a priori. Le ré-entraînement sur de vraies prévisions",
         "   archivées interviendra après ~1 mois de runs quotidiens ; ces chiffres",
         "   seront alors remplacés.",
-        "2. **Le vent d'entraînement est un vent parfait, celui de production ne le",
-        "   sera pas.** La feature vent est apprise sur la **réanalyse ERA5** (0,25°,",
-        "   ECMWF, vent connu après coup) et sera servie avec une **prévision ARPEGE",
+        "2. **Le forçage atmosphérique d'entraînement est parfait, celui de production",
+        "   ne le sera pas.** Les features de forçage (vent 10 m et anomalie de pression",
+        "   au niveau de la mer) sont apprises sur la **réanalyse ERA5** (0,25°, ECMWF,",
+        "   connue après coup) et seront servies avec une **prévision ARPEGE",
         "   Europe** (0,1°, Météo-France), qui porte une erreur de lead time que la",
         "   réanalyse n'a pas. Ce n'est **pas** une équivalence : deux familles de",
         "   modèles, deux grilles, et une partie du gain ci-dessous ne survivra pas au",
@@ -276,26 +279,32 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--test-days", type=int, default=30, help="issue days held out for test")
     ap.add_argument(
-        "--ablate-wind",
-        action="store_true",
-        help="zero the wind columns — measures what the wind feature actually buys",
+        "--ablate",
+        default="",
+        metavar="COLS",
+        help="comma-separated feature columns to zero — measures what they actually buy "
+        f"(e.g. 'pressure_anom' or 'wind_u10,wind_v10'). Choices: {','.join(FEATURE_COLUMNS)}",
     )
     args = ap.parse_args()
 
+    ablate = tuple(c.strip() for c in args.ablate.split(",") if c.strip())
+    if unknown := [c for c in ablate if c not in FEATURE_COLUMNS]:
+        ap.error(f"unknown feature column(s) {unknown} — pick from {FEATURE_COLUMNS}")
+
     print(f"Training (test = last {args.test_days} issue days):")
-    if args.ablate_wind:
-        print("  ABLATION: wind columns zeroed — artefacts and report NOT written")
+    if ablate:
+        print(f"  ABLATION: {', '.join(ablate)} zeroed — artefacts and report NOT written")
     rows = [
         r
         for st in load_stations()
-        if (r := evaluate(st.id, st.kind, args.test_days, args.ablate_wind)) is not None
+        if (r := evaluate(st.id, st.kind, args.test_days, ablate)) is not None
     ]
     if not rows:
         print("nothing trained")
         return 1
 
-    if args.ablate_wind:
-        print("\nablation, gain hors biais:")
+    if ablate:
+        print(f"\nablation ({', '.join(ablate)} = 0), gain hors biais:")
         for r in rows:
             print(f"  {r['station']:16} {r['gain_debiased']:+8.1%}  MAE {r['mae_model']:.4f}")
         return 0

@@ -206,9 +206,12 @@ Conservé comme redondance possible si REFMAR devient indisponible.
   cron (ou ajouter une marge / un retry si le run n'est pas encore publié).
 - **Décision :** MFWAM accessible et exploitable tel quel comme baseline Hs.
 
-## 4bis. Open-Meteo — vent 10 m (feature de forçage atmosphérique)
+## 4bis. Open-Meteo — vent 10 m + pression MSL (features de forçage atmosphérique)
 
-Ajouté en Task 7B. Sources tranchées dans
+Vent ajouté en Task 7B, pression au niveau de la mer en Task 7C — **même
+fournisseur, mêmes deux endpoints, même requête** : `pressure_msl` est servie
+dans la même réponse que le vent, donc son ajout coûte zéro requête réseau
+supplémentaire. Sources tranchées dans
 `.superpowers/sdd/2026-07-30-scoreboard-metocean-ia/spike-wind-sources.md` :
 Copernicus Marine n'expose aucune variable vent sur le dataset MFWAM utilisé, et
 l'API ARPEGE de Météo-France n'a qu'une archive roulante ~14 jours — inutilisable
@@ -218,11 +221,14 @@ GRIB2/cfgrib.
 - **Entraînement (ERA5, réanalyse)** :
   `https://archive-api.open-meteo.com/v1/archive`
   `?latitude=&longitude=&start_date=&end_date=`
-  `&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=UTC`
-  → **une seule requête par station** pour toute la fenêtre (365 j vérifiés).
+  `&hourly=wind_speed_10m,wind_direction_10m,pressure_msl`
+  `&wind_speed_unit=ms&timezone=UTC`
+  → **une seule requête par station** pour toute la fenêtre (365 j vérifiés),
+  les trois variables dans la même réponse.
 - **Inférence +48 h (ARPEGE Europe, prévision)** :
   `https://api.open-meteo.com/v1/forecast`
-  `?...&models=meteofrance_arpege_europe&forecast_days=3&wind_speed_unit=ms&timezone=UTC`
+  `?...&hourly=wind_speed_10m,wind_direction_10m,pressure_msl`
+  `&models=meteofrance_arpege_europe&forecast_days=3&wind_speed_unit=ms&timezone=UTC`
 - **Pas de clé d'API** sur l'offre gratuite. Implémentation :
   `pipeline/src/scoreboard/sources/wind.py` (`fetch_wind_history` /
   `fetch_wind_forecast`, erreur réseau ou payload invalide → `SourceError`).
@@ -230,6 +236,13 @@ GRIB2/cfgrib.
   le vent). Le fetcher convertit une fois pour toutes en composantes
   `u10 = -V·sin(dir)` (vers l'est) et `v10 = -V·cos(dir)` (vers le nord), en m/s.
   Une direction en degrés est circulaire et inutilisable comme feature brute.
+- **Pression** : `pressure_msl` est servie en **hPa** et ramenée une fois pour
+  toutes, dans le fetcher, à une **anomalie** à l'atmosphère standard :
+  `pressure_anom = pressure_msl − 1013,25`. C'est directement le signal de
+  baromètre inverse (≈ 1 cm de niveau d'eau par hPa d'écart), et 0,0 y signifie
+  « atmosphère standard, pas de forçage de surcote » — le même neutre que le
+  calme pour le vent, donc aucun cas particulier dans `features.py`. Aucune
+  transformée dérivée (tendance dP/dt notamment) n'est calculée.
 
 ### Attribution (obligatoire)
 
@@ -257,9 +270,11 @@ change les features :
 
 ### Skew train/serve ERA5 → ARPEGE (à ne pas minimiser)
 
-Le modèle est **entraîné sur une réanalyse ERA5** (0,25°, ECMWF, vent « connu
-après coup ») et **servi avec une prévision ARPEGE Europe** (0,1°, Météo-France,
-vent prévu à +1…+48 h). Ce sont deux familles de modèles différentes sur deux
+Le modèle est **entraîné sur une réanalyse ERA5** (0,25°, ECMWF, vent et
+pression « connus après coup ») et **servi avec une prévision ARPEGE Europe**
+(0,1°, Météo-France, forçage prévu à +1…+48 h). Le skew vaut **à l'identique
+pour la pression** : même fournisseur, mêmes deux modèles, même erreur de lead
+time. Ce sont deux familles de modèles différentes sur deux
 grilles différentes, et la prévision porte une erreur de lead time que la
 réanalyse n'a pas. **Ce n'est pas une équivalence.**
 

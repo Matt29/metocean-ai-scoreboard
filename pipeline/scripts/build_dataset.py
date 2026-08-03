@@ -14,8 +14,9 @@ Sources and documented compromises
   is closer to truth than a real +24h forecast, so the training set is slightly
   optimistic. Accepted for v1 (there is no free archive of past MFWAM runs);
   the public scoreboard is scored on real forecasts, not on this proxy.
-* Wind (Open-Meteo / ERA5): ONE archive request per station over the whole
-  window, hourly 10 m wind converted to u/v. **Documented train/serve skew**:
+* Atmospheric forcing (Open-Meteo / ERA5): ONE archive request per station over
+  the whole window, carrying hourly 10 m wind (converted to u/v) *and* mean sea
+  level pressure (as an anomaly). **Documented train/serve skew**:
   training uses the ERA5 *reanalysis*, while the daily run will use the ARPEGE
   *forecast* (`sources.wind.fetch_wind_forecast`). Same category of compromise
   as the MFWAM analysis-as-forecast proxy above — a mean-bias-type skew, not an
@@ -84,9 +85,12 @@ def build_wave(stations: list[Station], start: date, end: date) -> dict[str, tup
     for st in stations:
         obs = fetch_wave_obs(st, start)  # single deep request (quota-friendly)
         obs = obs[["hs"]].resample("1h").mean()  # 30-min native -> hourly
-        wind = fetch_wind_history(st, start, end)  # single ERA5 request
-        out[st.id] = assemble(st, obs, baselines[st.id], wind)
-        print(f"  {st.id}: obs {len(obs)}h, baseline {len(baselines[st.id])}h, wind {len(wind)}h")
+        forcing = fetch_wind_history(st, start, end)  # single ERA5 request (wind + pressure)
+        out[st.id] = assemble(st, obs, baselines[st.id], forcing)
+        print(
+            f"  {st.id}: obs {len(obs)}h, baseline {len(baselines[st.id])}h, "
+            f"forcing {len(forcing)}h"
+        )
     return out
 
 
@@ -108,10 +112,10 @@ def build_tide(
             horizon_hours=HORIZON_H,
         )
         eval_obs = obs.loc[baseline_s.index]
-        wind = fetch_wind_history(st, start, end)  # single ERA5 request
-        out[st.id] = assemble(st, eval_obs, pd.DataFrame({"level_baseline": baseline_s}), wind)
+        forcing = fetch_wind_history(st, start, end)  # single ERA5 request (wind + pressure)
+        out[st.id] = assemble(st, eval_obs, pd.DataFrame({"level_baseline": baseline_s}), forcing)
         print(
-            f"  {st.id}: wind {len(wind)}h, obs {len(level)}h "
+            f"  {st.id}: forcing {len(forcing)}h, obs {len(level)}h "
             f"({level.index[0]:%Y-%m-%d} -> {level.index[-1]:%Y-%m-%d}), "
             f"harmonic refit every {refit_days}d from {split:%Y-%m-%d}"
         )

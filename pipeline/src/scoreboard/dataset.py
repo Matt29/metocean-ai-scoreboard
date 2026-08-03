@@ -16,15 +16,15 @@ def assemble(
     station: Station,
     obs: pd.DataFrame,
     baseline: pd.DataFrame,
-    wind: pd.DataFrame,
+    forcing: pd.DataFrame,
     issue_hours: list[int] | None = None,
 ) -> tuple[pd.DataFrame, pd.Series]:
     """Stack (X, y) over simulated daily issues at `issue_hours` UTC.
 
     `obs` is the station's observation frame (hourly); `baseline` holds the
-    official forecast / harmonic prediction in its first column; `wind` holds
-    the hourly `wind_u10`/`wind_v10` columns (see `sources.wind`). Target is the
-    observation at the same valid time.
+    official forecast / harmonic prediction in its first column; `forcing` holds
+    the hourly `wind_u10`/`wind_v10`/`pressure_anom` columns (see
+    `sources.wind`). Target is the observation at the same valid time.
     """
     if station.kind not in OBS_COLUMN:
         raise ValueError(f"unsupported station kind: {station.kind!r}")
@@ -50,9 +50,9 @@ def assemble(
             if window.empty:
                 continue
             try:
-                feats = build_features(window, obs_s, t0, wind)
+                feats = build_features(window, obs_s, t0, forcing)
             except SourceError:
-                continue  # wind gap on this issue: drop it rather than train on zeros
+                continue  # forcing gap on this issue: drop it rather than train on zeros
             if feats.empty:
                 continue
             y = obs_s.reindex(feats.index)
