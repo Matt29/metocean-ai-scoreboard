@@ -134,9 +134,13 @@ stations Météo-France.
   ARPEGE vs obs station — nouveau `kind` dans `stations.toml`, nouvelle source
   obs, nouveau baseline) ou simple vérification des features des modèles
   existants ? Les deux ne coûtent pas du tout pareil.
-- **La source obs** : API Météo-France (données d'observation / climatologiques).
-  Le projet `~/Documents/DEV/OCEANO/API_METEO_FRANCE` a déjà l'outillage ARPEGE ;
-  la partie *observations stations* reste à sonder — disponibilité réelle par
+- **La source obs** : l'« API Ciblée Données d'Observation » Météo-France
+  (portail Open Data, doc Confluence `OpenDataMeteoFrance`), qui couvre aussi
+  les **bouées Météo-France** — candidates comme obs supplémentaires. La clé
+  API Météo-France de `~/Documents/DEV/meteodata_hub` est **déjà habilitée**
+  sur ce périmètre (fait par Matthieu le 2026-08-03). Le projet
+  `~/Documents/DEV/OCEANO/API_METEO_FRANCE` a l'outillage ARPEGE ; la partie
+  *observations stations/bouées* reste à sonder — disponibilité réelle par
   station à vérifier par requêtes effectives, pas sur la page de doc (leçon
   Open-Meteo du 2026-08-03 : une API peut répondre 200 avec des null partout).
 - **L'angle produit** : la sélection « sites EMR » est un argument de prospection
