@@ -1,0 +1,44 @@
+{
+  "anglet": {
+    "gain": -0.0055,
+    "mae_baseline": 0.1042,
+    "mae_model": 0.1048,
+    "pass": false,
+    "weak": false
+  },
+  "belle-ile": {
+    "gain": 0.3849,
+    "mae_baseline": 0.1462,
+    "mae_model": 0.0899,
+    "pass": true,
+    "weak": false
+  },
+  "brest": {
+    "gain": 0.4886,
+    "mae_baseline": 0.4598,
+    "mae_model": 0.2352,
+    "pass": true,
+    "weak": true
+  },
+  "cherbourg": {
+    "gain": 0.1318,
+    "mae_baseline": 0.1283,
+    "mae_model": 0.1114,
+    "pass": true,
+    "weak": false
+  },
+  "pierres-noires": {
+    "gain": 0.5775,
+    "mae_baseline": 0.2597,
+    "mae_model": 0.1097,
+    "pass": true,
+    "weak": false
+  },
+  "saint-malo": {
+    "gain": 0.2955,
+    "mae_baseline": 0.4548,
+    "mae_model": 0.3204,
+    "pass": true,
+    "weak": false
+  }
+}

@@ -21,6 +21,7 @@ are comparable with the wave stations.
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -34,6 +35,7 @@ from scoreboard.features import FEATURE_COLUMNS
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "pipeline" / "data_train"
 REPORT_PATH = ROOT / "docs" / "model-eval.md"
+GATE_PATH = model.MODELS_DIR / "gate.json"
 GATE = 0.05  # the model must beat the baseline by >= 5% to go live
 UNIT = {"wave": "m (Hs)", "tide": "m (water level)"}
 
@@ -75,12 +77,7 @@ def evaluate(station_id: str, kind: str, test_days: int) -> dict | None:
     mae_debiased = float(np.abs(resid - bias).mean())
 
     saved = model.save(m, station_id)
-    print(
-        f"  {station_id}: train {(~is_test).sum()} / test {is_test.sum()} rows | "
-        f"MAE base {mae_base:.3f} -> model {mae_model:.3f} ({gain:+.1%}) | "
-        f"{'PASS' if gain >= GATE else 'FAIL'} -> {saved.name}"
-    )
-    return {
+    row = {
         "station": station_id,
         "kind": kind,
         "n_train": int((~is_test).sum()),
@@ -91,7 +88,22 @@ def evaluate(station_id: str, kind: str, test_days: int) -> dict | None:
         "mae_debiased": mae_debiased,
         "gain": gain,
         "pass": gain >= GATE,
+        # "weak": the model brings nothing a constant offset would not.
+        "weak": mae_model >= mae_debiased,
     }
+    print(
+        f"  {station_id}: train {(~is_test).sum()} / test {is_test.sum()} rows | "
+        f"MAE base {mae_base:.3f} -> model {mae_model:.3f} ({gain:+.1%}) | "
+        f"{_verdict(row)} -> {saved.name}"
+    )
+    return row
+
+
+def _verdict(r: dict) -> str:
+    """`PASS*` = au-dessus du gate mais sans battre un simple débiaisage."""
+    if not r["pass"]:
+        return "FAIL"
+    return "PASS*" if r["weak"] else "PASS"
 
 
 def write_report(rows: list[dict], test_days: int) -> None:
@@ -116,7 +128,7 @@ def write_report(rows: list[dict], test_days: int) -> None:
         lines.append(
             f"| {r['station']} | {r['kind']} | {r['n_train']} / {r['n_test']} | "
             f"{r['mae_base']:.3f} | {r['mae_debiased']:.3f} | {r['mae_model']:.3f} | "
-            f"{r['gain']:+.1%} | {'PASS' if r['pass'] else 'FAIL'} |"
+            f"{r['gain']:+.1%} | {_verdict(r).replace('*', r'\*')} |"
         )
     lines += [
         "",
@@ -127,6 +139,14 @@ def write_report(rows: list[dict], test_days: int) -> None:
         "qu'une constante. Gate de mise en ligne : **+5 % de MAE gagnée** sur la",
         "baseline. Une station FAIL reste entraînée et son artefact reste versionné,",
         "mais elle ne doit pas être publiée telle quelle sur le scoreboard.",
+        "",
+        "**`PASS*`** = la station passe le gate mais **ne bat pas sa propre baseline",
+        "débiaisée** : son gain affiché est essentiellement une constante, pas du skill.",
+        "Ne pas mettre ce chiffre en avant sans la réserve 3.",
+        "",
+        "Ce verdict est aussi émis en donnée dans `pipeline/models/gate.json`",
+        "(`{station: {pass, weak, mae_model, mae_baseline, gain}}`) — c'est cette",
+        "source, pas ce tableau, que le publisher doit lire.",
         "",
     ]
     failed = [r["station"] for r in rows if not r["pass"]]
@@ -173,7 +193,7 @@ def write_report(rows: list[dict], test_days: int) -> None:
     ]
     for r in rows:
         lines.append(f"   * `{r['station']}` : biais {r['bias']:+.3f} m")
-    weak = [r["station"] for r in rows if r["mae_model"] >= r["mae_debiased"]]
+    weak = [r["station"] for r in rows if r["weak"]]
     lines += [
         "",
         "   La colonne « MAE baseline débiaisée » du tableau isole ce qui reste une",
@@ -211,6 +231,19 @@ def main() -> int:
     if not rows:
         print("nothing trained")
         return 1
+
+    # Machine-readable gate: the publisher (Task 8) reads this, not the markdown.
+    gate = {
+        r["station"]: {
+            "pass": r["pass"],
+            "weak": r["weak"],
+            "mae_model": round(r["mae_model"], 4),
+            "mae_baseline": round(r["mae_base"], 4),
+            "gain": round(r["gain"], 4),
+        }
+        for r in rows
+    }
+    GATE_PATH.write_text(json.dumps(gate, indent=2, sort_keys=True) + "\n")
 
     write_report(rows, args.test_days)
     failed = [r["station"] for r in rows if not r["pass"]]

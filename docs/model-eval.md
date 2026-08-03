@@ -1,6 +1,6 @@
 # Évaluation des modèles de post-traitement
 
-Généré par `pipeline/scripts/train.py` le 2026-08-03 08:20 UTC (test = les 30 derniers jours d'émission).
+Généré par `pipeline/scripts/train.py` le 2026-08-03 08:27 UTC (test = les 30 derniers jours d'émission).
 
 Le modèle **post-traite** la prévision physique officielle (MFWAM pour les
 vagues, harmonique pour le niveau d'eau) : il la corrige, il ne la remplace
@@ -14,7 +14,7 @@ jamais.
 | belle-ile | wave | 15810 / 1402 | 0.146 | 0.102 | 0.090 | +38.5% | PASS |
 | anglet | wave | 10768 / 1402 | 0.104 | 0.106 | 0.105 | -0.5% | FAIL |
 | cherbourg | wave | 14244 / 1368 | 0.128 | 0.116 | 0.111 | +13.2% | PASS |
-| brest | tide | 7338 / 1404 | 0.460 | 0.207 | 0.235 | +48.9% | PASS |
+| brest | tide | 7338 / 1404 | 0.460 | 0.207 | 0.235 | +48.9% | PASS\* |
 | saint-malo | tide | 7338 / 1404 | 0.455 | 0.400 | 0.320 | +29.5% | PASS |
 
 MAE en m (Hs) pour les stations `wave`, en m (water level) pour les
@@ -24,6 +24,14 @@ réserve 3 : un modèle qui ne bat pas cette colonne n'apporte rien de plus
 qu'une constante. Gate de mise en ligne : **+5 % de MAE gagnée** sur la
 baseline. Une station FAIL reste entraînée et son artefact reste versionné,
 mais elle ne doit pas être publiée telle quelle sur le scoreboard.
+
+**`PASS*`** = la station passe le gate mais **ne bat pas sa propre baseline
+débiaisée** : son gain affiché est essentiellement une constante, pas du skill.
+Ne pas mettre ce chiffre en avant sans la réserve 3.
+
+Ce verdict est aussi émis en donnée dans `pipeline/models/gate.json`
+(`{station: {pass, weak, mae_model, mae_baseline, gain}}`) — c'est cette
+source, pas ce tableau, que le publisher doit lire.
 
 **Stations sous le gate : anglet** — à ne pas mettre en ligne en l'état.
 
