@@ -16,18 +16,27 @@ _TIMEOUT = 30
 def fetch_wave_obs(
     station: Station, date_start: date, session: requests.Session | None = None
 ) -> pd.DataFrame:
+    api_key = os.environ.get("CANDHIS_API_KEY")
+    if not api_key:
+        raise SourceError(station.id, "CANDHIS_API_KEY absente de l'environnement (.env non chargé ?)")
+
     session = session or make_session()
     try:
         resp = session.get(
             _BASE_URL,
             params={"camp": station.source_id, "dateDeb": date_start.isoformat()},
-            headers={"Authorization": os.environ.get("CANDHIS_API_KEY", "")},
+            headers={"Authorization": api_key},
             timeout=_TIMEOUT,
         )
         payload = resp.json()
     except (requests.RequestException, ValueError) as exc:
         raise SourceError(station.id, f"candhis request failed: {exc}") from exc
 
+    if resp.status_code in (401, 403):
+        raise SourceError(
+            station.id,
+            f"clé Candhis refusée (HTTP {resp.status_code}): {payload.get('message', '')}",
+        )
     if resp.status_code != 200 or not payload.get("success"):
         raise SourceError(station.id, payload.get("message", f"HTTP {resp.status_code}"))
 

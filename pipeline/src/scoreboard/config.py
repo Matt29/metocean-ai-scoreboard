@@ -1,8 +1,26 @@
 """Station config loader — stdlib tomllib, no pydantic (YAGNI)."""
 
+import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+
+_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
+
+
+def load_env(path: Path = _ENV_FILE) -> None:
+    """Charge le `.env` racine (KEY=VALUE) sans écraser l'environnement existant.
+
+    À appeler au démarrage de chaque point d'entrée (cli, scripts/build_dataset).
+    """
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
 _VALID_KINDS = {"wave", "tide"}
 _VALID_SOURCES = {"candhis", "shom", "ioc"}

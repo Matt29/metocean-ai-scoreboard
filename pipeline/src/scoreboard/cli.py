@@ -9,6 +9,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from scoreboard import archive, backfill, daily
+from scoreboard.config import load_env
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 
@@ -45,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
+    load_env()
     out_dir = _resolve_out_dir(args.dry_run)
 
     if args.command == "daily":

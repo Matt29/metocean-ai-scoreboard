@@ -3,11 +3,8 @@ retrain (see `docs/data-sources.md`, ERA5-train/ARPEGE-serve skew)."""
 
 from __future__ import annotations
 
-from datetime import date
-
 import pandas as pd
 import pyarrow.parquet as pq
-import pytest
 
 from scoreboard import archive
 

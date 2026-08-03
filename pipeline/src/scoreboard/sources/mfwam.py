@@ -88,7 +88,7 @@ def fetch_wave_forecast(
             nc_path = Path(response.output_directory) / response.file_path
             ds = xr.open_dataset(nc_path).load()
         result = {s.id: _extract_point(ds, s.lat, s.lon) for s in wave_stations}
-    except Exception as exc:  # noqa: BLE001 - CMEMS/network/auth failure or no valid cell
+    except Exception as exc:
         raise SourceError("mfwam", f"mfwam subset failed: {exc}") from exc
 
     return result

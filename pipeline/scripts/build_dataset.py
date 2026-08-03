@@ -43,7 +43,7 @@ from pathlib import Path
 import pandas as pd
 
 from scoreboard import harmonic
-from scoreboard.config import Station, load_stations
+from scoreboard.config import Station, load_env, load_stations
 from scoreboard.dataset import HORIZON_H, assemble
 from scoreboard.sources.candhis import fetch_wave_obs
 from scoreboard.sources.mfwam import _DATASET_ID, _VARIABLE, _extract_point
@@ -131,6 +131,7 @@ def main() -> int:
     # Candhis has a daily quota: `--kind tide` reruns the tide half without re-fetching waves.
     ap.add_argument("--kind", choices=["wave", "tide"], help="build only this station kind")
     args = ap.parse_args()
+    load_env()
 
     end = date.today()
     start = end - timedelta(days=args.days)
