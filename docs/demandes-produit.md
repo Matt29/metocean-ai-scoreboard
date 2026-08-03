@@ -155,8 +155,13 @@ jusqu'en 2029). Verdicts, mesurés en non-null sur requêtes réelles :
   stations houle : Biarritz (9,5 km d'Anglet), Cherbourg-Homet (3,9 km) ;
   zones EMR couvertes. Latence ~2 min (compatible scoring 09:30 UTC). Quotas
   ~50-60 req/min, un fetch quotidien est négligeable.
-- **Houle : non.** Aucune station DPObs ne sert de Hs — réseau terrestre pur.
-  Le rôle « renfort obs houle Anglet/Cherbourg » ne passe pas par cette API.
+- **Houle : la donnée existe, la couverture manque** (corrigé après relecture
+  de la doc par Matthieu). `/liste-bouees` + `/bouees` fonctionnent avec la
+  même clé : Hs/période/direction horaires non-null, rétention 24 h, pas
+  d'archive. Mais 9 bouées seulement — 8 en Méditerranée, 1 en Atlantique
+  (Gascogne, 327 km d'Anglet, 556 km de Cherbourg) → aucun renfort possible
+  pour les stations actuelles. À ressortir si des stations Méditerranée (ou
+  un produit EMR flottant Med) entrent au scoreboard.
 - **Limite historique** : temps réel = fenêtre glissante ~3-4 jours ;
   l'archive longue relève d'une autre API (climatologie, non souscrite). Pour
   entraîner un jour sur ces vents, commencer à archiver tôt ou souscrire.
