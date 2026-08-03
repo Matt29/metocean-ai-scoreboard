@@ -99,6 +99,9 @@ def _log_resolved_cell(payload: dict, station: Station) -> None:
 
 def _fetch(url: str, params: dict, station: Station, session) -> pd.DataFrame:
     payload, hourly = _get_payload(url, params, station, session)
+    for key in ("wind_speed_10m", "wind_direction_10m"):
+        if key not in hourly:
+            raise SourceError(station.id, f"open-meteo payload missing {key!r}")
     out = _parse_uv(hourly, "wind_speed_10m", "wind_direction_10m")
     out = out.dropna().sort_index()
     # Same guard as candhis.py: a duplicated index makes the nearest-reindex in

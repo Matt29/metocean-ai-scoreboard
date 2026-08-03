@@ -122,6 +122,14 @@ def test_malformed_payload_raises_source_error():
                            session=make_session({"latitude": 48.29}))
 
 
+def test_mono_model_missing_key_raises_not_empty_dataframe():
+    """`hourly` present but missing `wind_speed_10m` must raise, not silently
+    dropna() into an empty frame."""
+    body = {"hourly": {"time": TIMES, "wind_direction_10m": DIRS}}
+    with pytest.raises(SourceError):
+        fetch_wind_history(ST, date(2026, 6, 1), date(2026, 6, 1), session=make_session(body))
+
+
 def multi_payload(times, per_model):
     """per_model: dict[model] -> (speeds, dirs), suffixed like Open-Meteo's multi-model reply."""
     hourly = {"time": times}
