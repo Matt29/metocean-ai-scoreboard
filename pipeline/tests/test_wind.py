@@ -9,7 +9,15 @@ import requests
 
 from scoreboard.config import Station
 from scoreboard.sources import SourceError
-from scoreboard.sources.wind import FORCING_COLUMNS, fetch_wind_forecast, fetch_wind_history
+from scoreboard.sources.wind import (
+    FORCING_COLUMNS,
+    MULTI_FORCING_COLUMNS,
+    WIND_MODELS,
+    fetch_wind_forecast,
+    fetch_wind_history,
+    fetch_wind_models_forecast,
+    fetch_wind_models_history,
+)
 
 ST = Station(id="pierres-noires", name="PN", kind="wave", lat=48.29, lon=-4.97,
              source="candhis", source_id="02911", baseline="mfwam")
@@ -112,3 +120,72 @@ def test_malformed_payload_raises_source_error():
     with pytest.raises(SourceError):
         fetch_wind_history(ST, date(2026, 6, 1), date(2026, 6, 1),
                            session=make_session({"latitude": 48.29}))
+
+
+def multi_payload(times, per_model):
+    """per_model: dict[model] -> (speeds, dirs), suffixed like Open-Meteo's multi-model reply."""
+    hourly = {"time": times}
+    for model, (speeds, dirs) in per_model.items():
+        hourly[f"wind_speed_10m_{model}"] = speeds
+        hourly[f"wind_direction_10m_{model}"] = dirs
+    return {"hourly": hourly}
+
+
+def test_models_history_sends_all_models_to_the_historical_host():
+    session = make_session(multi_payload(TIMES, {m: (SPEEDS, DIRS) for m in WIND_MODELS}))
+    df = fetch_wind_models_history(ST, date(2025, 1, 1), date(2025, 1, 2), session=session)
+
+    url = session.get.call_args.args[0] if session.get.call_args.args else \
+        session.get.call_args.kwargs["url"]
+    assert url == "https://historical-forecast-api.open-meteo.com/v1/forecast"
+    params = session.get.call_args.kwargs["params"]
+    assert params["models"] == ",".join(WIND_MODELS)
+    assert params["wind_speed_unit"] == "ms"
+    assert params["timezone"] == "UTC"
+    assert params["start_date"] == "2025-01-01"
+    assert params["end_date"] == "2025-01-02"
+    assert list(df.columns) == MULTI_FORCING_COLUMNS
+
+
+def test_models_history_converts_uv_per_model():
+    session = make_session(multi_payload(TIMES, {m: (SPEEDS, DIRS) for m in WIND_MODELS}))
+    df = fetch_wind_models_history(ST, date(2025, 1, 1), date(2025, 1, 2), session=session)
+
+    for model in WIND_MODELS:
+        assert np.allclose(df[f"wind_u10_{model}"], EXPECTED_U, atol=1e-9)
+        assert np.allclose(df[f"wind_v10_{model}"], EXPECTED_V, atol=1e-9)
+
+
+def test_models_forecast_uses_forecast_days_not_dates():
+    session = make_session(multi_payload(TIMES, {m: (SPEEDS, DIRS) for m in WIND_MODELS}))
+    fetch_wind_models_forecast(ST, session=session, forecast_days=5)
+
+    url = session.get.call_args.args[0] if session.get.call_args.args else \
+        session.get.call_args.kwargs["url"]
+    assert url == "https://api.open-meteo.com/v1/forecast"
+    params = session.get.call_args.kwargs["params"]
+    assert params["forecast_days"] == 5
+    assert "start_date" not in params and "end_date" not in params
+    assert params["models"] == ",".join(WIND_MODELS)
+
+
+def test_models_one_model_entirely_absent_stays_nan_not_zero():
+    absent, present = WIND_MODELS[0], WIND_MODELS[1]
+    session = make_session(multi_payload(TIMES, {present: (SPEEDS, DIRS)}))
+    df = fetch_wind_models_history(ST, date(2025, 1, 1), date(2025, 1, 2), session=session)
+
+    assert df[f"wind_u10_{absent}"].isna().all()
+    assert df[f"wind_v10_{absent}"].isna().all()
+    assert not df[f"wind_u10_{present}"].isna().any()
+
+
+def test_models_one_model_all_null_stays_nan_not_zero():
+    per_model = {m: (SPEEDS, DIRS) for m in WIND_MODELS}
+    null_model = WIND_MODELS[0]
+    per_model[null_model] = ([None] * len(TIMES), [None] * len(TIMES))
+    session = make_session(multi_payload(TIMES, per_model))
+    df = fetch_wind_models_history(ST, date(2025, 1, 1), date(2025, 1, 2), session=session)
+
+    assert df[f"wind_u10_{null_model}"].isna().all()
+    assert df[f"wind_v10_{null_model}"].isna().all()
+    assert not (df[f"wind_u10_{null_model}"] == 0).any()
