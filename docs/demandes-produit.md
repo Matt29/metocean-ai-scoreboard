@@ -174,6 +174,39 @@ backfill) — la stabiliser d'abord sur les variables existantes.
 
 ---
 
+## 4. Bouées Météo-France sur le site démo + carte interactive
+
+**Demande** (2026-08-03, soir). Deux volets :
+
+1. **Compléter le site démo avec les 9 bouées MF** (8 Méditerranée + Gascogne)
+   — obs houle live via `/bouees` (Hs, période, direction, horaire).
+2. **Carte interactive sur le dashboard du site** pour voir directement les
+   bouées (et à terme les stations du scoreboard).
+
+### Cadrage à faire avant d'implémenter
+
+- **Rétention 24 h côté API** : sans archivage à nous, aucune série longue.
+  Si les bouées doivent un jour servir de vérité terrain (stations Med au
+  scoreboard, EMR flottant type Golfe du Lion — voir sondage §3), **commencer
+  à archiver dès la mise en ligne du volet 1** : un cron léger qui commit les
+  obs quotidiennes suffit (même mécanique que `data_forecast_archive/`).
+- **Statut éditorial** : ces bouées sont des *observations*, pas des
+  prévisions scorées — les présenter comme telles sur le site, sans les
+  mélanger au scoreboard IA (pas de gain, pas de verdict).
+- **Carte** : contrainte design system ODC (skill `oceandata-design`, alias
+  sémantiques, verdict jamais par la couleur seule). Choix de la lib carto à
+  cadrer (fond de carte, coût, offline/statique vs tuiles) — le site est
+  statique pré-rendu, la carte doit vivre avec ça.
+- **Positions des bouées** : `/liste-bouees` les fournit — jamais en dur.
+
+### Préalable
+
+Après la mise en prod du ré-entraînement multi-modèles (chantier en cours) et
+sa vérification cron. Passe avant ou avec la demande 1 (graphiques) — la carte
+est un bon véhicule pour les graphiques enrichis par station.
+
+---
+
 ## Ordre suggéré
 
 1. Vérifier les premiers jours scorés non reconstitués.
