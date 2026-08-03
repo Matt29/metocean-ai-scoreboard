@@ -279,6 +279,27 @@ Il se résorbera de la même façon : une fois que le run quotidien aura accumul
 skew disparaîtra. En attendant, les chiffres de `docs/model-eval.md` doivent se
 lire « vent parfait à l'entraînement », donc plutôt optimistes.
 
+### Archive du vent servi (Task A1) — corpus pour un ré-entraînement honnête
+
+Depuis le run du **2026-08-03**, `daily.py` archive dans
+`pipeline/data_forecast_archive/` (un fichier Parquet par jour d'émission,
+`YYYY-MM-DD.parquet`, **commité**) la prévision ARPEGE effectivement servie à
+l'inférence pour chaque station qui a publié ce jour-là : une ligne par
+`(station_id, valid_time)` avec `issued`, `lead_h`, les colonnes de forçage
+dérivées de `wind.FORCING_COLUMNS` (`wind_u10`, `wind_v10`) et `source`
+(`meteofrance_arpege_europe`, l'identifiant du modèle Open-Meteo servi — la
+colonne qui permettra de basculer un jour vers `meteodata_hub`/AROME sans
+mélanger deux modèles dans un même corpus). Aucune requête réseau
+supplémentaire : la donnée est déjà en mémoire dans le run, seulement
+conservée plutôt que jetée.
+
+C'est le seul moyen de supprimer (pas réduire) le skew ERA5-train/ARPEGE-serve
+documenté ci-dessus : une fois ~6–12 mois de vraies prévisions accumulées, un
+ré-entraînement sur ce corpus n'aura plus à deviner l'erreur de lead time
+ARPEGE via un proxy. Une station en échec d'inférence n'archive rien ce
+jour-là (pas de ligne inventée) ; un run `--dry-run` n'écrit jamais dans ce
+répertoire (même logique que pour `data/`).
+
 ## 5. Résumé des stations retenues
 
 Voir `pipeline/config/stations.toml` — 4 stations houle (Candhis) + 2

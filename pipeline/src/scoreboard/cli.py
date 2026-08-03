@@ -8,7 +8,7 @@ import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from scoreboard import backfill, daily
+from scoreboard import archive, backfill, daily
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 
@@ -18,6 +18,12 @@ def _resolve_out_dir(dry_run: bool) -> Path:
         return Path(tempfile.mkdtemp(prefix="scoreboard-dryrun-"))
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     return DATA_DIR
+
+
+def _resolve_archive_dir(dry_run: bool, out_dir: Path) -> Path:
+    # Same logic as `_resolve_out_dir`: a dry-run must never write into the
+    # committed `data_forecast_archive/` — it gets its own throwaway tmp dir.
+    return out_dir / "data_forecast_archive" if dry_run else archive.DEFAULT_ARCHIVE_DIR
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -43,7 +49,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "daily":
         run_date = date.fromisoformat(args.date) if args.date else datetime.now(timezone.utc).date()
-        summary = daily.run(run_date, out_dir)
+        archive_dir = _resolve_archive_dir(args.dry_run, out_dir)
+        summary = daily.run(run_date, out_dir, archive_dir=archive_dir)
         print(f"run {run_date} -> {out_dir}" + (" (dry-run)" if args.dry_run else ""))
         for station_id, result in summary.items():
             suffix = f" ({result['reason']})" if result.get("reason") else ""

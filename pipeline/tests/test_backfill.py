@@ -325,7 +325,7 @@ def test_daily_run_after_backfill_does_not_destroy_the_backfilled_day(tmp_path, 
     monkeypatch.setattr(daily, "fetch_wave_forecast", _live_mfwam)
     monkeypatch.setattr(daily, "fetch_wind_forecast", _live_wind_forecast)
 
-    daily.run(TODAY, tmp_path, stations=[WAVE], gate=GATE)
+    daily.run(TODAY, tmp_path, stations=[WAVE], gate=GATE, archive_dir=tmp_path / "archive")
 
     days_after_daily = {d["date"]: d for d in _history_days(tmp_path, "wave-a")}
     assert days_after_daily[since.isoformat()] == backfilled_day  # untouched, byte-for-byte

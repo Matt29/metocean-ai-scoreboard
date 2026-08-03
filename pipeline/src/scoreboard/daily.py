@@ -14,6 +14,10 @@ that loses to its own baseline is never published):
    project already paid for once, see `docs/data-sources.md`).
 3. Fetch the ARPEGE wind forecast and run inference through the trained model.
 4. Publish today's `latest.json`.
+5. Archive the served wind forecast (`archive.write_day`, Task A1) for every
+   station that reached step 4 — the corpus a future retrain needs to remove
+   the ERA5-train/ARPEGE-serve skew documented in `docs/data-sources.md`. A
+   failure here is logged, never allowed to undo the publish above.
 
 Each station is wrapped in its own try/except (résolution 5): *any* exception
 anywhere in a station's pipeline — obs, scoring, baseline, forcing, or model —
@@ -45,14 +49,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from scoreboard import harmonic, model, publish
+from scoreboard import archive, harmonic, model, publish
 from scoreboard.config import Station, load_stations
 from scoreboard.features import build_features
 from scoreboard.sources import SourceError
 from scoreboard.sources.candhis import fetch_wave_obs
 from scoreboard.sources.mfwam import fetch_wave_forecast
 from scoreboard.sources.waterlevel import fetch_tide_obs
-from scoreboard.sources.wind import fetch_wind_forecast
+from scoreboard.sources.wind import FORECAST_MODEL, fetch_wind_forecast
 
 log = logging.getLogger(__name__)
 
@@ -227,6 +231,7 @@ def _run_station(
     mfwam: dict,
     out_dir: Path,
     models_dir: Path | None,
+    archive_dir: Path,
 ) -> dict:
     try:
         obs = _fetch_obs(station, run_date)
@@ -257,6 +262,17 @@ def _run_station(
         return {"status": "missing", "reason": str(exc)}
 
     publish.write_latest(out_dir, station.id, issued, series)
+
+    try:
+        # Archived *after* a successful issuance only (résolution: a failed
+        # station has nothing to archive, no invented empty rows) — see
+        # `docs/data-sources.md` for why this corpus exists at all. Must
+        # never fail the run: the scoreboard publish above already happened.
+        valid_times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in series])
+        archive.write_day(archive_dir, station.id, t0, valid_times, forcing, source=FORECAST_MODEL)
+    except Exception as exc:  # noqa: BLE001 - archiving must never fail the run
+        log.warning("%s: archiving served wind forecast failed: %s", station.id, exc)
+
     return {"status": "ok", "n_points": len(series)}
 
 
@@ -267,11 +283,13 @@ def run(
     stations: list[Station] | None = None,
     gate: dict | None = None,
     models_dir: Path | None = None,
+    archive_dir: Path | None = None,
 ) -> dict[str, dict]:
     """Predict, score, publish for `run_date`. Returns `{station_id: {status, ...}}`
     for the *published* (gate-passing) stations only."""
     stations = stations if stations is not None else load_stations()
     gate = gate if gate is not None else load_gate()
+    archive_dir = archive_dir if archive_dir is not None else archive.DEFAULT_ARCHIVE_DIR
     t0 = pd.Timestamp(run_date, tz="UTC") + pd.Timedelta(hours=ISSUE_HOUR)
     issued = iso(t0)
 
@@ -287,7 +305,8 @@ def run(
             log.warning("mfwam fetch failed for all wave stations: %s", exc)
 
     summary = {
-        st.id: _run_station(st, run_date, t0, issued, mfwam, out_dir, models_dir) for st in published
+        st.id: _run_station(st, run_date, t0, issued, mfwam, out_dir, models_dir, archive_dir)
+        for st in published
     }
 
     publish.write_scores(out_dir, [s.id for s in published], iso(pd.Timestamp(datetime.now(timezone.utc))))

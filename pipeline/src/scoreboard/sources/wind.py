@@ -31,7 +31,9 @@ FORCING_COLUMNS = ["wind_u10", "wind_v10"]
 
 _ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
-_MODEL = "meteofrance_arpege_europe"
+# Public (not `_MODEL`): `archive.py` records this as the served forecast's
+# `source` column — it must name exactly the model `fetch_wind_forecast` calls.
+FORECAST_MODEL = "meteofrance_arpege_europe"
 _HOURLY = "wind_speed_10m,wind_direction_10m"
 _TIMEOUT = 30
 
@@ -119,7 +121,7 @@ def fetch_wind_forecast(
             "latitude": station.lat,
             "longitude": station.lon,
             "hourly": _HOURLY,
-            "models": _MODEL,
+            "models": FORECAST_MODEL,
             "forecast_days": forecast_days,
             "wind_speed_unit": "ms",
             "timezone": "UTC",
