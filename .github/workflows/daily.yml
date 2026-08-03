@@ -9,7 +9,15 @@ name: daily
 "on":
   schedule:
     - cron: "30 9 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      backfill_since:
+        description: >-
+          Optional: replay missing history since this date (format
+          YYYY-MM-DD) via `scoreboard backfill --since`, instead of the
+          normal `scoreboard daily` run. Leave empty for the usual daily run.
+        required: false
+        type: string
 
 # A schedule trigger can slip by several minutes, and GitHub may skip a run
 # if the repo has been inactive for a long stretch — workflow_dispatch above
@@ -48,7 +56,22 @@ jobs:
           CANDHIS_API_KEY: ${{ secrets.CANDHIS_API_KEY }}
           COPERNICUSMARINE_SERVICE_USERNAME: ${{ secrets.COPERNICUSMARINE_SERVICE_USERNAME }}
           COPERNICUSMARINE_SERVICE_PASSWORD: ${{ secrets.COPERNICUSMARINE_SERVICE_PASSWORD }}
-        run: uv run scoreboard daily
+          # Never interpolate inputs.backfill_since directly into `run:` —
+          # it comes from a workflow_dispatch form field and would otherwise
+          # be a script-injection vector. Passed via env instead, and
+          # validated below before it ever reaches a command line.
+          BACKFILL_SINCE: ${{ inputs.backfill_since }}
+        run: |
+          set -eu
+          if [ -n "$BACKFILL_SINCE" ]; then
+            if ! [[ "$BACKFILL_SINCE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+              echo "::error::backfill_since must be in YYYY-MM-DD format, got: $BACKFILL_SINCE"
+              exit 1
+            fi
+            uv run scoreboard backfill --since "$BACKFILL_SINCE"
+          else
+            uv run scoreboard daily
+          fi
 
       # Commit only what actually changed, and only the two directories the
       # daily run is allowed to write: the public scoreboard payload (data/)
@@ -56,6 +79,8 @@ jobs:
       # the corpus a future retrain needs (see docs/data-sources.md §4bis).
       # Nothing else is ever staged.
       - name: commit data + forecast archive
+        env:
+          BACKFILL_SINCE: ${{ inputs.backfill_since }}
         run: |
           set -eu
           git config user.name "github-actions[bot]"
@@ -63,7 +88,11 @@ jobs:
 
           if git status --porcelain -- data pipeline/data_forecast_archive | grep -q .; then
             git add data pipeline/data_forecast_archive
-            git commit -m "chore(data): daily run $(date -u +%F)"
+            if [ -n "$BACKFILL_SINCE" ]; then
+              git commit -m "chore(data): backfill since $BACKFILL_SINCE"
+            else
+              git commit -m "chore(data): daily run $(date -u +%F)"
+            fi
             git pull --rebase
             git push
           else
