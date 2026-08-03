@@ -52,7 +52,16 @@ def _extract_point(ds: xr.Dataset, lat: float, lon: float) -> pd.DataFrame:
     return df
 
 
-def fetch_wave_forecast(stations: list[Station], run_date: date) -> dict[str, pd.DataFrame]:
+def fetch_wave_forecast(
+    stations: list[Station], run_date: date, lookback_days: int = 0, horizon_days: int = 2
+) -> dict[str, pd.DataFrame]:
+    """One CMEMS subset for every wave station's baseline.
+
+    `lookback_days`/`horizon_days` widen the window around `run_date` without
+    adding a request: the daily run needs `[t0-24h, t0+48h]` for feature
+    building (recent-error features + the published horizon), wider than the
+    plain `[run_date, run_date+2d)` used by training's fixed-hour replay.
+    """
     wave_stations = [s for s in stations if s.kind == "wave"]
     if not wave_stations:
         return {}
@@ -71,8 +80,8 @@ def fetch_wave_forecast(stations: list[Station], run_date: date) -> dict[str, pd
                 maximum_longitude=max(lons) + _BBOX_MARGIN,
                 minimum_latitude=min(lats) - _BBOX_MARGIN,
                 maximum_latitude=max(lats) + _BBOX_MARGIN,
-                start_datetime=run_date.isoformat(),
-                end_datetime=(run_date + timedelta(days=2)).isoformat(),
+                start_datetime=(run_date - timedelta(days=lookback_days)).isoformat(),
+                end_datetime=(run_date + timedelta(days=horizon_days)).isoformat(),
                 output_directory=tmpdir,
                 output_filename="mfwam_subset.nc",
             )
