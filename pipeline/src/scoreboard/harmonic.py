@@ -50,6 +50,10 @@ def causal_predict(
     Consequence: values before `first_cutoff + horizon_hours` cannot be served
     causally and are absent from the returned series.
     """
+    # ponytail: refit every 30d rather than at every issue — the model serving t0 is
+    # up to refit_days + horizon stale (~32 d). Refitting daily costs ~180 utide.solve
+    # per station for a drift that is millimetric over a month; go per-issue only if
+    # the residual bias ever proves to grow within a refit interval.
     times = pd.DatetimeIndex(times).sort_values()
     horizon = pd.Timedelta(hours=horizon_hours)
     step = pd.Timedelta(days=refit_days)
