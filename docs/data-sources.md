@@ -326,15 +326,17 @@ Remplace intégralement la section 4 (CMEMS/MFWAM). Sondage de couverture et
 comparaison faits en Task 0, rapport complet dans
 `.superpowers/sdd/2026-08-03-retrain-multi-modeles/task-0-coverage.md`.
 
-- **Entraînement (Historical Forecast API)** :
-  `https://historical-forecast-api.open-meteo.com/v1/forecast`
-  `?...&hourly=wave_height&models=meteofrance_wave,ecmwf_wam025,gwam,ewam,ncep_gfswave025`
-  → une requête par station pour toute la fenêtre, les 5 modèles à la fois
-  (clés `wave_height_<model>` en requête multi-modèles, voir Task 0 (b)).
-- **Inférence +48 h (Marine API)** : `https://marine-api.open-meteo.com/v1/marine`,
-  même paramètres `hourly`/`models`. Même contrat JSON, même parseur
-  (`pipeline/src/scoreboard/sources/marine.py`) — pas de skew train/serve de
-  type « famille de modèle différente » comme pour le vent (§ 4bis).
+- **Entraînement et inférence +48 h (Marine API, un seul et même chemin)** :
+  `https://marine-api.open-meteo.com/v1/marine`
+  `?...&hourly=wave_height&models=meteofrance_wave,ecmwf_wam025,gwam,ewam,ncep_gfswave025`,
+  en mode archive (`start_date`/`end_date`) pour l'entraînement, en mode
+  prévision pour l'inférence — même URL, même contrat JSON, même parseur
+  (`pipeline/src/scoreboard/sources/marine.py`, `fetch_wave_models_history` /
+  `fetch_wave_models_forecast`). **Pas de skew train/serve de type « famille de
+  modèle différente »** pour la houle, contrairement au vent (§ 4bis) où
+  l'entraînement passe par `historical-forecast-api.open-meteo.com` (les 3
+  modèles de vent candidats, `fetch_wind_models_history`) pour approcher au
+  plus près la prévision ARPEGE servie en production.
 - **Couverture mesurée (Task 0), fenêtre retenue `2025-06-01` → hier** : les 5
   modèles de vagues passent tous ≥ 90 % de couverture non-null sur les 4
   stations. `gwam` reste à 98,8 % (démarrage réel `2025-06-06`, 5 jours après

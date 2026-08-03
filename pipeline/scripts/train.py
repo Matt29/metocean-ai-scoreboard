@@ -47,7 +47,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "pipeline" / "data_train"
 REPORT_PATH = ROOT / "docs" / "model-eval.md"
 GATE_PATH = model.MODELS_DIR / "gate.json"
-GATE = 0.05  # the model must beat the baseline by >= 5% to go live
+GATE = 0.05  # the model must beat the baseline, hors biais, by >= 5% to go live
 UNIT = {"wave": "m (Hs)", "tide": "m (water level)"}
 ABLATABLE = sorted(set(FEATURE_COLUMNS) | set(WAVE_FEATURE_COLUMNS))
 
@@ -223,8 +223,13 @@ def evaluate(
         "ml_model": best,
         "val_scores": val_scores,
         **scores,
-        "pass": scores["gain"] >= GATE,
-        # "weak": the model brings nothing a constant offset would not.
+        # Gate on the gain hors biais (spec critère 3): a station whose displayed
+        # gain is mostly a constant offset must not pass on that alone.
+        "pass": scores["gain_debiased"] >= GATE,
+        # "weak": the model brings nothing a constant offset would not. Now that
+        # `pass` itself requires beating the debiased baseline by >= GATE, a
+        # passing station can no longer be weak — the flag is kept as-is (still
+        # computed, still in gate.json) for downstream compatibility.
         "weak": scores["mae_model"] >= mae_debiased,
     }
     saved = (
@@ -429,13 +434,19 @@ def write_report(
         "stations `tide`. « MAE baseline débiaisée » = MAE de la baseline après retrait",
         "de son seul biais moyen sur la fenêtre de test — c'est le garde-fou de la",
         "réserve 4 : un modèle qui ne bat pas cette colonne n'apporte rien de plus",
-        "qu'une constante. Gate de mise en ligne : **+5 % de MAE gagnée** sur la",
-        "baseline. Une station FAIL reste entraînée et son artefact reste versionné,",
-        "mais elle ne doit pas être publiée telle quelle sur le scoreboard.",
+        "qu'une constante. Gate de mise en ligne : **+5 % de MAE gagnée hors biais**",
+        "(critère 3 de la spec) — le gate porte sur `gain_debiased`, jamais sur le",
+        "gain affiché, précisément pour qu'une station ne passe pas sur un simple",
+        "débiaisage. Une station FAIL reste entraînée et son artefact reste",
+        "versionné, mais elle ne doit pas être publiée telle quelle sur le",
+        "scoreboard.",
         "",
         "**`PASS*`** = la station passe le gate mais **ne bat pas sa propre baseline",
         "débiaisée** : son gain affiché est essentiellement une constante, pas du skill.",
-        "Ne pas mettre ce chiffre en avant sans la réserve 4.",
+        "Ne pas mettre ce chiffre en avant sans la réserve 4. Le gate portant désormais",
+        "sur le gain hors biais, une station `PASS` ne peut plus être `weak` — `PASS*`",
+        "ne peut donc plus apparaître pour une station retrainée ici ; le mécanisme est",
+        "conservé tel quel pour compatibilité avec `gate.json`.",
         "",
         "Ce verdict est aussi émis en donnée dans `pipeline/models/gate.json`",
         "(`{station: {pass, weak, mae_model, mae_baseline, gain, gain_debiased,",
@@ -494,17 +505,22 @@ def write_report(
         "   opérationnel, et la direction de l'écart n'est pas déterminable a priori. Le",
         "   ré-entraînement sur de vraies prévisions archivées interviendra après ~1 mois",
         "   de runs quotidiens ; ces chiffres seront alors remplacés.",
-        "2. **Le forçage atmosphérique d'entraînement est parfait, celui de production",
-        "   ne le sera pas.** Les features de forçage (vent 10 m et anomalie de pression",
-        "   au niveau de la mer) sont apprises sur la **réanalyse ERA5** (0,25°, ECMWF,",
-        "   connue après coup) et seront servies avec une **prévision ARPEGE",
-        "   Europe** (0,1°, Météo-France), qui porte une erreur de lead time que la",
-        "   réanalyse n'a pas. Ce n'est **pas** une équivalence : deux familles de",
+        "2. **Pour les stations `tide` uniquement, le forçage atmosphérique",
+        "   d'entraînement est parfait, celui de production ne le sera pas.** Le vent",
+        "   10 m (seule feature de forçage restante — la pression n'y est plus, voir",
+        "   « Pistes testées et écartées » ci-dessous) est appris, pour ces stations,",
+        "   sur la **réanalyse ERA5** (0,25°, ECMWF, connue après coup ;",
+        "   `scripts/build_dataset.py`, chemin tide) et sera servi avec une **prévision",
+        "   ARPEGE Europe** (0,1°, Météo-France), qui porte une erreur de lead time que",
+        "   la réanalyse n'a pas. Ce n'est **pas** une équivalence : deux familles de",
         "   modèles, deux grilles, et une partie du gain ci-dessous ne survivra pas au",
-        "   passage en opérationnel. Même catégorie de compromis que la réserve 1, et",
-        "   même issue : il se résorbera quand le run quotidien aura accumulé assez de",
-        "   ses propres prévisions pour ré-entraîner dessus. Détail dans",
-        "   `docs/data-sources.md` §4bis.",
+        "   passage en opérationnel. Les 4 stations `wave` ré-entraînées ici n'ont pas",
+        "   ce skew : leur vent d'entraînement vient déjà des 3 mêmes modèles de",
+        "   prévision que le serve (Historical Forecast API, voir",
+        "   `docs/data-sources.md` §4bis). Même catégorie de compromis que la réserve 1",
+        "   pour les stations `tide`, et même issue : il se résorbera quand le run",
+        "   quotidien aura accumulé assez de ses propres prévisions pour ré-entraîner",
+        "   dessus. Détail dans `docs/data-sources.md` §4bis.",
         "3. **Le gate de +5 % s'applique quand même**, mais il se lit",
         "   « +5 % mesuré sur analyse, avec un vent parfait », pas « +5 % en",
         "   opérationnel ».",
