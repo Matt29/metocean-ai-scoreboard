@@ -1,0 +1,69 @@
+name: daily
+
+# Cron time: see docs/data-sources.md §4 for the original spike, and
+# task-10-report.md for the empirical check that pins this specific hour.
+# Summary: the MFWAM run's own-day file (`R<run_date>_00H`) was observed
+# published between 08:10 and 08:50 UTC over 12 sampled days (2026-07-20 to
+# 2026-08-03, via the CMEMS native-files S3 bucket's LastModified timestamps).
+# 09:30 UTC leaves ~40min margin over the worst observed case.
+"on":
+  schedule:
+    - cron: "30 9 * * *"
+  workflow_dispatch: {}
+
+# A schedule trigger can slip by several minutes, and GitHub may skip a run
+# if the repo has been inactive for a long stretch — workflow_dispatch above
+# is the manual escape hatch for both cases.
+concurrency:
+  group: daily
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v9
+        with:
+          working-directory: pipeline
+
+      - name: uv sync
+        working-directory: pipeline
+        run: uv sync --locked
+
+      # Station-level failures (a transient 503, a gated-out station, a
+      # source outage) are caught inside `scoreboard.daily.run` and recorded
+      # as `"status": "missing"` per station — that's a normal daily outcome,
+      # not a workflow failure. This step only turns the job red on a real
+      # failure: an uncaught exception, a broken env, or anything else that
+      # escapes `daily.run` and makes `scoreboard daily` exit non-zero.
+      - name: scoreboard daily
+        working-directory: pipeline
+        env:
+          CANDHIS_API_KEY: ${{ secrets.CANDHIS_API_KEY }}
+          COPERNICUSMARINE_SERVICE_USERNAME: ${{ secrets.COPERNICUSMARINE_SERVICE_USERNAME }}
+          COPERNICUSMARINE_SERVICE_PASSWORD: ${{ secrets.COPERNICUSMARINE_SERVICE_PASSWORD }}
+        run: uv run scoreboard daily
+
+      # Commit only what actually changed, and only the two directories the
+      # daily run is allowed to write: the public scoreboard payload (data/)
+      # and the served-forecast archive (pipeline/data_forecast_archive/) —
+      # the corpus a future retrain needs (see docs/data-sources.md §4bis).
+      # Nothing else is ever staged.
+      - name: commit data + forecast archive
+        run: |
+          set -eu
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git status --porcelain -- data pipeline/data_forecast_archive | grep -q .; then
+            git add data pipeline/data_forecast_archive
+            git commit -m "chore(data): daily run $(date -u +%F)"
+            git push
+          else
+            echo "no change in data/ or pipeline/data_forecast_archive/, nothing to commit"
+          fi
