@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "stations": [
+    {
+      "id": "pierres-noires",
+      "name": "Les Pierres Noires",
+      "kind": "wave",
+      "lat": 48.2903328,
+      "lon": -4.9683332,
+      "unit": "m",
+      "published": true,
+      "weak": false
+    },
+    {
+      "id": "belle-ile",
+      "name": "Belle-Ile",
+      "kind": "wave",
+      "lat": 47.2849998,
+      "lon": -3.2850001,
+      "unit": "m",
+      "published": true,
+      "weak": false
+    },
+    {
+      "id": "anglet",
+      "name": "Anglet",
+      "kind": "wave",
+      "lat": 43.5321655,
+      "lon": -1.615,
+      "unit": "m",
+      "published": true,
+      "weak": false
+    },
+    {
+      "id": "cherbourg",
+      "name": "Cherbourg (ext\u00e9rieur)",
+      "kind": "wave",
+      "lat": 49.69406,
+      "lon": -1.621368,
+      "unit": "m",
+      "published": false,
+      "weak": true
+    },
+    {
+      "id": "brest",
+      "name": "Brest",
+      "kind": "tide",
+      "lat": 48.3829002,
+      "lon": -4.4950399,
+      "unit": "m",
+      "published": true,
+      "weak": true
+    },
+    {
+      "id": "saint-malo",
+      "name": "Saint-Malo",
+      "kind": "tide",
+      "lat": 48.640812,
+      "lon": -2.028103,
+      "unit": "m",
+      "published": false,
+      "weak": true
+    }
+  ]
+}
