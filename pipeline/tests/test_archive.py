@@ -3,10 +3,12 @@ retrain (see `docs/data-sources.md`, ERA5-train/ARPEGE-serve skew)."""
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
 from scoreboard import archive
+from scoreboard.sources.wind import MULTI_FORCING_COLUMNS
 
 ISSUED = pd.Timestamp("2026-07-30T06:00:00Z")
 
@@ -66,3 +68,39 @@ def test_empty_times_writes_no_rows_and_no_file(tmp_path):
     archive.write_day(tmp_path, "wave-a", ISSUED, pd.DatetimeIndex([], tz="UTC"), _forcing(), source="meteofrance_arpege_europe")
 
     assert not (tmp_path / "2026-07-30.parquet").exists()
+
+
+def _multi_forcing(start="2026-07-30T06:00:00Z", periods=4):
+    idx = pd.date_range(start, periods=periods, freq="1h", tz="UTC")
+    return pd.DataFrame(
+        {col: np.arange(periods, dtype=float) for col in MULTI_FORCING_COLUMNS}, index=idx
+    )
+
+
+def test_multi_model_forcing_round_trips_with_its_own_columns(tmp_path):
+    """Task 6: the wave path serves the 3-model wind frame — the archive must
+    keep exactly the columns it was handed, not a hardcoded mono pair."""
+    archive.write_day(tmp_path, "wave-a", ISSUED, _times(), _multi_forcing(), source="openmeteo:multi")
+
+    df = pq.read_table(tmp_path / "2026-07-30.parquet").to_pandas()
+    assert set(df.columns) == {
+        "station_id", "issued", "valid_time", "lead_h", "source", *MULTI_FORCING_COLUMNS
+    }
+    assert (df["source"] == "openmeteo:multi").all()
+    assert df[MULTI_FORCING_COLUMNS].notna().all().all()
+
+
+def test_both_forcing_shapes_coexist_in_one_day_file(tmp_path):
+    """Wave (multi) and tide (mono ARPEGE) write into the same day file, and an
+    already-written parquet stays readable: the reader presupposes no columns."""
+    archive.write_day(tmp_path, "tide-b", ISSUED, _times(), _forcing(), source="meteofrance_arpege_europe")
+    archive.write_day(tmp_path, "wave-a", ISSUED, _times(), _multi_forcing(), source="openmeteo:multi")
+
+    df = pq.read_table(tmp_path / "2026-07-30.parquet").to_pandas()
+    assert set(df["station_id"]) == {"wave-a", "tide-b"}
+    assert len(df) == 6
+    wave = df[df["station_id"] == "wave-a"]
+    tide = df[df["station_id"] == "tide-b"]
+    assert wave[MULTI_FORCING_COLUMNS].notna().all().all()
+    assert wave[["wind_u10", "wind_v10"]].isna().all().all()
+    assert tide[["wind_u10", "wind_v10"]].notna().all().all()

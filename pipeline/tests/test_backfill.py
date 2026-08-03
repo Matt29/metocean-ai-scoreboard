@@ -19,8 +19,10 @@ import pytest
 
 from scoreboard import backfill, daily, publish
 from scoreboard.config import Station
-from scoreboard.features import FEATURE_COLUMNS
+from scoreboard.features import FEATURE_COLUMNS, WAVE_FEATURE_COLUMNS
 from scoreboard.sources import SourceError
+from scoreboard.sources.marine import MODEL_COLUMNS
+from scoreboard.sources.wind import MULTI_FORCING_COLUMNS
 
 TODAY = date(2026, 7, 30)  # backfill replays up to (but not including) TODAY
 YESTERDAY = TODAY - timedelta(days=1)
@@ -36,12 +38,27 @@ GATE = {
 }
 
 
+BASELINE_MODEL = "ewam"  # not MODEL_COLUMNS[0]: the artefact must really be read
+MODEL_HS = {col: 1.0 + i for i, col in enumerate(MODEL_COLUMNS)}
+
+
 class _FakePipe:
     # Like every fitted sklearn estimator — `model.predict` reorders on it.
-    feature_names_in_ = np.asarray(FEATURE_COLUMNS)
+    def __init__(self, columns=FEATURE_COLUMNS):
+        self.feature_names_in_ = np.asarray(columns)
 
     def predict(self, x):
         return np.zeros(len(x))
+
+
+def _artifact(station_id, models_dir=None):
+    if station_id == "tide-b":
+        return {"model": _FakePipe(), "baseline_model": None, "feature_columns": FEATURE_COLUMNS}
+    return {
+        "model": _FakePipe(WAVE_FEATURE_COLUMNS),
+        "baseline_model": BASELINE_MODEL,
+        "feature_columns": WAVE_FEATURE_COLUMNS,
+    }
 
 
 def _wave_obs_df(start, value=1.3):
@@ -60,14 +77,24 @@ def _tide_obs_df(start, date_end, value=2.0):
     return pd.DataFrame({"level": np.full(len(idx), value)}, index=idx)
 
 
-def _mfwam_baseline(start, end, value=1.0):
-    idx = pd.date_range(start, end, freq="1h", tz="UTC", inclusive="left")
-    return pd.DataFrame({"hs_baseline": np.full(len(idx), value)}, index=idx)
+def _marine_df(date_start, date_end):
+    """One Hs column per wave model over the requested (inclusive) window —
+    same date semantics as the real Open-Meteo marine archive."""
+    idx = _date_end_inclusive_index(date_start, date_end)
+    return pd.DataFrame({col: np.full(len(idx), MODEL_HS[col]) for col in MODEL_COLUMNS}, index=idx)
 
 
 def _wind_df(date_start, date_end, value=3.0):
     idx = _date_end_inclusive_index(date_start, date_end)
     return pd.DataFrame({"wind_u10": np.full(len(idx), value), "wind_v10": np.full(len(idx), -2.0)}, index=idx)
+
+
+def _wind_models_df(date_start, date_end):
+    idx = _date_end_inclusive_index(date_start, date_end)
+    return pd.DataFrame(
+        {col: np.full(len(idx), 3.0 if col.startswith("wind_u10") else -2.0) for col in MULTI_FORCING_COLUMNS},
+        index=idx,
+    )
 
 
 @pytest.fixture
@@ -76,7 +103,10 @@ def calls():
     how many days are missing (the whole point of résolution 1) — and records
     the last date range each source was asked for, so a regression like
     blocker 1 (a future `end_date` sent to a real API) is visible in-process."""
-    return {"candhis": 0, "tide": 0, "mfwam": 0, "wind": 0, "last_wind_range": None, "last_tide_range": None}
+    return {
+        "candhis": 0, "tide": 0, "marine": 0, "wind": 0,
+        "last_wind_range": None, "last_tide_range": None, "last_marine_range": None,
+    }
 
 
 @pytest.fixture
@@ -91,11 +121,14 @@ def patched_sources(monkeypatch, calls):
         assert date_end <= TODAY, f"tide fetch requested a future end date: {date_end}"
         return _tide_obs_df(start, date_end)
 
-    def _mfwam(stations, run_date, lookback_days=1, horizon_days=3):
-        calls["mfwam"] += 1
-        start = pd.Timestamp(run_date, tz="UTC") - pd.Timedelta(days=lookback_days)
-        end = pd.Timestamp(run_date, tz="UTC") + pd.Timedelta(days=horizon_days)
-        return {"wave-a": _mfwam_baseline(start, end)}
+    def _marine(station, date_start, date_end, session=None):
+        calls["marine"] += 1
+        calls["last_marine_range"] = (date_start, date_end)
+        assert station.kind == "wave", "marine must never be fetched for a tide station"
+        # Same blocker-1 regression check as the wind archive: Open-Meteo
+        # rejects an `end_date` beyond its own current date.
+        assert date_end <= TODAY, f"marine fetch requested a future end date: {date_end}"
+        return _marine_df(date_start, date_end)
 
     def _wind(station, date_start, date_end, session=None):
         calls["wind"] += 1
@@ -106,11 +139,19 @@ def patched_sources(monkeypatch, calls):
         assert date_end <= TODAY, f"wind fetch requested a future end date: {date_end}"
         return _wind_df(date_start, date_end)
 
+    def _wind_models(station, date_start, date_end, session=None):
+        calls["wind"] += 1
+        calls["last_wind_range"] = (date_start, date_end)
+        assert station.kind == "wave", "the multi-model wind is the wave path's forcing"
+        assert date_end <= TODAY, f"wind fetch requested a future end date: {date_end}"
+        return _wind_models_df(date_start, date_end)
+
     monkeypatch.setattr(backfill, "fetch_wave_obs", _candhis)
     monkeypatch.setattr(backfill, "fetch_tide_obs", _tide)
-    monkeypatch.setattr(backfill, "fetch_wave_forecast", _mfwam)
+    monkeypatch.setattr(backfill, "fetch_wave_models_history", _marine)
     monkeypatch.setattr(backfill, "fetch_wind_history", _wind)
-    monkeypatch.setattr(daily.model, "load", lambda station_id, models_dir=None: _FakePipe())
+    monkeypatch.setattr(backfill, "fetch_wind_models_history", _wind_models)
+    monkeypatch.setattr(daily.model, "load_artifact", _artifact)
     return monkeypatch
 
 
@@ -166,10 +207,10 @@ def test_only_the_missing_day_is_replayed_chronologically_no_duplicate(tmp_path,
         assert untouched == d
 
     # Only ONE deep fetch per source *per station*, however many days were
-    # replayed — wind is per-station (like daily.run's own live forcing call),
-    # not shared like mfwam's single multi-station subset.
+    # replayed — every source is per-station now (marine included, unlike the
+    # old single multi-station Copernicus subset).
     assert calls["candhis"] == 1
-    assert calls["mfwam"] == 1
+    assert calls["marine"] == 1
     assert calls["wind"] == 2  # wave-a + tide-b, one each
 
 
@@ -192,14 +233,22 @@ def test_idempotent_rerun_does_not_duplicate_or_rewrite(tmp_path, patched_source
     assert calls["wind"] == fetch_count_after_first  # no second deep fetch either
 
 
-def test_empty_history_backfills_every_day_in_range_last_day_structurally_missing(
+def test_empty_history_backfills_every_day_in_range_last_day_is_horizon_limited(
     tmp_path, patched_sources
 ):
-    """`until` (yesterday) needs forcing through `t0+48h`, i.e. tomorrow 06:00 —
-    beyond what any wind archive can serve *today*. That day comes back
-    "missing" (not "ok"); résolution 5's retry-on-"missing" is what recovers it
-    on a later call (see test_a_missing_day_is_retried_on_a_later_call below),
-    not this run. This is the accepted trade-off from blocker 1's review."""
+    """`until` (yesterday) needs its sources through `t0+48h`, i.e. tomorrow
+    06:00 — beyond what any archive can serve *today*. The two kinds hit that
+    wall differently, and both behaviours are deliberate:
+
+    * tide's harmonic baseline is *generated* over the full 48 h, so the forcing
+      it needs is 15% short and `features`' coverage floor refuses the day —
+      "missing", recovered by résolution 5's retry-on-"missing" (blocker 1);
+    * wave's baseline is itself an archived field, so it simply stops at the
+      same wall as the forcing: the day is issued "ok" over a *shorter* horizon
+      rather than not at all. It is flagged `backfilled` and will not be retried
+      (`_missing_dates` treats "ok" as done), so it stays permanently short —
+      accepted: a verified 40 h day beats an absent one.
+    """
     since = YESTERDAY - timedelta(days=2)
     summary = backfill.run(since, tmp_path, today=TODAY, stations=STATIONS, gate=GATE)
 
@@ -210,13 +259,18 @@ def test_empty_history_backfills_every_day_in_range_last_day_structurally_missin
     days = {d["date"]: d for d in _history_days(tmp_path, "wave-a")}
     assert days[since.isoformat()]["status"] == "ok"
     assert days[(since + timedelta(days=1)).isoformat()]["status"] == "ok"
-    assert days[YESTERDAY.isoformat()]["status"] == "missing"
+    last = days[YESTERDAY.isoformat()]
+    assert last["status"] == "ok"
+    assert last["max_lead_h"] < 48  # horizon-limited, not full
     assert all(d["backfilled"] is True for d in days.values())
+
+    tide_days = {d["date"]: d for d in _history_days(tmp_path, "tide-b")}
+    assert tide_days[YESTERDAY.isoformat()]["status"] == "missing"
 
     scores = json.loads((tmp_path / "scores.json").read_text())
     row = next(r for r in scores["stations"] if r["id"] == "wave-a")
-    assert row["n_days"] == 2  # "ok" days only
-    assert row["n_days_backfilled"] == 2
+    assert row["n_days"] == 3  # "ok" days only
+    assert row["n_days_backfilled"] == 3
 
 
 def test_a_missing_day_is_retried_and_resolved_on_a_later_call(tmp_path, patched_sources, monkeypatch, calls):
@@ -229,20 +283,20 @@ def test_a_missing_day_is_retried_and_resolved_on_a_later_call(tmp_path, patched
     def _wind_boom(station, date_start, date_end, session=None):
         raise SourceError(station.id, "open-meteo 503")
 
-    monkeypatch.setattr(backfill, "fetch_wind_history", _wind_boom)
+    monkeypatch.setattr(backfill, "fetch_wind_models_history", _wind_boom)
     backfill.run(since, tmp_path, today=TODAY, stations=[WAVE], gate=GATE)
     first = _history_days(tmp_path, "wave-a")
     assert first[-1]["status"] == "missing"
     assert first[-1]["backfilled"] is True
 
     # Restore a healthy wind source (still asserts the date-range regression) —
-    # the outage is over, obs/mfwam were already fine.
+    # the outage is over, obs/marine were already fine.
     def _wind_ok(station, date_start, date_end, session=None):
         calls["wind"] += 1
         assert date_end <= TODAY
-        return _wind_df(date_start, date_end)
+        return _wind_models_df(date_start, date_end)
 
-    monkeypatch.setattr(backfill, "fetch_wind_history", _wind_ok)
+    monkeypatch.setattr(backfill, "fetch_wind_models_history", _wind_ok)
     summary = backfill.run(since, tmp_path, today=TODAY, stations=[WAVE], gate=GATE)
 
     assert summary["wave-a"] == [since.isoformat()]  # retried, not skipped
@@ -256,6 +310,7 @@ def test_deep_fetch_failure_marks_every_missing_day_missing_and_backfilled(tmp_p
         raise SourceError(station.id, "open-meteo 503")
 
     monkeypatch.setattr(backfill, "fetch_wind_history", _wind_boom)
+    monkeypatch.setattr(backfill, "fetch_wind_models_history", _wind_boom)
     summary = backfill.run(since, tmp_path, today=TODAY, stations=STATIONS, gate=GATE)
 
     expected = [(since + timedelta(days=i)).isoformat() for i in range(3)]
@@ -285,7 +340,7 @@ def test_no_missing_days_means_no_deep_fetch_at_all(tmp_path, patched_sources, c
     assert summary["tide-b"] == []
     assert calls["candhis"] == 0
     assert calls["tide"] == 0
-    assert calls["mfwam"] == 0
+    assert calls["marine"] == 0
     assert calls["wind"] == 0
 
 
@@ -317,17 +372,20 @@ def test_daily_run_after_backfill_does_not_destroy_the_backfilled_day(tmp_path, 
         idx = pd.date_range(start, TODAY, freq="1h", tz="UTC")
         return pd.DataFrame({"hs": np.full(len(idx), 1.3), "tp": np.full(len(idx), 8.0)}, index=idx)
 
-    def _live_mfwam(stations, run_date, lookback_days=1, horizon_days=3):
-        idx = pd.date_range(pd.Timestamp(run_date, tz="UTC") - pd.Timedelta(days=1), periods=24 * 4, freq="1h")
-        return {"wave-a": pd.DataFrame({"hs_baseline": np.full(len(idx), 1.0)}, index=idx)}
+    def _live_marine(station, session=None, forecast_days=3):
+        idx = pd.date_range(pd.Timestamp(TODAY, tz="UTC"), periods=24 * forecast_days, freq="1h")
+        return pd.DataFrame({c: np.full(len(idx), MODEL_HS[c]) for c in MODEL_COLUMNS}, index=idx)
 
-    def _live_wind_forecast(station, session=None):
+    def _live_wind_models(station, session=None):
         idx = pd.date_range("2026-07-25", periods=24 * 10, freq="1h", tz="UTC")
-        return pd.DataFrame({"wind_u10": np.full(len(idx), 3.0), "wind_v10": np.full(len(idx), -2.0)}, index=idx)
+        return pd.DataFrame(
+            {c: np.full(len(idx), 3.0 if c.startswith("wind_u10") else -2.0) for c in MULTI_FORCING_COLUMNS},
+            index=idx,
+        )
 
     monkeypatch.setattr(daily, "fetch_wave_obs", _live_wave_obs)
-    monkeypatch.setattr(daily, "fetch_wave_forecast", _live_mfwam)
-    monkeypatch.setattr(daily, "fetch_wind_forecast", _live_wind_forecast)
+    monkeypatch.setattr(daily, "fetch_wave_models_forecast", _live_marine)
+    monkeypatch.setattr(daily, "fetch_wind_models_forecast", _live_wind_models)
 
     daily.run(TODAY, tmp_path, stations=[WAVE], gate=GATE, archive_dir=tmp_path / "archive")
 
@@ -343,3 +401,29 @@ def test_daily_run_after_backfill_does_not_destroy_the_backfilled_day(tmp_path, 
     assert survived["max_lead_h"] >= backfilled_day["max_lead_h"]
     scored = {p["t"]: p for p in survived["series"]}
     assert all(scored[p["t"]] == p for p in backfilled_day["series"])  # no point lost or altered
+
+
+def test_backfill_wave_replays_off_the_marine_history_with_the_artefact_baseline(
+    tmp_path, patched_sources, calls
+):
+    """Task 6: the replayed wave baseline comes from `fetch_wave_models_history`
+    (CMEMS is out of the path) and from the artefact's own column — one deep
+    marine fetch for the whole window, never one per replayed day."""
+    since = YESTERDAY - timedelta(days=2)
+
+    summary = backfill.run(since, tmp_path, today=TODAY, stations=[WAVE], gate=GATE)
+
+    assert summary["wave-a"] == [(since + timedelta(days=i)).isoformat() for i in range(3)]
+    assert calls["marine"] == 1  # one deep fetch, three replayed days
+    assert not hasattr(backfill, "fetch_wave_forecast")  # MFWAM/CMEMS gone
+
+    # The pre-roll must cover the first replayed day's -24h baseline lookback.
+    marine_start, marine_end = calls["last_marine_range"]
+    assert marine_start < since
+    assert marine_end <= TODAY
+
+    replayed = next(d for d in _history_days(tmp_path, "wave-a") if d["date"] == since.isoformat())
+    assert replayed["status"] == "ok"
+    assert replayed["baseline_model"] == BASELINE_MODEL
+    # Baseline served = the artefact's column, not the first model available.
+    assert {p["baseline"] for p in replayed["series"]} == {MODEL_HS[f"hs_{BASELINE_MODEL}"]}

@@ -12,10 +12,18 @@ import pytest
 
 from scoreboard import daily
 from scoreboard.config import Station
-from scoreboard.features import FEATURE_COLUMNS
+from scoreboard.features import FEATURE_COLUMNS, WAVE_FEATURE_COLUMNS
 from scoreboard.sources import SourceError
+from scoreboard.sources.marine import MODEL_COLUMNS
+from scoreboard.sources.wind import MULTI_FORCING_COLUMNS
 
 RUN_DATE = date(2026, 7, 30)
+# Deliberately NOT the first wave model: an implementation that grabs
+# `MODEL_COLUMNS[0]` instead of reading the artefact must fail these tests.
+BASELINE_MODEL = "ewam"
+# One distinct constant per model column, so the published `baseline` value
+# alone identifies which column the serve path actually selected.
+MODEL_HS = {col: 1.0 + i for i, col in enumerate(MODEL_COLUMNS)}
 
 WAVE = Station(id="wave-a", name="Wave A", kind="wave", lat=48.0, lon=-4.0,
                 source="candhis", source_id="0001", baseline="mfwam")
@@ -36,10 +44,26 @@ class _FakePipe:
     the real serving path.
     """
 
-    feature_names_in_ = np.asarray(FEATURE_COLUMNS)
+    def __init__(self, columns=FEATURE_COLUMNS):
+        self.feature_names_in_ = np.asarray(columns)
 
     def predict(self, x):
         return np.zeros(len(x))
+
+
+def _artifact(station_id, models_dir=None):
+    """The Task 5 artefact shape: estimator + what it was fitted against.
+
+    Wave stations serve off a named Open-Meteo model; tide keeps `None` and the
+    mono-model feature list — the tide path must stay byte-for-byte as it was.
+    """
+    if station_id == "tide-b":
+        return {"model": _FakePipe(), "baseline_model": None, "feature_columns": FEATURE_COLUMNS}
+    return {
+        "model": _FakePipe(WAVE_FEATURE_COLUMNS),
+        "baseline_model": BASELINE_MODEL,
+        "feature_columns": WAVE_FEATURE_COLUMNS,
+    }
 
 
 def _hourly(start, periods, value):
@@ -61,14 +85,27 @@ def _tide_obs_df(start, date_end, value=2.0):
     return pd.DataFrame({"level": np.full(len(idx), value)}, index=idx)
 
 
-def _mfwam_baseline(start, periods, value=1.0):
-    idx = pd.date_range(start, periods=periods, freq="1h", tz="UTC")
-    return pd.DataFrame({"hs_baseline": np.full(periods, value)}, index=idx)
+def _marine_df(run_date=RUN_DATE, forecast_days=3):
+    """What `marine.fetch_wave_models_forecast` really returns: an hourly grid
+    starting at *today* 00:00 UTC (Open-Meteo forecast semantics — no past
+    hours unless asked for), one Hs column per wave model."""
+    idx = pd.date_range(
+        pd.Timestamp(run_date, tz="UTC"), periods=24 * forecast_days, freq="1h"
+    )
+    return pd.DataFrame({col: np.full(len(idx), MODEL_HS[col]) for col in MODEL_COLUMNS}, index=idx)
 
 
 def _wind_df(station, session=None):
     idx = pd.date_range("2026-07-25", periods=24 * 10, freq="1h", tz="UTC")
     return pd.DataFrame({"wind_u10": np.full(len(idx), 3.0), "wind_v10": np.full(len(idx), -2.0)}, index=idx)
+
+
+def _wind_models_df(station, session=None):
+    idx = pd.date_range("2026-07-25", periods=24 * 10, freq="1h", tz="UTC")
+    return pd.DataFrame(
+        {col: np.full(len(idx), 3.0 if col.startswith("wind_u10") else -2.0) for col in MULTI_FORCING_COLUMNS},
+        index=idx,
+    )
 
 
 @pytest.fixture
@@ -83,13 +120,12 @@ def patched_sources(monkeypatch):
         lambda station, start, date_end=None: _tide_obs_df(start, date_end),
     )
     monkeypatch.setattr(
-        daily, "fetch_wave_forecast",
-        lambda stations, run_date, lookback_days=1, horizon_days=3: {
-            "wave-a": _mfwam_baseline(pd.Timestamp(run_date, tz="UTC") - pd.Timedelta(days=1), 24 * 4)
-        },
+        daily, "fetch_wave_models_forecast",
+        lambda station, session=None, forecast_days=3: _marine_df(forecast_days=forecast_days),
     )
     monkeypatch.setattr(daily, "fetch_wind_forecast", _wind_df)
-    monkeypatch.setattr(daily.model, "load", lambda station_id, models_dir=None: _FakePipe())
+    monkeypatch.setattr(daily, "fetch_wind_models_forecast", _wind_models_df)
+    monkeypatch.setattr(daily.model, "load_artifact", _artifact)
     return monkeypatch
 
 
@@ -170,7 +206,7 @@ def test_wind_source_error_marks_station_missing_without_touching_prior_latest(
     def _wind_boom(station, session=None):
         raise SourceError(station.id, "open-meteo 503")
 
-    patched_sources.setattr(daily, "fetch_wind_forecast", _wind_boom)
+    patched_sources.setattr(daily, "fetch_wind_models_forecast", _wind_boom)
     next_date = date(2026, 7, 31)
     summary = daily.run(next_date, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
 
@@ -182,9 +218,9 @@ def test_missing_model_artifact_is_isolated_to_its_station(tmp_path, patched_sou
     def _load(station_id, models_dir=None):
         if station_id == "wave-a":
             raise FileNotFoundError("no such file: wave-a.joblib")
-        return _FakePipe()
+        return _artifact(station_id, models_dir)
 
-    patched_sources.setattr(daily.model, "load", _load)
+    patched_sources.setattr(daily.model, "load_artifact", _load)
     summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
 
     assert summary["wave-a"]["status"] == "missing"
@@ -213,7 +249,7 @@ def test_inference_failure_still_records_a_missing_history_day(tmp_path, patched
     def _wind_boom(station, session=None):
         raise SourceError(station.id, "open-meteo 503")
 
-    patched_sources.setattr(daily, "fetch_wind_forecast", _wind_boom)
+    patched_sources.setattr(daily, "fetch_wind_models_forecast", _wind_boom)
     daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
 
     history = json.loads((tmp_path / "wave-a" / "history.json").read_text())
@@ -231,10 +267,18 @@ def test_daily_run_archives_the_served_wind_forecast_for_every_published_station
 
     df = pd.read_parquet(archive_dir / f"{RUN_DATE.isoformat()}.parquet")
     assert set(df["station_id"]) == {"wave-a", "tide-b"}
+    # One file, two forcing shapes: the wave path archives the multi-model
+    # frame it actually served, the tide path still the mono ARPEGE one.
     assert set(df.columns) == {
-        "station_id", "issued", "valid_time", "lead_h", "wind_u10", "wind_v10", "source",
+        "station_id", "issued", "valid_time", "lead_h", "source",
+        "wind_u10", "wind_v10", *MULTI_FORCING_COLUMNS,
     }
-    assert (df["source"] == "meteofrance_arpege_europe").all()
+    wave, tide = df[df["station_id"] == "wave-a"], df[df["station_id"] == "tide-b"]
+    assert (wave["source"] == "openmeteo:multi").all()
+    assert wave[MULTI_FORCING_COLUMNS].notna().all().all()
+    assert wave[["wind_u10", "wind_v10"]].isna().all().all()
+    assert (tide["source"] == "meteofrance_arpege_europe").all()
+    assert tide[["wind_u10", "wind_v10"]].notna().all().all()
     assert df["lead_h"].min() >= 1
 
 
@@ -255,14 +299,11 @@ def test_rerunning_the_same_date_does_not_duplicate_archived_forecast_rows(
 def test_a_station_whose_inference_fails_is_not_archived(tmp_path, patched_sources):
     """Discriminant case: only wave-a's fetch fails, tide-b still publishes and
     archives — an implementation that never archives anything must not pass this."""
-    real_fetch = daily.fetch_wind_forecast
-
     def _wind_boom(station, session=None):
-        if station.id == "wave-a":
-            raise SourceError(station.id, "open-meteo 503")
-        return real_fetch(station, session)
+        raise SourceError(station.id, "open-meteo 503")
 
-    patched_sources.setattr(daily, "fetch_wind_forecast", _wind_boom)
+    # Only the wave path's forcing fails; tide's own fetch is untouched.
+    patched_sources.setattr(daily, "fetch_wind_models_forecast", _wind_boom)
     archive_dir = tmp_path / "archive"
 
     summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=archive_dir)
@@ -450,3 +491,117 @@ def test_harmonic_fit_below_30_days_of_tide_obs_marks_the_station_missing(
 
     assert summary["tide-b"]["status"] == "missing"
     assert not (tmp_path / "tide-b" / "latest.json").exists()
+
+
+# --- Task 6: the multi-model serve path ------------------------------------
+
+
+def test_wave_run_serves_the_multi_model_sources_and_never_mfwam(tmp_path, patched_sources):
+    """The wave path must fetch Open-Meteo marine + the 3-model wind, pick its
+    baseline column from the artefact, and leave the tide path on its mono
+    ARPEGE forcing. MFWAM/CMEMS must not be reachable from daily.py at all."""
+    seen: dict[str, list[str]] = {}
+
+    def _marine(station, session=None, forecast_days=3):
+        assert station.kind == "wave", "marine must never be fetched for a tide station"
+        assert forecast_days >= 3, "the +48h horizon needs at least 3 forecast days"
+        seen.setdefault("marine", []).append(station.id)
+        return _marine_df()
+
+    def _multi_wind(station, session=None):
+        seen.setdefault("multi_wind", []).append(station.id)
+        return _wind_models_df(station)
+
+    def _mono_wind(station, session=None):
+        seen.setdefault("mono_wind", []).append(station.id)
+        return _wind_df(station)
+
+    patched_sources.setattr(daily, "fetch_wave_models_forecast", _marine)
+    patched_sources.setattr(daily, "fetch_wind_models_forecast", _multi_wind)
+    patched_sources.setattr(daily, "fetch_wind_forecast", _mono_wind)
+
+    summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+
+    assert summary["wave-a"]["status"] == "ok"
+    assert summary["tide-b"]["status"] == "ok"
+    assert seen["marine"] == ["wave-a"]
+    assert seen["multi_wind"] == ["wave-a"]
+    assert seen["mono_wind"] == ["tide-b"]  # tide forcing strictly unchanged
+    assert not hasattr(daily, "fetch_wave_forecast")  # CMEMS/MFWAM out of the serve path
+
+    # The served baseline is the artefact's column, not the first one available.
+    payload = json.loads((tmp_path / "wave-a" / "latest.json").read_text())
+    assert {p["baseline"] for p in payload["series"]} == {MODEL_HS[f"hs_{BASELINE_MODEL}"]}
+
+
+def test_latest_json_carries_the_baseline_model_from_the_artefact(tmp_path, patched_sources):
+    """Additive key, same `schema_version`: the live site reads the old keys."""
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+
+    wave = json.loads((tmp_path / "wave-a" / "latest.json").read_text())
+    assert wave["baseline_model"] == BASELINE_MODEL
+    assert wave["schema_version"] == 1
+    assert "series" in wave and "issued" in wave and "station" in wave
+
+    tide = json.loads((tmp_path / "tide-b" / "latest.json").read_text())
+    assert "baseline_model" not in tide  # harmonic baseline has no Open-Meteo model
+
+
+def test_scored_history_entry_carries_the_baseline_model(tmp_path, patched_sources):
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    daily.run(date(2026, 7, 31), tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+
+    history = json.loads((tmp_path / "wave-a" / "history.json").read_text())
+    scored = next(d for d in history["days"] if d["date"] == RUN_DATE.isoformat())
+    assert scored["baseline_model"] == BASELINE_MODEL
+
+    tide_history = json.loads((tmp_path / "tide-b" / "history.json").read_text())
+    tide_day = next(d for d in tide_history["days"] if d["date"] == RUN_DATE.isoformat())
+    assert "baseline_model" not in tide_day
+
+
+def test_artefact_feature_columns_mismatch_marks_only_that_station_missing(tmp_path, patched_sources):
+    """A stale artefact (fitted on another column list) must refuse to predict
+    rather than serve a silently subset/reordered feature frame — and only that
+    station goes missing."""
+
+    def _load(station_id, models_dir=None):
+        art = _artifact(station_id, models_dir)
+        if station_id == "wave-a":
+            stale = WAVE_FEATURE_COLUMNS[:-1]
+            art["feature_columns"], art["model"] = stale, _FakePipe(stale)
+        return art
+
+    patched_sources.setattr(daily.model, "load_artifact", _load)
+    summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+
+    assert summary["wave-a"]["status"] == "missing"
+    assert "feature" in summary["wave-a"]["reason"]
+    assert not (tmp_path / "wave-a" / "latest.json").exists()
+    assert summary["tide-b"]["status"] == "ok"
+
+
+def test_a_pre_switch_latest_json_without_baseline_model_still_scores(tmp_path, patched_sources):
+    """Scoring continuity across the switch: yesterday's issue was published by
+    the MFWAM-era code and has no `baseline_model` key. It must be read back and
+    scored normally, and nothing must be invented for it."""
+    t0 = pd.Timestamp(RUN_DATE, tz="UTC") + pd.Timedelta(hours=daily.ISSUE_HOUR)
+    old = {
+        "schema_version": 1,
+        "station": "wave-a",
+        "issued": daily.iso(t0),
+        "series": [
+            {"t": daily.iso(t0 + pd.Timedelta(hours=h)), "ia": 1.1, "baseline": 1.0}
+            for h in range(1, 25)
+        ],
+    }
+    (tmp_path / "wave-a").mkdir(parents=True)
+    (tmp_path / "wave-a" / "latest.json").write_text(json.dumps(old))
+
+    daily.run(date(2026, 7, 31), tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+
+    history = json.loads((tmp_path / "wave-a" / "history.json").read_text())
+    scored = next(d for d in history["days"] if d["date"] == RUN_DATE.isoformat())
+    assert scored["status"] == "ok"
+    assert scored["n_points"] == 24
+    assert "baseline_model" not in scored  # unknown for a pre-switch issue, never guessed

@@ -8,11 +8,16 @@ that loses to its own baseline is never published):
    station published *yesterday* (read back from its own `latest.json`,
    matched to observations by nearest hour) — the scored result becomes a new
    `history.json` day entry.
-2. Build today's baseline: MFWAM (one Copernicus call for every `wave`
-   station, résolution 5) or a harmonic fit refitted on today's full
+2. Build today's baseline: for a `wave` station, the Open-Meteo wave model the
+   artefact was *trained against* (`baseline_model`, one marine request per
+   station) — for a `tide` station, a harmonic fit refitted on today's full
    observation history (résolution 4 — a stale fit is exactly the bug this
    project already paid for once, see `docs/data-sources.md`).
-3. Fetch the ARPEGE wind forecast and run inference through the trained model.
+3. Fetch the atmospheric forcing — the 3 candidate models for wave, the single
+   ARPEGE run for tide — and run inference through the trained model. The
+   feature columns built here must match the artefact's `feature_columns`
+   exactly, or the station is marked missing rather than served a frame the
+   model was never fitted on.
 4. Publish today's `latest.json`.
 5. Archive the served wind forecast (`archive.write_day`, Task A1) for every
    station that reached step 4 — the corpus a future retrain needs to remove
@@ -54,9 +59,13 @@ from scoreboard.config import Station, load_stations
 from scoreboard.features import build_features
 from scoreboard.sources import SourceError
 from scoreboard.sources.candhis import fetch_wave_obs
-from scoreboard.sources.mfwam import fetch_wave_forecast
+from scoreboard.sources.marine import fetch_wave_models_forecast
 from scoreboard.sources.waterlevel import fetch_tide_obs
-from scoreboard.sources.wind import FORECAST_MODEL, fetch_wind_forecast
+from scoreboard.sources.wind import (
+    FORECAST_MODEL,
+    fetch_wind_forecast,
+    fetch_wind_models_forecast,
+)
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +75,9 @@ TIDE_FIT_LOOKBACK_DAYS = 90  # utide needs months, not days, to separate constit
 MIN_TIDE_FIT_DAYS = 30  # same hard floor as scripts/build_dataset.py's `24 * 30`
 BASELINE_LOOKBACK_H = 24
 BASELINE_HORIZON_H = 48
+# `archive.write_day`'s `source` for the wave path: the forcing archived there
+# is the 3-model frame, not any single named run (unlike tide's FORECAST_MODEL).
+MULTI_FORCING_SOURCE = "openmeteo:multi"
 # A day scored the morning after its issue only meets ~24h of its own leads —
 # the 25-48h tail stays "pending" in its history entry and is completed by
 # `_rescore_pending` on later runs, as obs catch up. Beyond this age, every
@@ -100,18 +112,34 @@ def _fetch_obs(station: Station, run_date: date) -> pd.Series:
     return df["level"].astype(float).dropna().sort_index()
 
 
-def _baseline_window(station: Station, obs: pd.Series, t0: pd.Timestamp, mfwam: dict) -> pd.Series:
-    """`[t0-24h, t0+48h]` baseline series — MFWAM lookup or a fresh harmonic fit."""
+def _baseline_window(
+    station: Station,
+    obs: pd.Series,
+    t0: pd.Timestamp,
+    wave_models: pd.DataFrame | None,
+    baseline_model: str | None,
+) -> pd.Series:
+    """`[t0-24h, t0+48h]` baseline series — one wave model's column, or a fresh
+    harmonic fit.
+
+    `baseline_model` is the artefact's own (`models/<station>.joblib`), never a
+    module default: serving a station off a different wave model than the one it
+    was trained to correct is a silent, unmeasurable regression.
+    """
     lo = t0 - pd.Timedelta(hours=BASELINE_LOOKBACK_H)
     hi = t0 + pd.Timedelta(hours=BASELINE_HORIZON_H)
     if station.kind == "wave":
-        baseline = mfwam.get(station.id)
-        if baseline is None or baseline.empty:
-            raise SourceError(station.id, "no mfwam baseline available")
-        # The Copernicus subset is fetched with a wider margin (lookback_days/
-        # horizon_days in `run`) than the model was trained on; clip back to
-        # the trained horizon so `lead_h` never extrapolates past 48h.
-        return baseline["hs_baseline"][(baseline.index > lo) & (baseline.index <= hi)]
+        if not baseline_model:
+            raise SourceError(station.id, "artefact carries no baseline_model — retrain needed")
+        col = f"hs_{baseline_model}"
+        if wave_models is None or col not in wave_models.columns:
+            raise SourceError(station.id, f"marine frame has no {col!r} column")
+        baseline = wave_models[col].astype(float).dropna()
+        if baseline.empty:
+            raise SourceError(station.id, f"{col} is entirely null")
+        # The marine fetch covers a wider margin than the model was trained on;
+        # clip back to the trained horizon so `lead_h` never extrapolates past 48h.
+        return baseline[(baseline.index > lo) & (baseline.index <= hi)]
 
     # Tide: refit daily on every observation available up to t0. One
     # utide.solve call per tide station per run is negligible — unlike
@@ -137,7 +165,12 @@ def _baseline_window(station: Station, obs: pd.Series, t0: pd.Timestamp, mfwam: 
     return fitted.predict(window)
 
 
-def score_series(obs: pd.Series, series: list[dict], issued_ts: pd.Timestamp) -> dict:
+def score_series(
+    obs: pd.Series,
+    series: list[dict],
+    issued_ts: pd.Timestamp,
+    baseline_model: str | None = None,
+) -> dict:
     """Pure scoring core (no I/O): match an issued `series` (`[{"t","ia","baseline"}]`)
     against `obs` (nearest hour, 1h tolerance) and build the `history.json` day entry.
 
@@ -145,10 +178,14 @@ def score_series(obs: pd.Series, series: list[dict], issued_ts: pd.Timestamp) ->
     a day earlier) and `backfill.py` (scores a freshly regenerated `series` immediately,
     against the deep a-posteriori obs already held in memory — résolution 1, no second
     scoring code path).
+
+    `baseline_model` names the wave model the scored baseline came from. It is
+    optional and only recorded when known: a tide day never has one, and neither
+    does an issue published before Task 6 — the key is absent rather than guessed.
     """
     day = issued_ts.date().isoformat()
     if not series:
-        return {"date": day, "status": "missing"}
+        return _with_baseline_model({"date": day, "status": "missing"}, baseline_model)
 
     times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in series])
     ia = pd.Series([p["ia"] for p in series], index=times)
@@ -195,6 +232,13 @@ def score_series(obs: pd.Series, series: list[dict], issued_ts: pd.Timestamp) ->
         }
     if pending:
         entry["pending"] = pending
+    return _with_baseline_model(entry, baseline_model)
+
+
+def _with_baseline_model(entry: dict, baseline_model: str | None) -> dict:
+    """Additive key, only when known — see `score_series`."""
+    if baseline_model:
+        entry["baseline_model"] = baseline_model
     return entry
 
 
@@ -252,7 +296,7 @@ def rescore_entry(entry: dict, obs: pd.Series, *, drop_pending_before: date | No
         new_entry["pending"] = still_pending
     if entry.get("backfilled"):
         new_entry["backfilled"] = True
-    return new_entry
+    return _with_baseline_model(new_entry, entry.get("baseline_model"))
 
 
 def _rescore_pending(station: Station, obs: pd.Series, out_dir: Path, run_date: date) -> None:
@@ -293,7 +337,9 @@ def _score_previous_issue(station: Station, obs: pd.Series, out_dir: Path, run_d
     issued_ts = pd.Timestamp(prev["issued"])
     if issued_ts.date() >= run_date:
         return
-    entry = score_series(obs, prev.get("series") or [], issued_ts)
+    # `.get`, not `[...]`: a `latest.json` written before Task 6 has no
+    # `baseline_model` key at all and must still be scored, not crash the sweep.
+    entry = score_series(obs, prev.get("series") or [], issued_ts, prev.get("baseline_model"))
     publish.upsert_history(out_dir, station.id, entry)
 
 
@@ -301,23 +347,55 @@ def issue_series(
     station: Station,
     obs: pd.Series,
     t0: pd.Timestamp,
-    mfwam: dict,
+    wave_models: pd.DataFrame | None,
     forcing: pd.DataFrame,
     models_dir: Path | None,
-) -> list[dict]:
-    """Pure inference core (no I/O): baseline -> features -> model -> `[{"t","ia",
-    "baseline"}]`. Shared by `_run_station` (live forcing, today's issue) and
-    `backfill.py` (a-posteriori forcing/obs, a past day's issue) — one code path,
-    résolution 1's "ne duplique pas la logique de prédiction"."""
-    baseline = _baseline_window(station, obs, t0, mfwam)
-    feats = build_features(baseline, obs, t0, forcing)
-    pipe = model.load(station.id, models_dir=models_dir)
-    pred = model.predict(pipe, feats)
+) -> tuple[list[dict], str | None]:
+    """Pure inference core (no I/O): baseline -> features -> model -> `([{"t","ia",
+    "baseline"}], baseline_model)`. Shared by `_run_station` (live forcing, today's
+    issue) and `backfill.py` (a-posteriori forcing/obs, a past day's issue) — one
+    code path, résolution 1's "ne duplique pas la logique de prédiction".
+
+    The artefact drives everything about the wave path: which Open-Meteo model is
+    the baseline, and which feature columns the estimator was fitted on. A frame
+    that does not match those columns exactly is refused (`SourceError` — the
+    caller marks the station missing) rather than silently reordered or subset by
+    `model.predict`: a model asked to correct a different baseline, or fed a
+    column list from another training generation, produces plausible garbage.
+    """
+    artifact = model.load_artifact(station.id, models_dir=models_dir)
+    baseline_model = artifact["baseline_model"]
+    baseline = _baseline_window(station, obs, t0, wave_models, baseline_model)
+    feats = build_features(baseline, obs, t0, forcing, wave_models=wave_models)
+    if list(feats.columns) != list(artifact["feature_columns"]):
+        raise SourceError(
+            station.id,
+            f"feature columns {list(feats.columns)} do not match the artefact's "
+            f"{list(artifact['feature_columns'])}",
+        )
+    pred = model.predict(artifact["model"], feats)
     ia = feats["baseline"].to_numpy() + pred if station.kind == "tide" else pred
-    return [
+    series = [
         {"t": iso(t), "ia": round(float(i), 4), "baseline": round(float(b), 4)}
         for t, i, b in zip(feats.index, ia, feats["baseline"])
     ]
+    return series, baseline_model
+
+
+def _fetch_inputs(station: Station) -> tuple[pd.DataFrame | None, pd.DataFrame, str]:
+    """`(wave_models, forcing, archive source)` for one station.
+
+    Wave: the 5 wave models (baseline + features) and the 3 candidate wind runs.
+    Tide: no wave frame, and the single ARPEGE run it has always used — the tide
+    path is deliberately untouched by the multi-model switch.
+    """
+    if station.kind == "wave":
+        return (
+            fetch_wave_models_forecast(station),
+            fetch_wind_models_forecast(station),
+            MULTI_FORCING_SOURCE,
+        )
+    return None, fetch_wind_forecast(station), FORECAST_MODEL
 
 
 def _run_station(
@@ -325,7 +403,6 @@ def _run_station(
     run_date: date,
     t0: pd.Timestamp,
     issued: str,
-    mfwam: dict,
     out_dir: Path,
     models_dir: Path | None,
     archive_dir: Path,
@@ -347,8 +424,8 @@ def _run_station(
         log.warning("%s: scoring the previous issue failed: %s", station.id, exc)
 
     try:
-        forcing = fetch_wind_forecast(station)
-        series = issue_series(station, obs, t0, mfwam, forcing, models_dir)
+        wave_models, forcing, forcing_source = _fetch_inputs(station)
+        series, baseline_model = issue_series(station, obs, t0, wave_models, forcing, models_dir)
     except Exception as exc:  # noqa: BLE001 - SourceError, a missing model file,
         # sklearn/pandas/utide raising on a degenerate input: none of it may
         # escape and abort the other stations' loop iteration.
@@ -359,7 +436,7 @@ def _run_station(
         publish.upsert_history(out_dir, station.id, {"date": run_date.isoformat(), "status": "missing"})
         return {"status": "missing", "reason": str(exc)}
 
-    publish.write_latest(out_dir, station.id, issued, series)
+    publish.write_latest(out_dir, station.id, issued, series, baseline_model=baseline_model)
 
     try:
         # Archived *after* a successful issuance only (résolution: a failed
@@ -367,7 +444,7 @@ def _run_station(
         # `docs/data-sources.md` for why this corpus exists at all. Must
         # never fail the run: the scoreboard publish above already happened.
         valid_times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in series])
-        archive.write_day(archive_dir, station.id, t0, valid_times, forcing, source=FORECAST_MODEL)
+        archive.write_day(archive_dir, station.id, t0, valid_times, forcing, source=forcing_source)
     except Exception as exc:  # noqa: BLE001 - archiving must never fail the run
         log.warning("%s: archiving served wind forecast failed: %s", station.id, exc)
 
@@ -394,16 +471,11 @@ def run(
     publish.write_stations(out_dir, stations, gate)
 
     published = [s for s in stations if gate.get(s.id, {}).get("pass", False)]
-    wave_stations = [s for s in published if s.kind == "wave"]
-    mfwam: dict = {}
-    if wave_stations:
-        try:
-            mfwam = fetch_wave_forecast(wave_stations, run_date, lookback_days=1, horizon_days=3)
-        except SourceError as exc:
-            log.warning("mfwam fetch failed for all wave stations: %s", exc)
-
+    # No shared pre-fetch any more: every source is one request per station
+    # (Open-Meteo marine/forecast), so it lives inside `_run_station`'s
+    # try/except and a dead source takes down exactly one station.
     summary = {
-        st.id: _run_station(st, run_date, t0, issued, mfwam, out_dir, models_dir, archive_dir)
+        st.id: _run_station(st, run_date, t0, issued, out_dir, models_dir, archive_dir)
         for st in published
     }
 

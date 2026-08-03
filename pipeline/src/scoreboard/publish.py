@@ -90,14 +90,28 @@ def write_stations(out_dir: Path, stations: list[Station], gate: dict) -> dict:
     return payload
 
 
-def write_latest(out_dir: Path, station_id: str, issued: str, series: list[dict]) -> dict:
-    """`data/<id>/latest.json` — full overwrite, no history kept here."""
+def write_latest(
+    out_dir: Path,
+    station_id: str,
+    issued: str,
+    series: list[dict],
+    baseline_model: str | None = None,
+) -> dict:
+    """`data/<id>/latest.json` — full overwrite, no history kept here.
+
+    `baseline_model` (the Open-Meteo wave model this issue's baseline came from)
+    is *additive*: absent for tide, absent for anything issued before Task 6, and
+    it does not move `schema_version` — the live site reads the other keys and
+    must keep working untouched.
+    """
     payload = {
         "schema_version": SCHEMA_VERSION,
         "station": station_id,
         "issued": issued,
         "series": series,
     }
+    if baseline_model:
+        payload["baseline_model"] = baseline_model
     _atomic_write(out_dir / station_id / "latest.json", payload)
     return payload
 
