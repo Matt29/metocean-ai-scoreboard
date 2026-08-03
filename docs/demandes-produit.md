@@ -146,6 +146,21 @@ stations Météo-France.
 - **L'angle produit** : la sélection « sites EMR » est un argument de prospection
   — le choix des points est une décision commerciale autant que technique.
 
+### Sondage effectué le 2026-08-03 (rapport : `.superpowers/sdd/2026-08-03-retrain-multi-modeles/sondage-bouees-mf.md`)
+
+Auth vérifiée (header `apikey`, `public-api.meteofrance.fr`, token valide
+jusqu'en 2029). Verdicts, mesurés en non-null sur requêtes réelles :
+
+- **Vent : faisable.** 2 151 stations DPObs (RADOME) ; candidates proches des
+  stations houle : Biarritz (9,5 km d'Anglet), Cherbourg-Homet (3,9 km) ;
+  zones EMR couvertes. Latence ~2 min (compatible scoring 09:30 UTC). Quotas
+  ~50-60 req/min, un fetch quotidien est négligeable.
+- **Houle : non.** Aucune station DPObs ne sert de Hs — réseau terrestre pur.
+  Le rôle « renfort obs houle Anglet/Cherbourg » ne passe pas par cette API.
+- **Limite historique** : temps réel = fenêtre glissante ~3-4 jours ;
+  l'archive longue relève d'une autre API (climatologie, non souscrite). Pour
+  entraîner un jour sur ces vents, commencer à archiver tôt ou souscrire.
+
 ### Préalable
 
 Comme les demandes 1 et 2 : passe **après** le ré-entraînement sur prévisions
