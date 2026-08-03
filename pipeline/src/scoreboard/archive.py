@@ -16,11 +16,17 @@ Idempotent by (day file, station_id): replaying the same day for the same statio
 replaces its rows rather than duplicating them; other stations' rows already
 written for that day, and every other day's file, are untouched. Atomic write
 (tmp + rename), same discipline as `publish.py` — this runs unsupervised.
+
+Not a byte-for-byte copy of what inference was served: a degraded fetch is
+covered by `features._aligned_forcing`'s coverage floor with
+`_NEUTRAL_FORCING = 0.0`, but this archive stores the raw forecast reindexed
+onto `valid_times` with no such fill — a gap here reads as `NaN`, not `0.0`.
+That is deliberate: this corpus is the *ground truth* forecast, which is what
+a future retrain needs, not a replay of the inference-time neutral fallback.
 """
 
 from __future__ import annotations
 
-import logging
 import os
 import tempfile
 from pathlib import Path
@@ -28,8 +34,6 @@ from pathlib import Path
 import pandas as pd
 
 from scoreboard.sources.wind import FORCING_COLUMNS
-
-log = logging.getLogger(__name__)
 
 DEFAULT_ARCHIVE_DIR = Path(__file__).resolve().parents[2] / "data_forecast_archive"
 

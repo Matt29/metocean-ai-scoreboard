@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 
 from scoreboard.sources import SourceError
+from scoreboard.sources.wind import FORCING_COLUMNS as _FORCING_COLUMNS
 
 FEATURE_COLUMNS = [
     "baseline",
@@ -46,7 +47,6 @@ FEATURE_COLUMNS = [
 # correction" — the neutral fallback, consistent with the never-NaN contract.
 # It is only ever reached inside the coverage floor below.
 _NEUTRAL_FORCING = 0.0
-_FORCING_COLUMNS = ("wind_u10", "wind_v10")
 # Both providers deliver a gap-free hourly grid, so a few missing hours are a
 # blip while a third of the horizon missing is a degraded fetch, not weather.
 _MIN_FORCING_COVERAGE = 0.9

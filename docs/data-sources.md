@@ -300,6 +300,14 @@ ARPEGE via un proxy. Une station en échec d'inférence n'archive rien ce
 jour-là (pas de ligne inventée) ; un run `--dry-run` n'écrit jamais dans ce
 répertoire (même logique que pour `data/`).
 
+Limite connue : `issued` est le `t0` nominal du scoreboard (date du run,
+06:00 UTC) — cohérent avec la définition de `lead_h` partout ailleurs dans ce
+pipeline — et non l'heure d'initialisation réelle du run ARPEGE sous-jacent.
+Open-Meteo n'expose pas proprement la référence du run servi, donc le corpus
+ne peut pas distinguer un run 06Z frais d'un run 00Z vieux de six heures :
+facteur de confusion réel pour une analyse de l'erreur en fonction de
+l'échéance, à garder en tête pour un futur ré-entraînement.
+
 ## 5. Résumé des stations retenues
 
 Voir `pipeline/config/stations.toml` — 4 stations houle (Candhis) + 2

@@ -245,18 +245,27 @@ def test_rerunning_the_same_date_does_not_duplicate_archived_forecast_rows(
 
 
 def test_a_station_whose_inference_fails_is_not_archived(tmp_path, patched_sources):
+    """Discriminant case: only wave-a's fetch fails, tide-b still publishes and
+    archives — an implementation that never archives anything must not pass this."""
+    real_fetch = daily.fetch_wind_forecast
+
     def _wind_boom(station, session=None):
-        raise SourceError(station.id, "open-meteo 503")
+        if station.id == "wave-a":
+            raise SourceError(station.id, "open-meteo 503")
+        return real_fetch(station, session)
 
     patched_sources.setattr(daily, "fetch_wind_forecast", _wind_boom)
     archive_dir = tmp_path / "archive"
 
-    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=archive_dir)
+    summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=archive_dir)
 
-    assert not (archive_dir / f"{RUN_DATE.isoformat()}.parquet").exists()
+    assert summary["wave-a"]["status"] == "missing"
+    assert summary["tide-b"]["status"] == "ok"
+    df = pd.read_parquet(archive_dir / f"{RUN_DATE.isoformat()}.parquet")
+    assert set(df["station_id"]) == {"tide-b"}
 
 
-def test_archiving_failure_does_not_fail_the_run(tmp_path, patched_sources, monkeypatch):
+def test_archiving_failure_does_not_fail_the_run(tmp_path, patched_sources, monkeypatch, caplog):
     """The scoreboard publish must survive a broken archive write (e.g. a full
     disk, a permissions error) — visible in logs, never in the run's outcome."""
     monkeypatch.setattr(
@@ -264,10 +273,14 @@ def test_archiving_failure_does_not_fail_the_run(tmp_path, patched_sources, monk
         lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")),
     )
 
-    summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    with caplog.at_level("WARNING", logger="scoreboard.daily"):
+        summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
 
     assert summary["wave-a"]["status"] == "ok"
     assert (tmp_path / "wave-a" / "latest.json").exists()
+    assert any(
+        "archiving served wind forecast failed" in record.message for record in caplog.records
+    )
 
 
 def test_rerunning_the_same_date_does_not_invent_a_scored_day(tmp_path, patched_sources):
