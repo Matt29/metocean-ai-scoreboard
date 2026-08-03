@@ -22,6 +22,8 @@ def _synthetic(n: int = 2000, seed: int = 0) -> tuple[pd.DataFrame, pd.Series]:
             "mean_err_24h": rng.normal(0.0, 0.3, n),
             "hour_sin": np.sin(2 * np.pi * times.hour / 24),
             "hour_cos": np.cos(2 * np.pi * times.hour / 24),
+            "wind_u10": rng.normal(0.0, 5.0, n),
+            "wind_v10": rng.normal(0.0, 5.0, n),
         },
         index=times,
     )[FEATURE_COLUMNS]

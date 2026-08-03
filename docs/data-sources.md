@@ -206,6 +206,72 @@ Conservé comme redondance possible si REFMAR devient indisponible.
   cron (ou ajouter une marge / un retry si le run n'est pas encore publié).
 - **Décision :** MFWAM accessible et exploitable tel quel comme baseline Hs.
 
+## 4bis. Open-Meteo — vent 10 m (feature de forçage atmosphérique)
+
+Ajouté en Task 7B. Sources tranchées dans
+`.superpowers/sdd/2026-07-30-scoreboard-metocean-ia/spike-wind-sources.md` :
+Copernicus Marine n'expose aucune variable vent sur le dataset MFWAM utilisé, et
+l'API ARPEGE de Météo-France n'a qu'une archive roulante ~14 jours — inutilisable
+pour l'entraînement. Un seul fournisseur retenu, JSON pur, aucune dépendance
+GRIB2/cfgrib.
+
+- **Entraînement (ERA5, réanalyse)** :
+  `https://archive-api.open-meteo.com/v1/archive`
+  `?latitude=&longitude=&start_date=&end_date=`
+  `&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=UTC`
+  → **une seule requête par station** pour toute la fenêtre (365 j vérifiés).
+- **Inférence +48 h (ARPEGE Europe, prévision)** :
+  `https://api.open-meteo.com/v1/forecast`
+  `?...&models=meteofrance_arpege_europe&forecast_days=3&wind_speed_unit=ms&timezone=UTC`
+- **Pas de clé d'API** sur l'offre gratuite. Implémentation :
+  `pipeline/src/scoreboard/sources/wind.py` (`fetch_wind_history` /
+  `fetch_wind_forecast`, erreur réseau ou payload invalide → `SourceError`).
+- **Convention** : Open-Meteo renvoie une direction *météorologique* (d'où vient
+  le vent). Le fetcher convertit une fois pour toutes en composantes
+  `u10 = -V·sin(dir)` (vers l'est) et `v10 = -V·cos(dir)` (vers le nord), en m/s.
+  Une direction en degrés est circulaire et inutilisable comme feature brute.
+
+### Attribution (obligatoire)
+
+> Weather data by [Open-Meteo.com](https://open-meteo.com) — ERA5 reanalysis
+> (Copernicus Climate Change Service / ECMWF) and Météo-France ARPEGE, served
+> under CC BY 4.0.
+
+À afficher sur le scoreboard public (Task 9) au même titre que les attributions
+Candhis / SHOM / CMEMS.
+
+### Contrainte non commerciale — et porte de sortie
+
+L'offre gratuite Open-Meteo est réservée à un **usage non commercial**
+(< 10 000 requêtes/jour). Décision utilisateur : usage non commercial assumé
+pour ce projet (scoreboard public, sans publicité ni paywall). **Si le projet se
+monétise, cette source devient non conforme** ; deux portes de sortie, aucune ne
+change les features :
+
+1. Souscrire l'offre payante Open-Meteo (mêmes endpoints, clé d'API en `.env` +
+   secret GitHub Actions) ;
+2. Basculer sur les sources primaires : ERA5 direct via CDS (`cdsapi`) pour
+   l'entraînement, ARPEGE direct via l'API WCS de Météo-France pour l'inférence
+   — même profil de skew, mais dépendances GRIB2/`cfgrib` et file d'attente CDS
+   en plus.
+
+### Skew train/serve ERA5 → ARPEGE (à ne pas minimiser)
+
+Le modèle est **entraîné sur une réanalyse ERA5** (0,25°, ECMWF, vent « connu
+après coup ») et **servi avec une prévision ARPEGE Europe** (0,1°, Météo-France,
+vent prévu à +1…+48 h). Ce sont deux familles de modèles différentes sur deux
+grilles différentes, et la prévision porte une erreur de lead time que la
+réanalyse n'a pas. **Ce n'est pas une équivalence.**
+
+C'est exactement le même type de compromis que celui déjà documenté pour la
+baseline vague (`scripts/build_dataset.py` : l'**analyse** MFWAM sert de proxy à
+la prévision archivée, faute d'archive libre) : un skew de type biais moyen,
+borné et explicable, sur une feature correctrice et non sur le signal principal.
+Il se résorbera de la même façon : une fois que le run quotidien aura accumulé
+~6–12 mois de ses **propres** prévisions ARPEGE, on ré-entraînera dessus et le
+skew disparaîtra. En attendant, les chiffres de `docs/model-eval.md` doivent se
+lire « vent parfait à l'entraînement », donc plutôt optimistes.
+
 ## 5. Résumé des stations retenues
 
 Voir `pipeline/config/stations.toml` — 4 stations houle (Candhis) + 2

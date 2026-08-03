@@ -15,12 +15,14 @@ def assemble(
     station: Station,
     obs: pd.DataFrame,
     baseline: pd.DataFrame,
+    wind: pd.DataFrame,
     issue_hours: list[int] | None = None,
 ) -> tuple[pd.DataFrame, pd.Series]:
     """Stack (X, y) over simulated daily issues at `issue_hours` UTC.
 
     `obs` is the station's observation frame (hourly); `baseline` holds the
-    official forecast / harmonic prediction in its first column. Target is the
+    official forecast / harmonic prediction in its first column; `wind` holds
+    the hourly `wind_u10`/`wind_v10` columns (see `sources.wind`). Target is the
     observation at the same valid time.
     """
     if station.kind not in OBS_COLUMN:
@@ -46,7 +48,7 @@ def assemble(
             ]
             if window.empty:
                 continue
-            feats = build_features(window, obs_s, t0)
+            feats = build_features(window, obs_s, t0, wind)
             if feats.empty:
                 continue
             y = obs_s.reindex(feats.index)
