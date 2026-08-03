@@ -73,6 +73,16 @@ Aucun agent n'a créé le dépôt ni posé de secret pour ce projet — ces deux
 actions manipulent de vraies clés et sont volontairement laissées à
 l'utilisateur.
 
+**Important** : un `schedule:` GitHub Actions ne se déclenche que sur la
+branche par défaut du dépôt. Le code est actuellement sur `feat/v1` ; la
+branche poussée par `gh repo create --source . --push` ci-dessous devient la
+branche par défaut d'un dépôt tout neuf, donc c'est réglé automatiquement ici
+— mais si `.github/workflows/daily.yml` finit un jour sur une branche non
+défaut (fusion vers `main` avec `feat/v1` gardée active, par exemple), le
+cron ne se déclenchera plus jamais silencieusement (`workflow_dispatch`
+continuera de marcher et masquera le problème). Vérifier la branche par
+défaut du dépôt si le run quotidien s'arrête sans erreur visible.
+
 ```bash
 # 1. Créer le dépôt (public — c'est le produit vitrine) et pousser le code
 gh repo create metocean-ai-scoreboard --public --source . --push
