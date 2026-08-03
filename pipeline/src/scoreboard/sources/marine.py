@@ -98,8 +98,19 @@ def fetch_wave_models_forecast(
     station: Station,
     session: requests.Session | None = None,
     forecast_days: int = 3,
+    past_days: int = 2,
 ) -> pd.DataFrame:
-    """Hourly wave height (m) forecast from the 5 wave models — covers the +48 h horizon."""
+    """Hourly wave height (m) forecast from the 5 wave models — covers the +48 h horizon.
+
+    `past_days` is not optional garnish: the serve path reads this same frame
+    *backwards* from `t0` to build `last_err` and `mean_err_24h` (see
+    `features.build_features`). Without it Open-Meteo starts the grid at today
+    00:00 UTC, i.e. 6 h before a 06:00 issue — the 24 h error window would then
+    be averaged over those 6 h alone, while training assembles it over the full
+    24 h from an archive with complete history. That silent train/serve skew is
+    exactly the class of bug this project has already paid for; 2 days leaves
+    margin for a later issue hour without a second request.
+    """
     return _fetch(
         {
             "latitude": station.lat,
@@ -107,6 +118,7 @@ def fetch_wave_models_forecast(
             "hourly": "wave_height",
             "models": ",".join(WAVE_MODELS),
             "forecast_days": forecast_days,
+            "past_days": past_days,
             "timezone": "UTC",
         },
         station,

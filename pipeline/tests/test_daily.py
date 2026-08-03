@@ -85,12 +85,15 @@ def _tide_obs_df(start, date_end, value=2.0):
     return pd.DataFrame({"level": np.full(len(idx), value)}, index=idx)
 
 
-def _marine_df(run_date=RUN_DATE, forecast_days=3):
+def _marine_df(run_date=RUN_DATE, forecast_days=3, past_days=2):
     """What `marine.fetch_wave_models_forecast` really returns: an hourly grid
-    starting at *today* 00:00 UTC (Open-Meteo forecast semantics — no past
-    hours unless asked for), one Hs column per wave model."""
+    running from `past_days` before *today* 00:00 UTC through `forecast_days`
+    (Open-Meteo forecast semantics — no past hours unless `past_days` asks for
+    them), one Hs column per wave model."""
     idx = pd.date_range(
-        pd.Timestamp(run_date, tz="UTC"), periods=24 * forecast_days, freq="1h"
+        pd.Timestamp(run_date, tz="UTC") - pd.Timedelta(days=past_days),
+        periods=24 * (forecast_days + past_days),
+        freq="1h",
     )
     return pd.DataFrame({col: np.full(len(idx), MODEL_HS[col]) for col in MODEL_COLUMNS}, index=idx)
 
@@ -121,7 +124,9 @@ def patched_sources(monkeypatch):
     )
     monkeypatch.setattr(
         daily, "fetch_wave_models_forecast",
-        lambda station, session=None, forecast_days=3: _marine_df(forecast_days=forecast_days),
+        lambda station, session=None, forecast_days=3, past_days=2: _marine_df(
+            forecast_days=forecast_days, past_days=past_days
+        ),
     )
     monkeypatch.setattr(daily, "fetch_wind_forecast", _wind_df)
     monkeypatch.setattr(daily, "fetch_wind_models_forecast", _wind_models_df)
@@ -502,11 +507,12 @@ def test_wave_run_serves_the_multi_model_sources_and_never_mfwam(tmp_path, patch
     ARPEGE forcing. MFWAM/CMEMS must not be reachable from daily.py at all."""
     seen: dict[str, list[str]] = {}
 
-    def _marine(station, session=None, forecast_days=3):
+    def _marine(station, session=None, forecast_days=3, past_days=2):
         assert station.kind == "wave", "marine must never be fetched for a tide station"
         assert forecast_days >= 3, "the +48h horizon needs at least 3 forecast days"
+        assert past_days >= 1, "the 24h error window needs past hours (see test below)"
         seen.setdefault("marine", []).append(station.id)
-        return _marine_df()
+        return _marine_df(past_days=past_days)
 
     def _multi_wind(station, session=None):
         seen.setdefault("multi_wind", []).append(station.id)
@@ -605,3 +611,29 @@ def test_a_pre_switch_latest_json_without_baseline_model_still_scores(tmp_path, 
     assert scored["status"] == "ok"
     assert scored["n_points"] == 24
     assert "baseline_model" not in scored  # unknown for a pre-switch issue, never guessed
+
+
+def test_serve_baseline_covers_the_full_24h_error_window(patched_sources):
+    """The property the switch first lost: `build_features` reads the baseline
+    *backwards* from t0 for `last_err`/`mean_err_24h`, so the marine frame must
+    carry the whole 24 h before the issue. With Open-Meteo's default (grid starts
+    today 00:00) only ~6 h are covered before a 06:00 issue, and the mean is
+    silently computed on those — while training averages over the full window."""
+    t0 = pd.Timestamp(RUN_DATE, tz="UTC") + pd.Timedelta(hours=daily.ISSUE_HOUR)
+    baseline = daily._baseline_window(WAVE, pd.Series(dtype=float), t0, _marine_df(), BASELINE_MODEL)
+
+    past = baseline[baseline.index <= t0]
+    assert len(past) == 24  # the full window `_baseline_window` clips to
+    assert past.index[0] == t0 - pd.Timedelta(hours=23)
+    # and the +48h horizon is untouched by the past hours
+    assert baseline[baseline.index > t0].index[-1] == t0 + pd.Timedelta(hours=48)
+
+
+def test_past_hours_do_not_add_leads_to_the_issued_series(tmp_path, patched_sources):
+    """`past_days` feeds the error window only — the published series must stay
+    the 48 future leads, never rows in the past."""
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+
+    payload = json.loads((tmp_path / "wave-a" / "latest.json").read_text())
+    assert len(payload["series"]) == 48
+    assert all(p["t"] > payload["issued"] for p in payload["series"])

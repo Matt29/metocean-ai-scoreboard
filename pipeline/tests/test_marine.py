@@ -42,6 +42,16 @@ def test_forecast_uses_forecast_days_not_dates():
     assert params["forecast_days"] == 3 and "start_date" not in params
 
 
+def test_forecast_requests_past_days_for_the_error_window():
+    """`last_err`/`mean_err_24h` are read backwards from t0 off this same frame:
+    without `past_days` the grid starts at today 00:00 and the 24 h window is
+    silently truncated to a handful of hours (train/serve skew)."""
+    session = make_session(FIX)
+    fetch_wave_models_forecast(ST, session=session)
+    params = session.get.call_args.kwargs["params"]
+    assert params["past_days"] >= 1  # >= 24 h before a 06:00 issue
+
+
 def test_all_null_model_column_is_dropped_not_zero():
     # Un modèle 100% null (le piège Open-Meteo) doit donner une colonne absente
     # ou NaN, JAMAIS des zéros silencieux.
