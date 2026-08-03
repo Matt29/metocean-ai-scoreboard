@@ -18,7 +18,8 @@ STATIONS = [
 ]
 GATE = {
     "a": {"pass": True, "weak": False, "mae_model": 0.1, "mae_baseline": 0.2,
-          "gain": 0.5, "gain_debiased": 0.4},
+          "gain": 0.5, "gain_debiased": 0.4, "baseline_model": "ewam"},
+    # Pas de `baseline_model` : station de marée, la référence est l'harmonique.
     "b": {"pass": False, "weak": True, "mae_model": 0.3, "mae_baseline": 0.29,
           "gain": -0.03, "gain_debiased": -0.1},
 }
@@ -82,6 +83,17 @@ def test_write_stations_is_idempotent(tmp_path):
     publish.write_stations(tmp_path, STATIONS, GATE)
     second = (tmp_path / "stations.json").read_bytes()
     assert first == second
+
+
+def test_stations_carry_the_baseline_model_the_gate_chose(tmp_path):
+    """Le site liste les stations en lisant `stations.json` seul : sans ce champ
+    ici, nommer la référence dans le tableau coûterait une requête par station.
+    Absent sur une station de marée, dont la référence est l'harmonique."""
+    payload = publish.write_stations(tmp_path, STATIONS, GATE)
+
+    by_id = {s["id"]: s for s in payload["stations"]}
+    assert by_id["a"]["baseline_model"] == "ewam"
+    assert "baseline_model" not in by_id["b"]
 
 
 def test_atomic_write_leaves_no_tmp_file(tmp_path):

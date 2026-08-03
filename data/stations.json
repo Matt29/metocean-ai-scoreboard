@@ -9,7 +9,8 @@
       "lon": -4.9683332,
       "unit": "m",
       "published": true,
-      "weak": false
+      "weak": false,
+      "baseline_model": "ncep_gfswave025"
     },
     {
       "id": "belle-ile",
@@ -19,7 +20,8 @@
       "lon": -3.2850001,
       "unit": "m",
       "published": true,
-      "weak": false
+      "weak": false,
+      "baseline_model": "ewam"
     },
     {
       "id": "anglet",
@@ -29,7 +31,8 @@
       "lon": -1.615,
       "unit": "m",
       "published": true,
-      "weak": false
+      "weak": false,
+      "baseline_model": "meteofrance_wave"
     },
     {
       "id": "cherbourg",
@@ -39,7 +42,8 @@
       "lon": -1.621368,
       "unit": "m",
       "published": false,
-      "weak": false
+      "weak": false,
+      "baseline_model": "ewam"
     },
     {
       "id": "brest",

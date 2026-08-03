@@ -4,7 +4,7 @@ Four files per run, all wrapped in `{"schema_version": 1, ...}` so an external
 consumer (the website, a separate repo) can detect a breaking change:
 
     data/stations.json          {"stations": [{"id","name","kind","lat","lon",
-                                 "unit","published","weak"}]}
+                                 "unit","published","weak","baseline_model"?}]}
     data/<id>/latest.json       {"station","issued","series":[{"t","ia","baseline"}]}
     data/<id>/history.json      {"station","days":[{"date","status",
                                  "series"?,"mae_ia"?,"mae_baseline"?}]}   (90d max)
@@ -68,23 +68,37 @@ def _read(path: Path) -> dict | None:
     return json.loads(path.read_text()) if path.exists() else None
 
 
+def _station_entry(s: Station, gate: dict) -> dict:
+    entry = {
+        "id": s.id,
+        "name": s.name,
+        "kind": s.kind,
+        "lat": s.lat,
+        "lon": s.lon,
+        "unit": "m",
+        "published": bool(gate.get("pass", False)),
+        "weak": bool(gate.get("weak", False)),
+    }
+    # Omis plutôt que `null` — même forme optionnelle que dans `write_latest`.
+    if gate.get("baseline_model"):
+        entry["baseline_model"] = gate["baseline_model"]
+    return entry
+
+
 def write_stations(out_dir: Path, stations: list[Station], gate: dict) -> dict:
-    """`data/stations.json` — every configured station, gate verdict included."""
+    """`data/stations.json` — every configured station, gate verdict included.
+
+    `baseline_model` is emitted here as well as in `latest.json`, and that is not
+    duplication for its own sake: which physical model a station is measured
+    against is a property OF the station, not of today's issue. The site's list
+    view reads only `stations.json` + `scores.json` (two requests, by design) —
+    without it here, naming the reference in the table would cost one extra
+    request per station. Omitted for tide stations, whose baseline is the
+    harmonic fit, not a model.
+    """
     payload = {
         "schema_version": SCHEMA_VERSION,
-        "stations": [
-            {
-                "id": s.id,
-                "name": s.name,
-                "kind": s.kind,
-                "lat": s.lat,
-                "lon": s.lon,
-                "unit": "m",
-                "published": bool(gate.get(s.id, {}).get("pass", False)),
-                "weak": bool(gate.get(s.id, {}).get("weak", False)),
-            }
-            for s in stations
-        ],
+        "stations": [_station_entry(s, gate.get(s.id, {})) for s in stations],
     }
     _atomic_write(out_dir / "stations.json", payload)
     return payload
