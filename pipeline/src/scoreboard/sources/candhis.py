@@ -52,6 +52,9 @@ def fetch_wave_obs(
 
     df = df[(df["hs"] >= 0) & (df["hs"] < 30)]
 
+    if df.empty:
+        raise SourceError(station.id, "Candhis: aucune observation exploitable")
+
     df = df.set_index("time").sort_index()
     df = df[~df.index.duplicated(keep="first")]
 

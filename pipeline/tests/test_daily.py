@@ -306,16 +306,22 @@ def test_missing_model_artifact_is_isolated_to_its_station(tmp_path, patched_sou
 def test_arbitrary_inference_exceptions_do_not_escape_and_block_other_stations(
     tmp_path, patched_sources
 ):
-    """sklearn/pandas/utide can raise plain ValueError/KeyError, not just SourceError."""
+    """An all-missing run fails after every station has been recorded missing."""
 
     def _boom(pipe, x):
         raise ValueError("input X contains NaN")
 
     patched_sources.setattr(daily.model, "predict", _boom)
-    summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    with pytest.raises(daily.DailyRunError) as raised:
+        daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
 
-    assert summary["wave-a"]["status"] == "missing"
-    assert summary["tide-b"]["status"] == "missing"  # both use model.predict
+    assert raised.value.summary == {
+        "wave-a": {"status": "missing", "reason": "input X contains NaN"},
+        "tide-b": {"status": "missing", "reason": "input X contains NaN"},
+    }
+    for station_id in ("wave-a", "tide-b"):
+        history = json.loads((tmp_path / station_id / "history.json").read_text())
+        assert history["days"][-1]["status"] == "missing"
 
 
 def test_inference_failure_still_records_a_missing_history_day(tmp_path, patched_sources):
@@ -861,9 +867,10 @@ def test_wind_obs_failure_marks_only_that_station_missing(tmp_path, patched_sour
         raise SourceError(station.id, "DPObs n'a servi aucune heure")
 
     patched_sources.setattr(daily, "fetch_wind_obs", _fail)
-    summary = daily.run(RUN_DATE, tmp_path, stations=[WIND], gate=WIND_GATE)
+    with pytest.raises(daily.DailyRunError) as raised:
+        daily.run(RUN_DATE, tmp_path, stations=[WIND], gate=WIND_GATE)
 
-    assert summary["wind-c"]["status"] == "missing"
+    assert raised.value.summary["wind-c"]["status"] == "missing"
     history = json.loads((tmp_path / "wind-c" / "history.json").read_text())
     assert history["days"][-1]["status"] == "missing"
 
@@ -892,3 +899,44 @@ def test_unknown_obs_source_raises_instead_of_falling_through_to_shom():
                      source="mfbuoy", source_id="0003", baseline="marine-best")
     with pytest.raises(SourceError, match="mfbuoy"):
         daily._fetch_obs(orphan, RUN_DATE)
+
+
+@pytest.mark.parametrize(
+    "gate",
+    [
+        {},
+        {"wave-a": {"pass": True, "weak": False}},
+        {
+            "wave-a": {"pass": True},
+            "tide-b": {"pass": True, "weak": False},
+        },
+        {
+            "wave-a": {"pass": True, "weak": "false"},
+            "tide-b": {"pass": True, "weak": False},
+        },
+    ],
+)
+def test_missing_or_incomplete_gate_fails_before_any_publication(tmp_path, patched_sources, gate):
+    with pytest.raises(daily.GateConfigurationError, match="gate"):
+        daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=gate, archive_dir=tmp_path / "archive")
+
+    assert not (tmp_path / "stations.json").exists()
+    assert not list(tmp_path.rglob("latest.json"))
+
+
+def test_gate_with_no_published_station_fails_before_any_publication(tmp_path, patched_sources):
+    gate = {station.id: {"pass": False, "weak": False} for station in STATIONS}
+
+    with pytest.raises(daily.GateConfigurationError, match="publishes no configured station"):
+        daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=gate, archive_dir=tmp_path / "archive")
+
+    assert not (tmp_path / "stations.json").exists()
+
+
+def test_absent_gate_fails_before_any_publication(tmp_path, patched_sources, monkeypatch):
+    monkeypatch.setattr(daily, "GATE_PATH", tmp_path / "absent-gate.json")
+
+    with pytest.raises(daily.GateConfigurationError, match="missing or empty"):
+        daily.run(RUN_DATE, tmp_path, stations=STATIONS, archive_dir=tmp_path / "archive")
+
+    assert not (tmp_path / "stations.json").exists()

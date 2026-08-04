@@ -1,17 +1,20 @@
 name: ci
 
-# Path-scoped: the repo also gets daily data-only commits from the `daily`
-# cron workflow (data/, pipeline/data_forecast_archive/) — those must never
-# trigger CI, so only pipeline/** and this workflow file are watched.
+# Path-scoped: daily archive-only commits must not trigger CI.  Negated paths
+# must come after their positive parent pattern in GitHub Actions syntax.
 on:
   push:
     branches: [main]
     paths:
       - "pipeline/**"
+      - "!pipeline/data_forecast_archive/**"
+      - "!pipeline/data_obs_archive/**"
       - ".github/workflows/ci.yml"
   pull_request:
     paths:
       - "pipeline/**"
+      - "!pipeline/data_forecast_archive/**"
+      - "!pipeline/data_obs_archive/**"
       - ".github/workflows/ci.yml"
 
 jobs:

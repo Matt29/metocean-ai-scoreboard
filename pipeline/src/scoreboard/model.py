@@ -18,6 +18,8 @@ serving side reads it back instead of assuming a module constant.
 
 from __future__ import annotations
 
+import os
+import shutil
 from pathlib import Path
 
 import joblib
@@ -103,9 +105,31 @@ def save(
     models_dir: Path | None = None,
     baseline_model: str | None = None,
 ) -> Path:
-    """Write the artefact: the estimator plus what it was fitted against."""
+    """Write one artefact immediately (legacy convenience API).
+
+    Batch training uses :func:`stage` and :func:`promote_transaction` instead,
+    so an evaluation failure cannot publish the preceding stations one by one.
+    """
     path = (models_dir or MODELS_DIR) / f"{station_id}.joblib"
     path.parent.mkdir(parents=True, exist_ok=True)
+    _dump(est, path, baseline_model)
+    return path
+
+
+def stage(
+    est,
+    station_id: str,
+    staging_dir: Path,
+    baseline_model: str | None = None,
+) -> Path:
+    """Serialize an artefact into an isolated staging directory, not live models."""
+    path = staging_dir / f"{station_id}.joblib"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _dump(est, path, baseline_model)
+    return path
+
+
+def _dump(est, path: Path, baseline_model: str | None) -> None:
     joblib.dump(
         {
             "model": est,
@@ -114,7 +138,41 @@ def save(
         },
         path,
     )
-    return path
+
+
+def promote_transaction(
+    replacements: list[tuple[Path, Path]], backup_dir: Path
+) -> None:
+    """Promote staged files as one exception-recoverable publication.
+
+    Each individual promotion is atomic. Before the first one, every live
+    destination is copied byte-for-byte into ``backup_dir`` (or recorded as
+    absent). If any ``os.replace`` raises, all destinations are restored to
+    exactly that snapshot and the original exception is re-raised.
+
+    This is an in-process rollback contract, not a claim of crash or SIGKILL
+    atomicity across several filesystem entries.
+    """
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    snapshots: list[tuple[Path, Path | None]] = []
+    for index, (_, destination) in enumerate(replacements):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        backup = None
+        if destination.exists():
+            backup = backup_dir / f"{index}.previous"
+            shutil.copyfile(destination, backup)
+        snapshots.append((destination, backup))
+
+    try:
+        for staged_path, destination in replacements:
+            os.replace(staged_path, destination)
+    except BaseException:
+        for destination, backup in snapshots:
+            if backup is None:
+                destination.unlink(missing_ok=True)
+            else:
+                os.replace(backup, destination)
+        raise
 
 
 def load(station_id: str, models_dir: Path | None = None):

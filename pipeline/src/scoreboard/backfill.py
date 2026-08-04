@@ -223,6 +223,7 @@ def run(
     station. Returns `{station_id: [replayed dates, chronological]}`."""
     stations = stations if stations is not None else load_stations()
     gate = gate if gate is not None else daily.load_gate()
+    daily.validate_gate(stations, gate)
     today = today or datetime.now(timezone.utc).date()
     until = today - timedelta(days=1)
 

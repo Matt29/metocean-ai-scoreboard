@@ -60,6 +60,23 @@ def test_save_load_round_trip_is_identical(tmp_path):
     np.testing.assert_array_equal(model.predict(m, x), model.predict(reloaded, x))
 
 
+def test_staged_artefact_is_not_live_until_promoted(tmp_path):
+    x, y = _synthetic(n=500)
+    fitted = model.train(x, y)
+    live = tmp_path / "live"
+    staged = model.stage(fitted, "test-station", tmp_path / "staging")
+
+    assert staged.exists()
+    assert not (live / "test-station.joblib").exists()
+
+    destination = live / "test-station.joblib"
+    model.promote_transaction([(staged, destination)], tmp_path / "backups")
+    assert destination.exists()
+    np.testing.assert_array_equal(
+        model.predict(fitted, x), model.predict(model.load("test-station", live), x)
+    )
+
+
 def test_predict_rejects_missing_features():
     x, y = _synthetic(n=200)
     m = model.train(x, y)

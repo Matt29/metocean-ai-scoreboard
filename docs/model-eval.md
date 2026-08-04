@@ -128,25 +128,22 @@ ne paie pas sa complexité, et c'est un résultat, pas un échec.
    opérationnel, et la direction de l'écart n'est pas déterminable a priori. Le
    ré-entraînement sur de vraies prévisions archivées interviendra après ~1 mois
    de runs quotidiens ; ces chiffres seront alors remplacés.
-2. **Pour les stations `tide` uniquement, le forçage atmosphérique
-   d'entraînement est parfait, celui de production ne le sera pas.** Le vent
-   10 m (seule feature de forçage restante — la pression n'y est plus, voir
-   « Pistes testées et écartées » ci-dessous) est appris, pour ces stations,
-   sur la **réanalyse ERA5** (0,25°, ECMWF, connue après coup ;
-   `scripts/build_dataset.py`, chemin tide) et sera servi avec une **prévision
-   ARPEGE Europe** (0,1°, Météo-France), qui porte une erreur de lead time que
-   la réanalyse n'a pas. Ce n'est **pas** une équivalence : deux familles de
-   modèles, deux grilles, et une partie du gain ci-dessous ne survivra pas au
-   passage en opérationnel. Les 4 stations `wave` ré-entraînées ici n'ont pas
-   ce skew : leur vent d'entraînement vient déjà des 3 mêmes modèles de
-   prévision que le serve (Historical Forecast API, voir
-   `docs/data-sources.md` §4bis). Même catégorie de compromis que la réserve 1
-   pour les stations `tide`, et même issue : il se résorbera quand le run
-   quotidien aura accumulé assez de ses propres prévisions pour ré-entraîner
-   dessus. Détail dans `docs/data-sources.md` §4bis.
-3. **Le gate de +5 % s'applique quand même**, mais il se lit
-   « +5 % mesuré sur analyse, avec un vent parfait », pas « +5 % en
-   opérationnel ».
+2. **Pour les stations `tide`, le forçage est une prévision ECMWF passée,
+   stratifiée par âge de run.** L'entraînement et le service emploient le même
+   modèle `ecmwf_ifs025` via l'API Previous Runs : pour chaque émission, les
+   features vent 10 m **et pression** viennent du run qui était réellement
+   disponible à cette date et à ce lead. Ce choix supprime le skew antérieur
+   ERA5/ARPEGE et le faux avantage d'un vent connu après coup. Il reste une
+   limite d'archive : ce forçage n'est disponible qu'à partir du 2024-02-05,
+   ce qui borne l'historique `tide` utilisable. **La granularité des Previous
+   Runs reste journalière** : aux leads courts, le run le plus frais du jour
+   peut être postérieur à l'émission de 06 UTC. Le replay est donc plus proche
+   de l'opérationnel que ERA5, mais pas une reconstruction causalement exacte
+   à l'heure près.
+3. **Le gate de +5 % s'applique quand même** au replay stratifié par âge
+   de run, avec la limite de granularité journalière explicitée ci-dessus :
+   ce n'est plus une analyse parfaite a posteriori, sans être une causalité
+   exacte à l'heure près.
 4. **Sur 0 des 2 stations ré-entraînées, plus de la
    moitié du gain
    affiché n'est qu'une correction de biais constant** — chaque baseline dérive

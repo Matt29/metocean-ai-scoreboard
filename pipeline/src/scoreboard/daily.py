@@ -97,11 +97,54 @@ PENDING_MAX_AGE_DAYS = OBS_LOOKBACK_DAYS + 2
 GATE_PATH = model.MODELS_DIR / "gate.json"
 
 
+class GateConfigurationError(RuntimeError):
+    """The configured stations cannot safely be published from this gate."""
+
+
+class DailyRunError(RuntimeError):
+    """Every station selected for publication failed during a daily run."""
+
+    def __init__(self, run_date: date, summary: dict[str, dict]) -> None:
+        self.run_date = run_date
+        self.summary = summary
+        super().__init__(f"no gate-passing station was published for {run_date.isoformat()}")
+
+
 def load_gate(path: Path | None = None) -> dict:
     path = path or GATE_PATH
     if not path.exists():
         return {}
     return json.loads(path.read_text())
+
+
+def validate_gate(stations: list[Station], gate: dict) -> None:
+    """Refuse a stale or partial gate before it can change public metadata."""
+    if not isinstance(gate, dict) or not gate:
+        raise GateConfigurationError("gate is missing or empty")
+
+    missing = [station.id for station in stations if station.id not in gate]
+    malformed = [
+        station.id
+        for station in stations
+        if station.id in gate
+        and (
+            not isinstance(gate[station.id], dict)
+            or any(
+                not isinstance(gate[station.id].get(field), bool)
+                for field in ("pass", "weak")
+            )
+        )
+    ]
+    if missing or malformed:
+        details = []
+        if missing:
+            details.append(f"missing station verdicts: {', '.join(missing)}")
+        if malformed:
+            details.append(f"invalid station verdicts: {', '.join(malformed)}")
+        raise GateConfigurationError("gate is incomplete: " + "; ".join(details))
+
+    if not any(gate[station.id]["pass"] for station in stations):
+        raise GateConfigurationError("gate publishes no configured station")
 
 
 def iso(t: pd.Timestamp) -> str:
@@ -560,6 +603,7 @@ def run(
     for the *published* (gate-passing) stations only."""
     stations = stations if stations is not None else load_stations()
     gate = gate if gate is not None else load_gate()
+    validate_gate(stations, gate)
     archive_dir = archive_dir if archive_dir is not None else archive.DEFAULT_ARCHIVE_DIR
     t0 = pd.Timestamp(run_date, tz="UTC") + pd.Timedelta(hours=ISSUE_HOUR)
     issued = iso(t0)
@@ -585,4 +629,6 @@ def run(
     # (daily always writes at least one station's status, so a truthy-summary
     # guard wouldn't skip anything here).
     publish.write_scores(out_dir, [s.id for s in published], issued)
+    if published and not any(result["status"] == "ok" for result in summary.values()):
+        raise DailyRunError(run_date, summary)
     return summary

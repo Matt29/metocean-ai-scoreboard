@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -333,16 +334,11 @@ def evaluate(
         # computed, still in gate.json) for downstream compatibility.
         "weak": scores["mae_model"] >= mae_debiased,
     }
-    saved = (
-        None
-        if ablate  # ablation must not clobber the published artefact
-        else model.save(final, station.id, baseline_model=baseline_model)
-    )
     print(
         f"  {station.id}: train {row['n_train']} / test {row['n_test']} rows | "
         f"baseline {baseline_model or station.baseline} | "
         f"MAE base {mae_base:.3f} -> {best} {row['mae_model']:.3f} ({row['gain']:+.1%}) | "
-        f"{_verdict(row)} -> {saved.name if saved else 'not saved (ablation)'}"
+        f"{_verdict(row)} -> {'not released (ablation)' if ablate else 'ready for release'}"
     )
     for name, s in val_scores.items():
         chosen = " <- publié" if name == best else ""
@@ -350,7 +346,56 @@ def evaluate(
             f"      [validation] {name:14} MAE {s['mae_model']:.4f}  "
             f"hors biais {s['gain_debiased']:+7.1%}{chosen}"
         )
+    # Evaluation deliberately has no filesystem side effect. `main` stages and
+    # releases every successful station only after this phase completes for all
+    # requested stations, preventing a later evaluation error from replacing an
+    # earlier station's live artefact.
+    row["_estimator"] = final
     return row
+
+
+def evaluate_all(
+    stations: list[Station],
+    test_days_override: int | None,
+    ablate: tuple[str, ...],
+    model_names: tuple[str, ...],
+) -> list[dict]:
+    """Evaluate all requested stations before any artefact can be published."""
+    rows = []
+    for station in stations:
+        row = evaluate(station, _test_days(station.kind, test_days_override), ablate, model_names)
+        if row is not None:
+            rows.append(row)
+    return rows
+
+
+def release(rows: list[dict], gate: dict) -> None:
+    """Publish all evaluated models and ``gate.json`` as one transaction.
+
+    Staging happens only after the global evaluation phase. The live models and
+    gate are snapshotted before promotion; an exception during any per-file
+    replacement rolls every destination back. This does not promise recovery
+    from process termination between replacements.
+    """
+    model.MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".train-stage-", dir=model.MODELS_DIR.parent) as tmp:
+        staging_dir = Path(tmp)
+        replacements = [
+            (
+                model.stage(
+                    row["_estimator"],
+                    row["station"],
+                    staging_dir,
+                    baseline_model=row["baseline_model"],
+                ),
+                model.MODELS_DIR / f"{row['station']}.joblib",
+            )
+            for row in rows
+        ]
+        staged_gate = staging_dir / "gate.json"
+        staged_gate.write_text(json.dumps(gate, indent=2, sort_keys=True) + "\n")
+        replacements.append((staged_gate, GATE_PATH))
+        model.promote_transaction(replacements, staging_dir / "backups")
 
 
 def _verdict(r: dict) -> str:
@@ -684,25 +729,22 @@ def write_report(
         "   opérationnel, et la direction de l'écart n'est pas déterminable a priori. Le",
         "   ré-entraînement sur de vraies prévisions archivées interviendra après ~1 mois",
         "   de runs quotidiens ; ces chiffres seront alors remplacés.",
-        "2. **Pour les stations `tide` uniquement, le forçage atmosphérique",
-        "   d'entraînement est parfait, celui de production ne le sera pas.** Le vent",
-        "   10 m (seule feature de forçage restante — la pression n'y est plus, voir",
-        "   « Pistes testées et écartées » ci-dessous) est appris, pour ces stations,",
-        "   sur la **réanalyse ERA5** (0,25°, ECMWF, connue après coup ;",
-        "   `scripts/build_dataset.py`, chemin tide) et sera servi avec une **prévision",
-        "   ARPEGE Europe** (0,1°, Météo-France), qui porte une erreur de lead time que",
-        "   la réanalyse n'a pas. Ce n'est **pas** une équivalence : deux familles de",
-        "   modèles, deux grilles, et une partie du gain ci-dessous ne survivra pas au",
-        "   passage en opérationnel. Les 4 stations `wave` ré-entraînées ici n'ont pas",
-        "   ce skew : leur vent d'entraînement vient déjà des 3 mêmes modèles de",
-        "   prévision que le serve (Historical Forecast API, voir",
-        "   `docs/data-sources.md` §4bis). Même catégorie de compromis que la réserve 1",
-        "   pour les stations `tide`, et même issue : il se résorbera quand le run",
-        "   quotidien aura accumulé assez de ses propres prévisions pour ré-entraîner",
-        "   dessus. Détail dans `docs/data-sources.md` §4bis.",
-        "3. **Le gate de +5 % s'applique quand même**, mais il se lit",
-        "   « +5 % mesuré sur analyse, avec un vent parfait », pas « +5 % en",
-        "   opérationnel ».",
+        "2. **Pour les stations `tide`, le forçage est une prévision ECMWF passée,",
+        "   stratifiée par âge de run.** L'entraînement et le service emploient le même",
+        "   modèle `ecmwf_ifs025` via l'API Previous Runs : pour chaque émission, les",
+        "   features vent 10 m **et pression** viennent du run qui était réellement",
+        "   disponible à cette date et à ce lead. Ce choix supprime le skew antérieur",
+        "   ERA5/ARPEGE et le faux avantage d'un vent connu après coup. Il reste une",
+        "   limite d'archive : ce forçage n'est disponible qu'à partir du 2024-02-05,",
+        "   ce qui borne l'historique `tide` utilisable. **La granularité des Previous",
+        "   Runs reste journalière** : aux leads courts, le run le plus frais du jour",
+        "   peut être postérieur à l'émission de 06 UTC. Le replay est donc plus proche",
+        "   de l'opérationnel que ERA5, mais pas une reconstruction causalement exacte",
+        "   à l'heure près.",
+        "3. **Le gate de +5 % s'applique quand même** au replay stratifié par âge",
+        "   de run, avec la limite de granularité journalière explicitée ci-dessus :",
+        "   ce n'est plus une analyse parfaite a posteriori, sans être une causalité",
+        "   exacte à l'heure près.",
     ]
     # Tout est dérivé : la fermeté de la phrase suit les chiffres, elle ne les précède pas.
     inflated = [r for r in rows if r["gain"] > 0 and r["gain_debiased"] < 0.5 * r["gain"]]
@@ -768,6 +810,42 @@ def merge_gate(previous: dict, rows: list[dict], known: set[str]) -> dict:
     return gate
 
 
+def load_gate(path: Path) -> dict:
+    """Read the existing gate and reject malformed publication state early."""
+    if not path.exists():
+        return {}
+    gate = json.loads(path.read_text())
+    if not isinstance(gate, dict):
+        raise TypeError("gate.json must contain a station-to-verdict object")
+    for station, verdict in gate.items():
+        if not isinstance(station, str) or not isinstance(verdict, dict):
+            raise TypeError("gate.json entries must map station ids to verdict objects")
+        if not isinstance(verdict.get("pass"), bool) or not isinstance(verdict.get("weak"), bool):
+            raise TypeError(f"gate.json entry {station!r} needs boolean pass and weak fields")
+    return gate
+
+
+def validate_gate_for_release(
+    previous: dict, merged: dict, known: set[str], *, partial: bool
+) -> None:
+    """Ensure the runtime gate is complete before publishing it.
+
+    A targeted ``--station`` run is an update, not an initializer: its previous
+    gate must already describe every configured station. A full run may rebuild
+    from an empty or incomplete gate, but the merged result must still cover all
+    configured stations. In both cases at least one station must remain live.
+    """
+    if partial and (missing := known - previous.keys()):
+        raise ValueError(
+            "partial training requires an existing gate entry for every configured "
+            f"station; missing {sorted(missing)}"
+        )
+    if missing := known - merged.keys():
+        raise ValueError(f"merged gate is missing configured stations {sorted(missing)}")
+    if not any(verdict["pass"] for verdict in merged.values()):
+        raise ValueError("merged gate must contain at least one passing station")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -818,11 +896,7 @@ def main() -> int:
         if unknown := only - {s.id for s in configured}:
             ap.error(f"unknown station id(s) {sorted(unknown)}")
         stations = [s for s in configured if s.id in only]
-    rows = [
-        r
-        for st in stations
-        if (r := evaluate(st, _test_days(st.kind, args.test_days), ablate, model_names)) is not None
-    ]
+    rows = evaluate_all(stations, args.test_days, ablate, model_names)
     if not rows:
         print("nothing trained")
         return 1
@@ -833,10 +907,20 @@ def main() -> int:
             print(f"  {r['station']:16} {r['gain_debiased']:+8.1%}  MAE {r['mae_model']:.4f}")
         return 0
 
-    # Machine-readable gate: the publisher (Task 8) reads this, not the markdown.
-    previous = json.loads(GATE_PATH.read_text()) if GATE_PATH.exists() else {}
+    # Validate and merge publication state before replacing any live artefact:
+    # a corrupt gate must abort this run without releasing evaluated models.
+    previous = load_gate(GATE_PATH)
     gate = merge_gate(previous, rows, {s.id for s in configured})
-    GATE_PATH.write_text(json.dumps(gate, indent=2, sort_keys=True) + "\n")
+    validate_gate_for_release(
+        previous,
+        gate,
+        {s.id for s in configured},
+        partial=bool(only),
+    )
+
+    # No artefact has been touched before here: all stations and the current
+    # publication state validated above. Stage the complete release now.
+    release(rows, gate)
 
     skipped = [s.id for s in configured if s.id not in {r["station"] for r in rows}]
     write_report(rows, gate, skipped)

@@ -49,12 +49,41 @@ jobs:
         working-directory: pipeline
         run: uv sync --locked
 
-      # Station-level failures (a transient 503, a gated-out station, a
-      # source outage) are caught inside `scoreboard.daily.run` and recorded
-      # as `"status": "missing"` per station — that's a normal daily outcome,
-      # not a workflow failure. This step only turns the job red on a real
-      # failure: an uncaught exception, a broken env, or anything else that
-      # escapes `daily.run` and makes `scoreboard daily` exit non-zero.
+      # Buoy observations age out of the Météo-France API on a rolling ~96h
+      # window with no archive behind it (measured, see sources/mfbuoy.py).
+      # Archive and persist them before the scoreboard: a red daily run must
+      # never skip this irreplaceable collection window.
+      #
+      # `archive-obs` catches its own SourceError and emits `::warning::` so a
+      # transient Météo-France outage does not block the scoreboard. A real
+      # crash still fails here; deliberately no `continue-on-error`.
+      - name: archive buoy observations
+        working-directory: pipeline
+        env:
+          METEOFRANCE_API_KEY: ${{ secrets.METEOFRANCE_API_KEY }}
+        run: uv run scoreboard archive-obs
+
+      # Persist the expiring observations independently. The path list is
+      # intentionally exact: this commit can contain only the buoy catalogue
+      # and observation archive, never partial output from a scoreboard run.
+      - name: commit buoy observations
+        run: |
+          set -eu
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git status --porcelain -- data/buoys.json pipeline/data_obs_archive | grep -q .; then
+            git add data/buoys.json pipeline/data_obs_archive
+            git commit -m "chore(data): archive buoy observations $(date -u +%F)"
+            git pull --rebase
+            git push
+          else
+            echo "no change in buoy observations, nothing to commit"
+          fi
+
+      # A single station failure is isolated and recorded as `missing`; the
+      # others still publish. An invalid gate or a run where every selected
+      # station is missing exits non-zero, turns the job red, and skips the
+      # scoreboard commit below. The buoy archive is already safe upstream.
       - name: scoreboard daily
         working-directory: pipeline
         env:
@@ -84,31 +113,12 @@ jobs:
             uv run scoreboard daily
           fi
 
-      # Buoy observations age out of the Météo-France API on a rolling ~96h
-      # window with no archive behind it (measured, see sources/mfbuoy.py), so
-      # every hour not captured here is lost for good — this is the only thing
-      # that makes the Med training corpus of demande produit 4 start counting.
-      #
-      # A Météo-France outage must never cost the scoreboard its daily commit,
-      # so `archive-obs` catches its own SourceError and emits `::warning::`
-      # instead of exiting non-zero (see cli.py). Deliberately NOT
-      # `continue-on-error: true`, which would swallow a real crash too and
-      # leave a write-only data path green and silent forever.
-      # Runs *after* `scoreboard daily` for the same order of priorities:
-      # scoring first, opportunistic collection second.
-      - name: archive buoy observations
-        working-directory: pipeline
-        env:
-          METEOFRANCE_API_KEY: ${{ secrets.METEOFRANCE_API_KEY }}
-        run: uv run scoreboard archive-obs
-
-      # Commit only what actually changed, and only the three directories the
-      # daily run is allowed to write: the public scoreboard payload (data/),
-      # the served-forecast archive (pipeline/data_forecast_archive/) and the
-      # buoy observation archive (pipeline/data_obs_archive/) — the corpora a
-      # future retrain needs (see docs/data-sources.md §4bis and §5).
-      # Nothing else is ever staged.
-      - name: commit data + archives
+      # Commit only output belonging to a successful scoreboard/backfill run:
+      # the public payload, served-forecast archive, and refreshed harmonic
+      # constants. Buoy observations were already committed above. If daily
+      # exits non-zero this step is skipped, so partial scoreboard state can
+      # never be published.
+      - name: commit scoreboard data + forecast archive
         env:
           BACKFILL_SINCE: ${{ inputs.backfill_since }}
         run: |
@@ -122,14 +132,14 @@ jobs:
           # paierait à nouveau (~50 s) sans jamais le persister.
           #
           # Le motif est volontairement `*-harmonic.joblib` et non `pipeline/models`
-          # entier. Les trois autres répertoires ont l'invariant « tout ce qui y
+          # entier. Les deux autres répertoires ont l'invariant « tout ce qui y
           # change pendant un run est légitime à commiter automatiquement » ;
           # `pipeline/models` ne l'a pas — il contient `gate.json` et les `.joblib`
           # du modèle ML, qui n'ont jamais changé que par un retrain local et
           # humain. Un `git add` au répertoire ouvrirait la première voie de
           # commit automatique vers ces fichiers-là.
-          if git status --porcelain -- data pipeline/data_forecast_archive pipeline/data_obs_archive 'pipeline/models/*-harmonic.joblib' | grep -q .; then
-            git add data pipeline/data_forecast_archive pipeline/data_obs_archive 'pipeline/models/*-harmonic.joblib'
+          if git status --porcelain -- data ':(exclude)data/buoys.json' pipeline/data_forecast_archive 'pipeline/models/*-harmonic.joblib' | grep -q .; then
+            git add data ':(exclude)data/buoys.json' pipeline/data_forecast_archive 'pipeline/models/*-harmonic.joblib'
             if [ -n "$BACKFILL_SINCE" ]; then
               git commit -m "chore(data): backfill since $BACKFILL_SINCE"
             else
@@ -138,5 +148,5 @@ jobs:
             git pull --rebase
             git push
           else
-            echo "no change in data/ or the archives, nothing to commit"
+            echo "no change in scoreboard data or forecast archive, nothing to commit"
           fi

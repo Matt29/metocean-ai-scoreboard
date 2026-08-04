@@ -364,6 +364,32 @@ def test_gate_failing_station_is_never_backfilled(tmp_path, patched_sources):
     assert not (tmp_path / "tide-b").exists()
 
 
+@pytest.mark.parametrize(
+    "gate",
+    [
+        {},
+        {"wave-a": {"pass": True, "weak": False}},
+        {
+            "wave-a": {"pass": True, "weak": False},
+            "tide-b": {"pass": True},
+        },
+        {
+            "wave-a": {"pass": True, "weak": False},
+            "tide-b": {"pass": True, "weak": 0},
+        },
+        {
+            "wave-a": {"pass": False, "weak": False},
+            "tide-b": {"pass": False, "weak": False},
+        },
+    ],
+)
+def test_invalid_gate_fails_backfill_before_any_publication(tmp_path, patched_sources, gate):
+    with pytest.raises(daily.GateConfigurationError, match="gate"):
+        backfill.run(YESTERDAY, tmp_path, today=TODAY, stations=STATIONS, gate=gate)
+
+    assert not (tmp_path / "stations.json").exists()
+
+
 def test_no_missing_days_means_no_deep_fetch_at_all(tmp_path, patched_sources, calls):
     since = YESTERDAY - timedelta(days=1)
     _seed_history(tmp_path, "wave-a", [since, YESTERDAY])

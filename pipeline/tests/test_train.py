@@ -162,7 +162,7 @@ def test_movement_reads_the_delta_against_the_previous_gate():
     assert "-3.0%" in regressed  # un changement qui dégrade doit se voir au signe
 
 
-def test_evaluate_writes_an_artefact_carrying_baseline_model_and_feature_columns(
+def test_evaluate_is_side_effect_free_until_release(
     tmp_path, monkeypatch
 ):
     raw = _raw(days=45)
@@ -170,6 +170,7 @@ def test_evaluate_writes_an_artefact_carrying_baseline_model_and_feature_columns
     raw["hs_gwam"] = raw["hs"] + 0.02
     monkeypatch.setattr(train, "DATA_DIR", tmp_path)
     monkeypatch.setattr(model, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(train, "GATE_PATH", tmp_path / "gate.json")
     raw.to_parquet(tmp_path / "synthetic_raw.parquet")
 
     row = train.evaluate(STATION, test_days=10, model_names=("ridge",))
@@ -177,9 +178,208 @@ def test_evaluate_writes_an_artefact_carrying_baseline_model_and_feature_columns
     assert row is not None
     assert row["baseline_model"] == "gwam"
     assert row["n_test"] > 0 and row["n_train"] > 0
+    assert not (tmp_path / "synthetic.joblib").exists()
+
+    gate = train.merge_gate({}, [row], known={STATION.id})
+    train.release([row], gate)
     artefact = model.load_artifact("synthetic", models_dir=tmp_path)
     assert artefact["baseline_model"] == "gwam"
     assert artefact["feature_columns"] == WAVE_FEATURE_COLUMNS
+
+
+def _release_fixture(tmp_path, monkeypatch):
+    models_dir = tmp_path / "models"
+    gate_path = models_dir / "gate.json"
+    models_dir.mkdir()
+    monkeypatch.setattr(model, "MODELS_DIR", models_dir)
+    monkeypatch.setattr(train, "GATE_PATH", gate_path)
+
+    def fake_stage(estimator, station_id, staging_dir, baseline_model=None):
+        path = staging_dir / f"{station_id}.joblib"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(estimator)
+        return path
+
+    monkeypatch.setattr(model, "stage", fake_stage)
+    rows = [
+        {"station": "first", "_estimator": b"new-first", "baseline_model": None},
+        {"station": "second", "_estimator": b"new-second", "baseline_model": None},
+    ]
+    return models_dir, gate_path, rows
+
+
+def test_release_rolls_back_all_files_when_a_model_promotion_fails(tmp_path, monkeypatch):
+    models_dir, gate_path, rows = _release_fixture(tmp_path, monkeypatch)
+    first = models_dir / "first.joblib"
+    second = models_dir / "second.joblib"
+    first.write_bytes(b"old-first")
+    second.write_bytes(b"old-second")
+    gate_path.write_bytes(b'{"old": true}\n')
+    real_replace = model.os.replace
+    calls = 0
+
+    def fail_second_replace(source, destination):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected model promotion failure")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(model.os, "replace", fail_second_replace)
+
+    with pytest.raises(OSError, match="model promotion"):
+        train.release(rows, {"new": {"pass": True, "weak": False}})
+
+    assert first.read_bytes() == b"old-first"
+    assert second.read_bytes() == b"old-second"
+    assert gate_path.read_bytes() == b'{"old": true}\n'
+
+
+def test_release_rolls_back_models_when_gate_promotion_fails(tmp_path, monkeypatch):
+    models_dir, gate_path, rows = _release_fixture(tmp_path, monkeypatch)
+    first = models_dir / "first.joblib"
+    second = models_dir / "second.joblib"  # deliberately absent before release
+    first.write_bytes(b"old-first")
+    gate_path.write_bytes(b'{"old": true}\n')
+    real_replace = model.os.replace
+    calls = 0
+
+    def fail_gate_replace(source, destination):
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise OSError("injected gate promotion failure")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(model.os, "replace", fail_gate_replace)
+
+    with pytest.raises(OSError, match="gate promotion"):
+        train.release(rows, {"new": {"pass": True, "weak": False}})
+
+    assert first.read_bytes() == b"old-first"
+    assert not second.exists()
+    assert gate_path.read_bytes() == b'{"old": true}\n'
+
+
+def test_evaluation_failure_never_releases_an_earlier_station(monkeypatch):
+    """A failed second station must leave the first station's live model alone."""
+    first = Station(
+        id="first", name="First", kind="wave", lat=0, lon=0,
+        source="candhis", source_id="first", baseline="marine-best",
+    )
+    second = Station(
+        id="second", name="Second", kind="wave", lat=0, lon=0,
+        source="candhis", source_id="second", baseline="marine-best",
+    )
+    released = []
+
+    def fake_evaluate(station, *_args):
+        if station.id == "second":
+            raise RuntimeError("station evaluation failed")
+        return {"station": station.id, "_estimator": object(), "baseline_model": None}
+
+    monkeypatch.setattr(train, "evaluate", fake_evaluate)
+    monkeypatch.setattr(train, "release", lambda rows: released.extend(rows))
+
+    with pytest.raises(RuntimeError, match="station evaluation failed"):
+        train.evaluate_all([first, second], None, (), ("ridge",))
+
+    assert released == []
+
+
+def test_write_report_describes_ecmwf_daily_previous_runs_not_the_old_skew(tmp_path, monkeypatch):
+    monkeypatch.setattr(train, "REPORT_PATH", tmp_path / "model-eval.md")
+    row = {
+        "station": "brest", "kind": "tide", "baseline_model": None,
+        "ml_model": "ridge", "n_train": 100, "n_test": 50, "test_days": 365,
+        "mae_base": 0.2, "mae_debiased": 0.2, "mae_model": 0.1, "gain": 0.5,
+        "gain_debiased": 0.5, "bias": 0.0, "pass": True, "weak": False,
+        "events": [], "val_scores": {},
+    }
+
+    train.write_report([row])
+    report = train.REPORT_PATH.read_text()
+
+    assert "ECMWF" in report
+    assert "granularité des Previous\n   Runs reste journalière" in report
+    assert "réanalyse ERA5" not in report
+    assert "ARPEGE Europe" not in report
+    assert "seule feature de forçage restante" not in report
+
+
+def test_corrupt_gate_aborts_before_any_release(tmp_path, monkeypatch):
+    gate_path = tmp_path / "gate.json"
+    gate_path.write_text("{not json")
+    released = []
+    monkeypatch.setattr(train, "GATE_PATH", gate_path)
+    monkeypatch.setattr(train, "load_env", lambda: None)
+    monkeypatch.setattr(train, "load_stations", lambda: [STATION])
+    monkeypatch.setattr(train, "evaluate_all", lambda *_args: [{"station": STATION.id}])
+    monkeypatch.setattr(train, "release", lambda rows: released.extend(rows))
+    monkeypatch.setattr(sys, "argv", ["train.py"])
+
+    with pytest.raises(json.JSONDecodeError):
+        train.main()
+
+    assert released == []
+
+
+def _gate_row(station_id: str, passes: bool) -> dict:
+    return {
+        "station": station_id, "baseline_model": None, "pass": passes, "weak": False,
+        "mae_model": 0.1, "mae_base": 0.2, "gain": 0.5,
+        "gain_debiased": 0.5 if passes else -0.1,
+    }
+
+
+def test_partial_training_requires_a_complete_previous_gate_before_release(tmp_path, monkeypatch):
+    other = Station(
+        id="other", name="Other", kind="wave", lat=0, lon=0,
+        source="candhis", source_id="other", baseline="marine-best",
+    )
+    released = []
+    monkeypatch.setattr(train, "GATE_PATH", tmp_path / "gate.json")  # absent => empty
+    monkeypatch.setattr(train, "load_env", lambda: None)
+    monkeypatch.setattr(train, "load_stations", lambda: [STATION, other])
+    monkeypatch.setattr(train, "evaluate_all", lambda *_args: [_gate_row(STATION.id, True)])
+    monkeypatch.setattr(train, "release", lambda rows, gate: released.append((rows, gate)))
+    monkeypatch.setattr(sys, "argv", ["train.py", "--station", STATION.id])
+
+    with pytest.raises(ValueError, match="partial training requires"):
+        train.main()
+
+    assert released == []
+
+
+def test_full_training_can_rebuild_a_complete_gate_from_scratch(tmp_path, monkeypatch):
+    other = Station(
+        id="other", name="Other", kind="wave", lat=0, lon=0,
+        source="candhis", source_id="other", baseline="marine-best",
+    )
+    rows = [_gate_row(STATION.id, True), _gate_row(other.id, False)]
+    released = []
+    monkeypatch.setattr(train, "GATE_PATH", tmp_path / "gate.json")  # absent => empty
+    monkeypatch.setattr(train, "load_env", lambda: None)
+    monkeypatch.setattr(train, "load_stations", lambda: [STATION, other])
+    monkeypatch.setattr(train, "evaluate_all", lambda *_args: rows)
+    monkeypatch.setattr(train, "release", lambda actual, gate: released.append((actual, gate)))
+    monkeypatch.setattr(train, "write_report", lambda *_args: None)
+    monkeypatch.setattr(sys, "argv", ["train.py"])
+
+    assert train.main() == 0
+    assert released[0][0] == rows
+    assert set(released[0][1]) == {STATION.id, other.id}
+    assert released[0][1][STATION.id]["pass"] is True
+
+
+def test_release_gate_requires_at_least_one_passing_station():
+    previous = {
+        "first": {"pass": False, "weak": False},
+        "second": {"pass": False, "weak": False},
+    }
+
+    with pytest.raises(ValueError, match="at least one passing"):
+        train.validate_gate_for_release(previous, previous, set(previous), partial=True)
 
 
 def test_station_filter_never_evicts_the_untrained_stations_from_the_gate(tmp_path, monkeypatch):

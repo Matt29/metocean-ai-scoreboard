@@ -36,6 +36,18 @@ def test_parses_tr_payload():
     assert (df["hs"] < 30).all()             # garde-fou valeurs aberrantes
 
 
+def test_empty_successful_payload_raises_source_error():
+    empty = {**FIX, "results": []}
+    with pytest.raises(SourceError, match="aucune observation exploitable"):
+        fetch_wave_obs(ST, date(2026, 7, 28), session=make_session(empty))
+
+
+def test_successful_payload_with_only_filtered_values_raises_source_error():
+    filtered = {**FIX, "results": [["2026-07-28 00:00", "-1", "", "8", "", "", ""]]}
+    with pytest.raises(SourceError, match="aucune observation exploitable"):
+        fetch_wave_obs(ST, date(2026, 7, 28), session=make_session(filtered))
+
+
 def test_missing_key_raises_before_any_request(monkeypatch):
     monkeypatch.delenv("CANDHIS_API_KEY")
     session = make_session(FIX)

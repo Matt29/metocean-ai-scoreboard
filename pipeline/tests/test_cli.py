@@ -1,3 +1,6 @@
+from datetime import date
+
+from scoreboard import cli, daily
 from scoreboard.config import load_env
 
 
@@ -22,3 +25,38 @@ def test_load_env_parses_and_never_overrides(tmp_path, monkeypatch):
 
 def test_load_env_missing_file_is_noop(tmp_path):
     load_env(tmp_path / "absent.env")  # ne doit pas lever
+
+
+def test_daily_command_returns_nonzero_when_no_gate_passing_station_is_published(monkeypatch, capsys):
+    failure = daily.DailyRunError(
+        date(2026, 7, 30), {"wave-a": {"status": "missing", "reason": "candhis 429"}}
+    )
+    monkeypatch.setattr(cli.daily, "run", lambda *args, **kwargs: (_ for _ in ()).throw(failure))
+
+    assert cli.main(["daily", "--date", "2026-07-30", "--dry-run"]) == 1
+    output = capsys.readouterr().out
+    assert "wave-a: missing (candhis 429)" in output
+
+
+def test_daily_command_returns_nonzero_for_an_invalid_gate(monkeypatch, capsys):
+    monkeypatch.setattr(
+        cli.daily,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(daily.GateConfigurationError("gate is empty")),
+    )
+
+    assert cli.main(["daily", "--date", "2026-07-30", "--dry-run"]) == 2
+    assert "::error::gate is empty" in capsys.readouterr().out
+
+
+def test_backfill_command_returns_nonzero_for_an_invalid_gate(monkeypatch, capsys):
+    monkeypatch.setattr(
+        cli.backfill,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            daily.GateConfigurationError("gate is incomplete")
+        ),
+    )
+
+    assert cli.main(["backfill", "--since", "2026-07-01", "--dry-run"]) == 2
+    assert "::error::gate is incomplete" in capsys.readouterr().out

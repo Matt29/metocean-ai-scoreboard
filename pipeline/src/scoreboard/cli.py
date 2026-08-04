@@ -81,15 +81,30 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "daily":
         run_date = date.fromisoformat(args.date) if args.date else datetime.now(timezone.utc).date()
         archive_dir = _resolve_archive_dir(args.dry_run, out_dir, archive.DEFAULT_ARCHIVE_DIR)
-        summary = daily.run(run_date, out_dir, archive_dir=archive_dir)
+        try:
+            summary = daily.run(run_date, out_dir, archive_dir=archive_dir)
+        except daily.DailyRunError as exc:
+            summary = exc.summary
+            status = 1
+        except daily.GateConfigurationError as exc:
+            print(f"::error::{exc}")
+            return 2
+        else:
+            status = 0
         print(f"run {run_date} -> {out_dir}" + (" (dry-run)" if args.dry_run else ""))
         for station_id, result in summary.items():
             suffix = f" ({result['reason']})" if result.get("reason") else ""
             print(f"  {station_id}: {result['status']}{suffix}")
-        return 0
+        if status:
+            print("::error::no gate-passing station was published")
+        return status
 
     since = date.fromisoformat(args.since)
-    summary = backfill.run(since, out_dir)
+    try:
+        summary = backfill.run(since, out_dir)
+    except daily.GateConfigurationError as exc:
+        print(f"::error::{exc}")
+        return 2
     print(f"backfill since {since} -> {out_dir}" + (" (dry-run)" if args.dry_run else ""))
     for station_id, dates in summary.items():
         span = f" ({dates[0]}..{dates[-1]})" if dates else ""
