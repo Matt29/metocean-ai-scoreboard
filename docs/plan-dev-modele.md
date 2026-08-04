@@ -578,12 +578,48 @@ fixé la règle de décision réutilisée pour les trois ci-dessus.
   identifié. Rouvrir ce point demandera un nouveau diagnostic, pas une feature
   de plus dans la liste — celle-ci est vide.
 
-  Ce qui n'a **pas** été fait et qui serait le premier geste : refaire
-  l'autocorrélation du résidu **du modèle actuel** à saint-malo. Les chiffres
-  ci-dessus (0,17 à 6 h, 0,84 à 12 h) décrivent le résidu de la baseline, avant
-  que la phase de marée n'entre dans le modèle. Si la signature semi-diurne a
-  disparu de l'erreur résiduelle, le plafond restant est d'une autre nature et
-  la description ci-dessus a cessé de le décrire.
+  **Diagnostic refait le 2026-08-04 sur le modèle publié : la signature n'a pas
+  bougé d'un pouce.** Autocorrélation de l'erreur du modèle le long de l'horizon,
+  365 jours d'émission de test, saint-malo :
+
+  | série | 1 h | 3 h | 6 h | 9 h | 12 h | 18 h | 24 h |
+  |---|---|---|---|---|---|---|---|
+  | résidu baseline | +0,91 | +0,46 | +0,13 | +0,36 | +0,83 | +0,07 | +0,68 |
+  | erreur modèle **sans** `tide_rate` | +0,81 | +0,17 | −0,26 | +0,01 | +0,70 | −0,27 | +0,55 |
+  | erreur modèle **actuel** | +0,83 | +0,18 | **−0,26** | −0,00 | **+0,68** | −0,27 | +0,56 |
+
+  `tide_rate` a retiré de l'**amplitude** (MAE 0,1052 → 0,0991 m) et **rien de la
+  structure** : à 6 h et à 12 h, l'erreur du modèle actuel est indiscernable de
+  celle du modèle d'avant. Contrôle de méthode : l'autocorrélation le long de
+  l'horizon et celle de la série continue en temps valide coïncident à 0,01 près,
+  et le résidu de baseline reproduit bien les chiffres historiques de cette
+  réserve (0,13 contre 0,17 à 6 h ; 0,83 contre 0,84 à 12 h).
+
+  **La conséquence est plus utile que la mesure.** Le modèle tient déjà la phase
+  de marée complète — `baseline` lui donne h, `tide_rate` lui donne dh/dt — et il
+  s'en sert (c'est +4,11 pts). Si la composante semi-diurne restante lui échappait
+  *malgré ça*, c'est qu'elle n'est pas calée sur la marée. Vérifié en
+  conditionnant l'erreur sur la phase de marée reconstruite à partir de ces deux
+  colonnes (8 secteurs) : la MAE du modèle varie bien de 0,089 à 0,115 m selon le
+  secteur, mais celle du **résidu de baseline** varie dans les mêmes proportions,
+  et le rapport des deux reste plat — **0,63 à 0,73 partout**. Le modèle suit donc
+  l'amplitude du signal secteur par secteur ; il ne laisse pas de gisement calé
+  sur la marée.
+
+  **Ce que ça élimine** : toute feature dérivée de la prédiction harmonique.
+  L'axe « interaction marée-surcote » est épuisé, pas seulement joué. La
+  composante restante est semi-diurne **sans être calée sur la marée locale** —
+  ce que disait déjà le mot « non stationnaire » de la réserve d'origine, et qui
+  est maintenant une conclusion mesurée plutôt qu'une hypothèse.
+
+  **Le seul secteur qui dépasse** : « flot début », rapport 0,73 contre 0,63 à
+  0,67 ailleurs. C'est petit et c'est le seul candidat visible. Non expliqué.
+
+  Enfin, l'écart brest/saint-malo n'est pas un défaut propre à saint-malo dans
+  cette lecture-là : brest montre la même dispersion par secteur (×1,23 contre
+  ×1,28) et la même insensibilité de sa structure d'erreur à `tide_rate`. Ce qui
+  distingue les deux stations reste l'**échelle** du résidu, pas la manière dont
+  le modèle échoue.
 - ~~**Dette brest « régression sous la feature vent ».**~~ **Close le 2026-08-04,
   ablation rejouée : le vent aide, il ne dégrade plus.** Sur la baseline 90 j
   (Task 7B), le vent coûtait −7,7 pts à brest (+2,3 % sans vent → −5,4 % avec
