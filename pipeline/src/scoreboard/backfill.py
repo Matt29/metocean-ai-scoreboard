@@ -65,7 +65,7 @@ from scoreboard.sources.waterlevel import fetch_tide_obs
 from scoreboard.sources.wind import (
     MULTI_FORCING_COLUMNS,
     WIND_MODEL_COLUMNS,
-    fetch_wind_forecast_history,
+    fetch_tide_forcing_history,
     fetch_wind_models_history,
 )
 
@@ -132,8 +132,9 @@ def _deep_inputs(
     wave, wind and tide paths pick different sources, mirroring `daily._fetch_inputs`.
 
     Archived fields, not live forecasts (résolution 2): the 5 wave models plus
-    the 3 candidate winds for a wave station, the single ERA5/ARPEGE leg for a
-    tide station. Whatever of the last replayed day's +48h horizon falls beyond
+    the 3 candidate winds for a wave station, the run-stratified ECMWF leg for a
+    tide station — `daily.issue_series` narrows it per replayed issue, so a
+    backfilled day is forced by the run it would really have had. Whatever of the last replayed day's +48h horizon falls beyond
     `_deep_window`'s clamp is simply unavailable yet; `features.py`'s
     forcing-coverage floor then marks that day `"missing"` rather than publish a
     degraded correction — and because `_missing_dates` only treats `"ok"` as
@@ -151,7 +152,7 @@ def _deep_inputs(
         # payload — même économie que `daily._fetch_inputs`.
         frame = fetch_wind_models_history(station, start, date_end, with_speeds=True)
         return frame[WIND_MODEL_COLUMNS], frame[MULTI_FORCING_COLUMNS]
-    return None, fetch_wind_forecast_history(station, start, date_end)
+    return None, fetch_tide_forcing_history(station, start, date_end)
 
 
 def _backfill_station(

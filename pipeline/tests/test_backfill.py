@@ -22,6 +22,7 @@ from scoreboard.config import Station
 from scoreboard.features import FEATURE_COLUMNS, WAVE_FEATURE_COLUMNS
 from scoreboard.sources import SourceError
 from scoreboard.sources.marine import MODEL_COLUMNS
+from scoreboard.sources import wind as wind_source
 from scoreboard.sources.wind import MULTI_FORCING_COLUMNS
 
 TODAY = date(2026, 7, 30)  # backfill replays up to (but not including) TODAY
@@ -85,12 +86,15 @@ def _marine_df(date_start, date_end):
 
 
 def _wind_df(date_start, date_end, value=3.0):
+    """The tide leg's *stratified* frame — one block per lead day, as the Previous
+    Runs API serves it. Wide on purpose: `daily.issue_series` narrows it per
+    replayed issue, and a narrow mock here would never exercise that."""
     idx = _date_end_inclusive_index(date_start, date_end)
     return pd.DataFrame(
         {
-            "wind_u10": np.full(len(idx), value),
-            "wind_v10": np.full(len(idx), -2.0),
-            "pressure_anom": np.full(len(idx), 5.0),
+            f"{col}_d{day}": np.full(len(idx), base + day)
+            for day in wind_source.LEAD_DAYS
+            for col, base in (("wind_u10", value), ("wind_v10", -2.0), ("pressure_anom", 5.0))
         },
         index=idx,
     )
@@ -156,7 +160,7 @@ def patched_sources(monkeypatch, calls):
     monkeypatch.setattr(backfill, "fetch_wave_obs", _candhis)
     monkeypatch.setattr(backfill, "fetch_tide_obs", _tide)
     monkeypatch.setattr(backfill, "fetch_wave_models_history", _marine)
-    monkeypatch.setattr(backfill, "fetch_wind_forecast_history", _wind)
+    monkeypatch.setattr(backfill, "fetch_tide_forcing_history", _wind)
     monkeypatch.setattr(backfill, "fetch_wind_models_history", _wind_models)
     monkeypatch.setattr(daily.model, "load_artifact", _artifact)
     return monkeypatch
@@ -316,7 +320,7 @@ def test_deep_fetch_failure_marks_every_missing_day_missing_and_backfilled(tmp_p
     def _wind_boom(station, date_start, date_end, session=None):
         raise SourceError(station.id, "open-meteo 503")
 
-    monkeypatch.setattr(backfill, "fetch_wind_forecast_history", _wind_boom)
+    monkeypatch.setattr(backfill, "fetch_tide_forcing_history", _wind_boom)
     monkeypatch.setattr(backfill, "fetch_wind_models_history", _wind_boom)
     summary = backfill.run(since, tmp_path, today=TODAY, stations=STATIONS, gate=GATE)
 

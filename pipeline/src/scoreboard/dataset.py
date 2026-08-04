@@ -24,7 +24,8 @@ def assemble(
 
     `obs` is the station's observation frame (hourly); `baseline` holds the
     official forecast / harmonic prediction in its first column; `forcing` holds
-    the hourly `wind_u10`/`wind_v10` columns (see `sources.wind`). Target is the
+    the hourly `wind_u10`/`wind_v10` columns, or the run-stratified wide frame a
+    tide station trains on (see `sources.wind.forcing_at_issue`). Target is the
     observation at the same valid time. `models` (multi-model stations) is
     passed through to `build_features` verbatim — see its docstring.
     """

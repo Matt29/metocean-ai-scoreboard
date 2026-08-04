@@ -35,12 +35,17 @@ de la vérité.
   sur brest**. Le chemin `wave`/`wind` reste sans pression (elle y coûtait 1 à
   5 points, et une hauteur de houle n'a pas de réponse baromètre inverse).
 - **Fenêtre harmonique portée à 730 j** après mesure causale (voir plus bas).
+- **Forçage `tide` stratifié par âge de run** (Previous Runs API, `ecmwf_ifs025`,
+  entraînement *et* service) : une ligne à +48 h est forcée par une prévision
+  vieille de deux jours. Ça lève la réserve de forçage quasi-analyse, mesures à
+  l'appui — section dédiée plus bas.
 - **Conséquence publiée** : **brest et saint-malo passent toutes deux**
   (`gate.json` du 2026-08-04 : gain hors biais +53,25 % et +30,16 %,
   `weak: false`) — pour la première fois sur le critère dur, et non sur une
   entrée héritée d'une règle périmée. **8 stations publiées**, cherbourg (houle)
-  seule sous le gate. Ces gains `tide` sont à lire avec la réserve de forçage
-  quasi-analyse ci-dessous : ils ne sont pas des gains opérationnels.
+  seule sous le gate. Ces gains ont été **re-mesurés sur un forçage de
+  prévision réel le 2026-08-04** (voir la section suivante) : +53,3 % et
+  +28,0 %.
 
   Étapes intermédiaires gardées pour mémoire, parce qu'elles montrent à quel
   point la profondeur de fit décide du verdict : à 365 j, brest passait à
@@ -158,49 +163,86 @@ dépend aujourd'hui autant du calendrier que du modèle.
 
 ---
 
-## ⚠️ Les gains `tide` mesurés le 2026-08-04 ne sont pas des gains opérationnels
+## Le forçage de prévision, mesuré — la réserve est levée
 
-**À lire avant d'utiliser le moindre chiffre de `model-eval.md` sur brest ou
-saint-malo** (+53 % et +30 % hors biais, 2/2 PASS).
+**Statut : résolue le 2026-08-04.** Cette section remplace une réserve qui
+disait l'inverse ; elle est gardée entière parce que le raisonnement qui a
+motivé le doute reste juste, et que c'est la mesure, pas l'argument, qui l'a
+tranché.
 
-Le forçage d'entraînement provient de l'API Historical Forecast d'Open-Meteo,
+### Le doute
+
+Le forçage d'entraînement provenait de l'API Historical Forecast d'Open-Meteo,
 qui **concatène les runs les plus frais** : à chaque heure valide elle sert une
-prévision émise quelques heures plus tôt, jamais 24 ou 48 h avant. Mesuré le
-2026-08-04 contre ERA5 sur 1440 h à Brest : **corrélation 0,9997** sur la
-pression, 0,25 hPa d'écart moyen pour un signal d'écart-type 13 hPa. C'est de
-l'analyse, pas de la prévision. (Le passage d'ERA5 à cette API le même jour n'a
-donc rien changé aux chiffres : +53,4 % → +53,1 %. Il a supprimé une
-incohérence — les trois kinds partagent enfin une source — pas l'optimisme.)
+prévision émise quelques heures plus tôt, jamais 24 ou 48 h avant. Mesuré
+contre ERA5 sur 1440 h à Brest : **corrélation 0,9997** sur la pression,
+0,25 hPa d'écart moyen pour un signal d'écart-type 13 hPa. C'est de l'analyse,
+pas de la prévision.
 
-**Pourquoi ça mord plus fort sur la marée que sur la houle.** `mae_base` est
-plate en fonction du lead (0,120 à 0,124 de 1 h à 48 h) : la baseline
-astronomique ne se dégrade pas avec l'échéance, c'est un calcul d'éphémérides.
-Sur une station de houle, la baseline est elle-même une prévision physique qui
-se dégrade *en même temps* que le forçage, et une part de l'erreur est partagée.
-Sur la marée, non : **toute la dégradation du forçage tombe du seul côté du
-modèle**. Le gain `tide` est structurellement plus optimiste que le gain `wave`,
-par propriété de la variable et non par défaut de code.
+Pourquoi ça devait mordre plus fort sur la marée que sur la houle : `mae_base`
+est plate en fonction du lead (0,120 à 0,124 de 1 h à 48 h), la baseline
+astronomique ne se dégradant pas avec l'échéance. Sur une station de houle, la
+baseline est elle-même une prévision physique qui se dégrade *en même temps*
+que le forçage, et une part de l'erreur est partagée. Sur la marée, non : toute
+la dégradation du forçage devait tomber du seul côté du modèle.
 
-Signature à surveiller : le gain ne décroît que faiblement avec le lead (brest
-63 % à 0-6 h, 50 % à 36-48 h). Avec un vrai forçage prévu, la pente serait bien
-plus raide — le peu de décroissance observé vient de `last_err` / `mean_err_24h`
-qui vieillissent, pas du forçage.
+### Ce qui a été fait
 
-### Piste retenue, à instruire : forcer la marée à l'ECMWF
+Les stations `tide` sont passées à la **Previous Runs API** d'Open-Meteo et au
+modèle `ecmwf_ifs025` (`wind.fetch_tide_forcing_history`). Pour chaque heure
+valide, l'API sert le run du jour même, celui de la veille et celui de
+l'avant-veille ; `wind.forcing_at_issue` donne à chaque ligne le run que son
+émission aurait réellement eu. Une ligne à +48 h est donc forcée par une
+prévision vieille de deux jours, et le run quotidien sert le même modèle.
 
-Rien n'oblige un modèle de surcote à être nourri à l'ARPEGE. La **Previous Runs
-API** d'Open-Meteo sert `ecmwf_ifs025` avec des **leads stratifiés 1 à 7 jours**
-— de vraies prévisions à échéance, ce qu'ARPEGE n'a pas sur cette API. Entraîner
-*et* servir les stations `tide` sur ECMWF rendrait la mesure honnête
-immédiatement, sans attendre l'accumulation de `data_forecast_archive/`.
+Trois faits d'API à connaître avant d'y toucher (sondés le 2026-08-04) :
 
-À vérifier avant de s'engager : que `pressure_msl` y soit servie, la profondeur
-d'archive réelle, et que le chemin de service (`fetch_wind_forecast`) puisse
-servir le même modèle — sinon on remplace un skew par un autre.
+- **ARPEGE n'est pas stratifié** sur cette API : 0 % de couverture sur toutes
+  les colonnes `*_previous_day*` de vent. Changer d'endpoint ne suffisait pas,
+  il fallait changer de modèle — d'où le passage du chemin `tide` à ECMWF
+  jusque dans le service.
+- **La profondeur d'archive dépend de l'échéance demandée** : `previous_day2`
+  démarre au 2024-02-05, `previous_day7` plus tard. C'est `TIDE_FORCING_START`,
+  et c'est désormais ce qui borne un dataset de marée — plus les observations.
+  Le jeu brest passe de 50 738 à 42 084 lignes, le train de ~2 ans à ~1,5 an,
+  la fenêtre de test d'un an étant inchangée.
+- **La granularité est journalière, pas par run.** Les échéances sous ~18 h
+  gardent donc un reste d'optimisme : elles sont servies par le run le plus
+  frais du jour d'émission. Rien dans le code ne peut le corriger ; tout ce qui
+  dépasse 24 h, là où le doute portait, est une vraie prévision vieillie.
+
+### Le résultat, et pourquoi il tient
+
+| | forçage quasi-analyse | forçage stratifié |
+|---|---|---|
+| brest, gain hors biais | +53,1 % | **+53,3 %** |
+| saint-malo, gain hors biais | +30,0 % | **+28,0 %** |
+| brest, 1-6 h → 37-48 h | 63 % → 50 % | 63,4 % → 50,4 % |
+
+La signature qu'on surveillait — une pente gain/échéance bien plus raide — **ne
+s'est pas produite**. La stratification est pourtant bien appliquée : à heure
+valide égale, une ligne vue à courte et à longue échéance porte des valeurs
+différentes dans 99 % des cas (écart moyen 0,50 m/s et 0,39 hPa).
+
+Le forçage n'est pas décoratif pour autant. Ablation des trois colonnes
+(`--ablate wind_u10,wind_v10,pressure_anom`) : brest +53,3 % → **+39,0 %**,
+saint-malo +28,0 % → **+18,0 %**. Il achète donc 14 et 10 points — mais son
+**âge** n'en coûte quasiment aucun.
+
+L'ordre de grandeur explique les deux faits ensemble. L'erreur ECMWF à +48 h
+vaut 1,4 hPa sur la pression et 1,05 m/s sur le vent (Brest, décembre 2025).
+1,4 hPa de baromètre inverse, c'est ~1,4 cm d'eau, contre 5,6 cm de MAE modèle
+et un résidu qui monte à 40 cm en tempête. La surcote répond à un forçage de
+grande échelle et lentement variable, exactement le régime qu'un modèle global
+prévoit bien à deux jours.
+
+**Conséquence** : les gains `tide` peuvent être cités sans réserve de forçage.
+Ce qui reste vrai, et qui n'a rien à voir : ce sont des chiffres de backtest sur
+une année de test tenue à l'écart, pas un historique de production.
 
 L'autre chemin reste `pipeline/data_forecast_archive/` (démarré le 2026-08-03,
-un Parquet par jour) : le seul instrument réellement vrai, mais qui demande des
-mois.
+un Parquet par jour) : la seule mesure véritablement vraie, à des mois
+d'échéance. Il n'est plus le seul instrument disponible.
 
 ---
 
@@ -318,12 +360,10 @@ fonction déjà écrite. À faire passer en premier si le temps manque.
   les ablations qui l'avaient mesurée l'ont été contre la baseline 90 j, dont le
   biais mensuel balayait ±20 cm. Elles mesuraient du bruit autour d'un biais.
   À rejouer entièrement sur la baseline actuelle avant d'y voir une anomalie.
-- **Skew ERA5 restant dans `backfill.py`.** Le chemin d'entraînement `tide` est
-  passé aux prévisions ARPEGE archivées le 2026-08-04, mais `backfill.py`
-  reconstruit encore ses journées avec `fetch_wind_history` (ERA5). C'est
-  assumé — un jour rejoué est marqué `backfilled` et n'est jamais présenté
-  comme une note en direct — mais ça reste une incohérence à traiter le jour où
-  l'historique rejoué sert à autre chose qu'à remplir le graphe.
+- ~~**Skew ERA5 restant dans `backfill.py`.**~~ **Résolu le 2026-08-04** :
+  `backfill.py` passe par le même forçage stratifié, et `build_features` narrow
+  par émission — un jour rejoué est donc forcé par le run qu'il aurait vraiment
+  eu, comme une journée en direct.
 
 ---
 

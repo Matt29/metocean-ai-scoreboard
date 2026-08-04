@@ -4,20 +4,23 @@ from datetime import date
 from unittest.mock import Mock
 
 import numpy as np
+import pandas as pd
 import pytest
 import requests
 
 from scoreboard.config import Station
 from scoreboard.sources import SourceError
 from scoreboard.sources.wind import (
+    LEAD_DAYS,
     MULTI_FORCING_COLUMNS,
     STANDARD_PRESSURE_HPA,
     TIDE_FORCING_COLUMNS,
     WIND_MODELS,
+    fetch_tide_forcing_history,
     fetch_wind_forecast,
-    fetch_wind_forecast_history,
     fetch_wind_models_forecast,
     fetch_wind_models_history,
+    forcing_at_issue,
 )
 
 ST = Station(id="pierres-noires", name="PN", kind="wave", lat=48.29, lon=-4.97,
@@ -55,9 +58,23 @@ EXPECTED_V = [-10.0, 0.0, 10.0, 0.0]
 EXPECTED_PRESSURE_ANOM = [p - STANDARD_PRESSURE_HPA for p in PRESSURES]
 
 
-def test_history_parses_and_converts_to_uv():
-    df = fetch_wind_forecast_history(ST, date(2026, 6, 1), date(2026, 6, 1),
-                            session=make_session(payload(TIMES, SPEEDS, DIRS, PRESSURES)))
+def prev_payload(times, per_day):
+    """Previous Runs reply: `per_day[k] = (speeds, dirs, pressures)` for lead day k."""
+    hourly = {"time": times}
+    for day, (speeds, dirs, pressures) in per_day.items():
+        sfx = "" if day == 0 else f"_previous_day{day}"
+        hourly[f"wind_speed_10m{sfx}"] = speeds
+        hourly[f"wind_direction_10m{sfx}"] = dirs
+        hourly[f"pressure_msl{sfx}"] = pressures
+    return {"hourly": hourly}
+
+
+# One lead day per wind speed, so a block is identifiable from the value alone.
+PER_DAY = {day: ([10.0 + day] * 4, DIRS, PRESSURES) for day in LEAD_DAYS}
+
+
+def test_forecast_parses_and_converts_to_uv():
+    df = fetch_wind_forecast(ST, session=make_session(payload(TIMES, SPEEDS, DIRS, PRESSURES)))
 
     assert list(df.columns) == TIDE_FORCING_COLUMNS == ["wind_u10", "wind_v10", "pressure_anom"]
     assert df.index.name == "time"
@@ -69,36 +86,93 @@ def test_history_parses_and_converts_to_uv():
     assert not df.isna().any().any()
 
 
-def test_one_request_per_station_with_every_forcing_variable():
-    """Open-Meteo has a free-tier quota: all variables ride in a single call."""
-    session = make_session(payload(TIMES, SPEEDS, DIRS, PRESSURES))
-    fetch_wind_forecast_history(ST, date(2026, 6, 1), date(2026, 6, 2), session=session)
+def test_one_request_per_station_with_every_lead_and_variable():
+    """Open-Meteo has a free-tier quota: every lead and variable rides in one call."""
+    session = make_session(prev_payload(TIMES, PER_DAY))
+    fetch_tide_forcing_history(ST, date(2026, 6, 1), date(2026, 6, 2), session=session)
     assert session.get.call_count == 1
     hourly = session.get.call_args.kwargs["params"]["hourly"].split(",")
-    assert set(hourly) == {"wind_speed_10m", "wind_direction_10m", "pressure_msl"}
+    assert set(hourly) == {
+        f"{var}{'' if day == 0 else f'_previous_day{day}'}"
+        for day in LEAD_DAYS
+        for var in ("wind_speed_10m", "wind_direction_10m", "pressure_msl")
+    }
+    # Deeper leads exist on the API and must not be paid for: nothing reads past +48h.
+    assert not any("previous_day3" in h for h in hourly)
 
 
-def test_history_requests_ms_units_and_utc():
-    session = make_session(payload(TIMES, SPEEDS, DIRS, PRESSURES))
-    fetch_wind_forecast_history(ST, date(2026, 6, 1), date(2026, 6, 2), session=session)
+def test_history_requests_ecmwf_ms_units_and_utc():
+    session = make_session(prev_payload(TIMES, PER_DAY))
+    fetch_tide_forcing_history(ST, date(2026, 6, 1), date(2026, 6, 2), session=session)
     params = session.get.call_args.kwargs["params"]
+    # Same model as the serve leg, or training measures a run production never gets.
+    assert params["models"] == "ecmwf_ifs025"
     assert params["wind_speed_unit"] == "ms"
     assert params["timezone"] == "UTC"
     assert params["start_date"] == "2026-06-01"
     assert params["end_date"] == "2026-06-02"
 
 
-def test_forecast_uses_arpege_europe_model():
+def test_history_returns_one_block_per_lead_day():
+    df = fetch_tide_forcing_history(ST, date(2026, 6, 1), date(2026, 6, 1),
+                                    session=make_session(prev_payload(TIMES, PER_DAY)))
+    assert list(df.columns) == [f"{c}_d{day}" for day in LEAD_DAYS for c in TIDE_FORCING_COLUMNS]
+    for day in LEAD_DAYS:
+        assert np.allclose(df[f"wind_v10_d{day}"], [-(10.0 + day), 0.0, 10.0 + day, 0.0], atol=1e-9)
+
+
+def test_forcing_at_issue_picks_the_run_the_issue_could_have_had():
+    """+48h must be forced by a 2-day-old run, not by the freshest one."""
+    times = [f"2026-06-0{d}T12:00" for d in (1, 2, 3)]
+    df = fetch_tide_forcing_history(
+        ST, date(2026, 6, 1), date(2026, 6, 3),
+        session=make_session(prev_payload(times, {day: ([10.0 + day] * 3, [270] * 3, [1013.25] * 3)
+                                                  for day in LEAD_DAYS})),
+    )
+    narrowed = forcing_at_issue(df, pd.Timestamp("2026-06-01T06:00", tz="UTC"))
+    assert list(narrowed.columns) == TIDE_FORCING_COLUMNS
+    # from W -> u = +speed; same day, +1 day, +2 days.
+    assert np.allclose(narrowed["wind_u10"], [10.0, 11.0, 12.0], atol=1e-9)
+
+
+def test_forcing_at_issue_drops_hours_past_the_deepest_lead():
+    """Serving the oldest run at +96h would be a quiet lie; an absent hour trips
+    the coverage floor instead."""
+    times = [f"2026-06-0{d}T12:00" for d in (1, 5)]
+    df = fetch_tide_forcing_history(
+        ST, date(2026, 6, 1), date(2026, 6, 5),
+        session=make_session(prev_payload(times, {day: ([10.0 + day] * 2, [270] * 2, [1013.25] * 2)
+                                                  for day in LEAD_DAYS})),
+    )
+    narrowed = forcing_at_issue(df, pd.Timestamp("2026-06-01T06:00", tz="UTC"))
+    assert list(narrowed.index) == [pd.Timestamp("2026-06-01T12:00", tz="UTC")]
+    assert np.allclose(narrowed["wind_u10"], [10.0], atol=1e-9)
+
+
+def test_forcing_at_issue_leaves_a_degraded_frame_to_the_coverage_floor():
+    """None/empty/wrong-columns are `features.py`'s contract to reject, not this
+    function's to crash on."""
+    assert forcing_at_issue(None, pd.Timestamp("2026-06-01T06:00", tz="UTC")) is None
+
+
+def test_forcing_at_issue_passes_a_non_stratified_frame_through():
+    """The live serve leg and the multi-model frames take the same call, unchanged."""
+    live = fetch_wind_forecast(ST, session=make_session(payload(TIMES, SPEEDS, DIRS, PRESSURES)))
+    out = forcing_at_issue(live, pd.Timestamp("2026-06-01T06:00", tz="UTC"))
+    assert out is live
+
+
+def test_forecast_uses_ecmwf_model():
     session = make_session(payload(TIMES, SPEEDS, DIRS, PRESSURES))
     df = fetch_wind_forecast(ST, session=session)
-    assert session.get.call_args.kwargs["params"]["models"] == "meteofrance_arpege_europe"
+    assert session.get.call_args.kwargs["params"]["models"] == "ecmwf_ifs025"
     assert list(df.columns) == TIDE_FORCING_COLUMNS
     assert str(df.index.tz) == "UTC"
 
 
 def test_missing_hourly_values_are_dropped_not_nan():
     body = payload(TIMES, [10.0, None, 10.0, 10.0], [0, 90, None, 270], PRESSURES)
-    df = fetch_wind_forecast_history(ST, date(2026, 6, 1), date(2026, 6, 1), session=make_session(body))
+    df = fetch_wind_forecast(ST, session=make_session(body))
     assert not df.isna().any().any()
     assert len(df) == 2
 
@@ -106,7 +180,7 @@ def test_missing_hourly_values_are_dropped_not_nan():
 def test_duplicate_timestamps_are_dropped():
     """A duplicated index would blow up the nearest-reindex in features.py."""
     body = payload(TIMES + [TIMES[0]], SPEEDS + [3.0], DIRS + [45], PRESSURES + [PRESSURES[0]])
-    df = fetch_wind_forecast_history(ST, date(2026, 6, 1), date(2026, 6, 1), session=make_session(body))
+    df = fetch_wind_forecast(ST, session=make_session(body))
     assert not df.index.has_duplicates
     assert np.isclose(df["wind_u10"].iloc[0], EXPECTED_U[0])  # first wins, like candhis
 
@@ -115,19 +189,19 @@ def test_network_error_raises_source_error():
     s = Mock()
     s.get.side_effect = requests.ConnectionError("boom")
     with pytest.raises(SourceError):
-        fetch_wind_forecast_history(ST, date(2026, 6, 1), date(2026, 6, 1), session=s)
+        fetch_tide_forcing_history(ST, date(2026, 6, 1), date(2026, 6, 1), session=s)
 
 
 def test_http_error_raises_source_error():
     body = {"error": True, "reason": "start_date is out of range"}
     with pytest.raises(SourceError):
-        fetch_wind_forecast_history(ST, date(1800, 1, 1), date(1800, 1, 2),
+        fetch_tide_forcing_history(ST, date(1800, 1, 1), date(1800, 1, 2),
                            session=make_session(body, status=400))
 
 
 def test_malformed_payload_raises_source_error():
     with pytest.raises(SourceError):
-        fetch_wind_forecast_history(ST, date(2026, 6, 1), date(2026, 6, 1),
+        fetch_tide_forcing_history(ST, date(2026, 6, 1), date(2026, 6, 1),
                            session=make_session({"latitude": 48.29}))
 
 
@@ -136,7 +210,16 @@ def test_mono_model_missing_key_raises_not_empty_dataframe():
     dropna() into an empty frame."""
     body = {"hourly": {"time": TIMES, "wind_direction_10m": DIRS}}
     with pytest.raises(SourceError):
-        fetch_wind_forecast_history(ST, date(2026, 6, 1), date(2026, 6, 1), session=make_session(body))
+        fetch_wind_forecast(ST, session=make_session(body))
+
+
+def test_missing_lead_column_raises_not_a_silently_short_frame():
+    """A lead absent from the payload must raise: narrowing would otherwise serve
+    the freshest run at +48h, which is the exact skew this leg removes."""
+    per_day = {day: PER_DAY[day] for day in LEAD_DAYS if day != LEAD_DAYS[-1]}
+    with pytest.raises(SourceError):
+        fetch_tide_forcing_history(ST, date(2026, 6, 1), date(2026, 6, 1),
+                                   session=make_session(prev_payload(TIMES, per_day)))
 
 
 def multi_payload(times, per_model):

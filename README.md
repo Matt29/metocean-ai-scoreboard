@@ -35,15 +35,19 @@ centimètres de biais — un adversaire artificiellement fort, contre lequel le
 modèle faisait match nul. Baseline conditionnée, ce biais s'effondre et le
 skill réel apparaît. Brest et Saint-Malo passent toutes deux le gate.
 
-> ⚠️ **Les gains des stations `tide` sont mesurés avec un forçage
-> quasi-analyse.** L'API Historical Forecast d'Open-Meteo concatène les runs les
-> plus frais : une « prévision » passée est émise quelques heures — pas 24 à
-> 48 h — avant son heure de validité (corrélation 0,9997 avec ERA5, mesurée à
-> Brest le 2026-08-04). Ces chiffres surestiment donc ce qu'une vraie prévision
-> à +48 h délivre, et l'effet est plus fort sur la marée que sur la houle : la
-> baseline astronomique ne se dégrade pas avec l'échéance, donc toute la
-> dégradation du forçage tombe du côté du modèle. Détail et pistes :
-> [`docs/plan-dev-modele.md`](docs/plan-dev-modele.md).
+Les stations `tide` sont entraînées sur un forçage **stratifié par âge de
+run** : une ligne à +48 h est forcée par une prévision ECMWF réellement émise
+deux jours plus tôt (Previous Runs API d'Open-Meteo), et le run quotidien sert
+le même modèle. Cette contrainte a été posée le 2026-08-04 pour lever un doute
+sur les chiffres — le forçage d'entraînement provenait jusque-là de runs
+concaténés au plus frais, donc d'une quasi-analyse. Le doute est levé : les
+gains ne bougent quasiment pas (brest +53,1 → +53,3 %, saint-malo +30,0 →
++28,0 %) et la pente gain/échéance reste la même. Le forçage n'est pas
+accessoire pour autant — l'annuler coûte 14 points à Brest — mais son **âge**
+ne coûte presque rien, ce qui est cohérent avec l'ordre de grandeur physique :
+1,4 hPa d'erreur ECMWF à +48 h, soit ~1,4 cm de baromètre inverse contre 5,6 cm
+de MAE modèle. Détail et méthode :
+[`docs/plan-dev-modele.md`](docs/plan-dev-modele.md).
 
 `pipeline/models/gate.json` fait foi : le tableau ci-dessous le recopie, il ne
 le décide pas. En cas de désaccord, c'est le tableau qui a vieilli.
@@ -91,7 +95,8 @@ GitHub Actions (cron, voir .github/workflows/daily.yml)
         ├─ 2. baseline du jour : meilleur modèle vague Open-Meteo Marine
         │      (`baseline_model`, choisi par station à l'entraînement) ou
         │      refit harmonique (utide)
-        ├─ 3. prévision vent ARPEGE (Open-Meteo) → inférence du modèle IA (par station)
+        ├─ 3. prévision atmosphérique Open-Meteo (ARPEGE/ICON/ECMWF selon le kind)
+        │      → inférence du modèle IA (par station)
         ├─ 4. publie data/<station>/latest.json + history.json + data/scores.json
         └─ 5. archive le vent + les modèles vague servis → pipeline/data_forecast_archive/YYYY-MM-DD.parquet
         │
@@ -105,11 +110,13 @@ d'Open-Meteo lors du retrain multi-modèles (2026-08) — voir
 couverture/écart mesurés.
 
 `pipeline/data_forecast_archive/` n'est pas un sous-produit accessoire : c'est
-le corpus qui permettra un jour de ré-entraîner sur le vent *réellement servi*
-(ARPEGE) plutôt que sur la réanalyse ERA5 utilisée à l'entraînement — voir
-`docs/data-sources.md` §4bis pour le skew que ça corrige (résolu pour les
-vagues, toujours ouvert pour le vent). Il archive aussi, depuis Task 7, les
-colonnes `hs_*` des 5 modèles vague effectivement servis à chaque station —
+le corpus du vent *réellement servi*, jour après jour — voir
+`docs/data-sources.md` §4bis pour le skew qu'il corrige. Ce skew est désormais
+traité en amont sur les trois kinds (chacun s'entraîne sur des runs passés du
+modèle qu'on lui sert, et la marée sur des runs stratifiés par âge), donc
+l'archive n'est plus le seul instrument possible — elle reste la seule mesure
+véritablement vraie, à des mois d'échéance. Il archive aussi, depuis Task 7,
+les colonnes `hs_*` des 5 modèles vague effectivement servis à chaque station —
 pas seulement le vent.
 
 ## Commandes

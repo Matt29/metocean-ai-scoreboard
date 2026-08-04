@@ -330,9 +330,9 @@ def test_daily_run_archives_the_served_wind_forecast_for_every_published_station
     assert (wave["source"] == "openmeteo:multi").all()
     assert wave[MULTI_FORCING_COLUMNS].notna().all().all()
     assert wave[MODEL_COLUMNS].notna().all().all()
-    # The mono ARPEGE forcing (and its pressure anomaly) is the tide-only leg.
+    # The mono ECMWF forcing (and its pressure anomaly) is the tide-only leg.
     assert wave[["wind_u10", "wind_v10", "pressure_anom"]].isna().all().all()
-    assert (tide["source"] == "meteofrance_arpege_europe").all()
+    assert (tide["source"] == "ecmwf_ifs025").all()
     assert tide[["wind_u10", "wind_v10", "pressure_anom"]].notna().all().all()
     assert tide[MODEL_COLUMNS].isna().all().all()
     assert df["lead_h"].min() >= 1

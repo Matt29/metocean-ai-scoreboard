@@ -15,17 +15,19 @@ Sources and documented compromises
   happen after the per-station baseline pick. `--kind wave` therefore writes
   one raw parquet per station (`<station>_raw.parquet`: obs + 5 wave models +
   6 multi-model wind columns) instead of an assembled (X, y) dataset.
-* Atmospheric forcing (Open-Meteo, Historical Forecast API): ONE request per
-  station over the whole window, hourly 10 m wind converted to u/v (+ the MSL
-  pressure anomaly on `tide`). Every kind now trains on **past forecasts of the
-  model it will be served**, never on a reanalysis — `fetch_wind_models_history`
-  for wave/wind, `fetch_wind_forecast_history` for tide. The tide leg was the
-  last one on ERA5 and moved off it on 2026-08-04, when pressure became a
-  dominant feature and turned a tolerable mean-bias skew into a measurement of
-  hindcast skill (see that function's docstring for the figures). The ERA5 leg
-  was deleted outright rather than kept for `backfill.py`: a replayed day is
-  flagged `backfilled`, but it is still displayed and scored, so leaving it on a
-  different forcing would have put the skew back on the serve side.
+* Atmospheric forcing (Open-Meteo): ONE request per station over the whole
+  window, hourly 10 m wind converted to u/v (+ the MSL pressure anomaly on
+  `tide`). Every kind trains on **past forecasts of the model it will be
+  served**, never on a reanalysis — `fetch_wind_models_history` (Historical
+  Forecast API) for wave/wind, `fetch_tide_forcing_history` (Previous Runs API,
+  ECMWF) for tide. The tide leg went ERA5 -> past ARPEGE -> stratified ECMWF on
+  2026-08-04: pressure had become a dominant feature, and a forcing concatenated
+  from the freshest runs turned the +48 h figures into a measurement of hindcast
+  skill. Each intermediate leg was deleted rather than kept for `backfill.py`: a
+  replayed day is flagged `backfilled`, but it is still displayed and scored, so
+  leaving it on a different forcing would put the skew back on the serve side.
+  Cost of the switch: tide rows cannot start before `TIDE_FORCING_START`
+  (2024-02-05), which is now what bounds a tide dataset — not the observations.
 * Tide (REFMAR): raw high-frequency observations, chunked in 30-day requests
   (API caps a request at 31 days). Real archive depth is discovered at runtime.
 * Tide baseline (harmonic): **causal rolling fit** (`harmonic.causal_predict`).
@@ -64,15 +66,14 @@ from scoreboard.sources.candhis import fetch_wave_obs
 from scoreboard.sources.marine import fetch_wave_models_history
 from scoreboard.sources.mfobs import fetch_wind_obs_archive
 from scoreboard.sources.waterlevel import fetch_tide_obs
-from scoreboard.sources.wind import fetch_wind_forecast_history, fetch_wind_models_history
+from scoreboard.sources.wind import (
+    TIDE_FORCING_START,
+    WIND_MODELS_START,
+    fetch_tide_forcing_history,
+    fetch_wind_models_history,
+)
 
 OUT_DIR = Path(__file__).resolve().parents[1] / "data_train"
-# Mesuré le 2026-08-04 sur l'Historical Forecast API : les 3 modèles de vent ne
-# sont servis **simultanément et sans trou** qu'à partir de cette date. Avant,
-# `ecmwf_ifs025` est absent (0 % jusqu'en janvier 2024, 93 % en février), et rien
-# du tout avant 2022. Démarrer plus tôt ne rallonge pas l'entraînement : cela
-# fabrique des émissions que le plancher de couverture de `features.py` rejette.
-WIND_MODELS_START = date(2024, 2, 3)
 
 
 def _build_raw(
@@ -141,14 +142,21 @@ def build_tide(
         # knob could only make the first fits shallower than production's — and
         # every day between `FIT_LOOKBACK_DAYS` and that fraction would be
         # evaluable data thrown away for nothing.
-        split = level.index[0] + pd.Timedelta(days=harmonic.FIT_LOOKBACK_DAYS)
+        # Never earlier than the forcing archive: an issue with no forcing is
+        # dropped by `features.py` anyway, so fitting a baseline for it would be
+        # utide runs spent on rows that cannot exist.
+        split = max(
+            level.index[0] + pd.Timedelta(days=harmonic.FIT_LOOKBACK_DAYS),
+            pd.Timestamp(TIDE_FORCING_START, tz="UTC"),
+        )
         baseline_s = harmonic.causal_predict(
             level, st.lat, obs.index, first_cutoff=split, refit_days=refit_days,
             horizon_hours=HORIZON_H,
         )
         eval_obs = obs.loc[baseline_s.index]
-        # Past ARPEGE *forecasts*, not ERA5: same leg as production serves.
-        forcing = fetch_wind_forecast_history(st, start, end)  # single request
+        # Past ECMWF runs stratified by age: same model production serves, and
+        # a +48 h row is forced by a run that really was 2 days old.
+        forcing = fetch_tide_forcing_history(st, max(start, TIDE_FORCING_START), end)
         out[st.id] = assemble(st, eval_obs, pd.DataFrame({"level_baseline": baseline_s}), forcing)
         print(
             f"  {st.id}: forcing {len(forcing)}h, obs {len(level)}h "

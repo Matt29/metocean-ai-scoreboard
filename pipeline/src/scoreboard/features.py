@@ -9,6 +9,11 @@ guarantees training and serving see the same thing.
 to carry values posterior to `t0`: it is a *forecast* of the atmospheric forcing
 at each lead's valid time, exactly what production has at issue time. It is
 never an observation, so it cannot leak.
+On the tide path `forcing` may arrive *run-stratified* — one block of columns
+per lead day — and `build_features` narrows it to the run an issue at `t0` could
+really have had. Serve and train hand it the same shape they each have; the
+narrowing lives here so neither has to remember it.
+
 `forcing` is a required argument, not an option with a default — and a required
 argument is not enough on its own: a *degraded* forcing frame (None, empty, wrong
 columns, truncated horizon) would otherwise yield an all-zero forcing vector,
@@ -41,7 +46,7 @@ import pandas as pd
 
 from scoreboard.sources import SourceError
 from scoreboard.sources.marine import MODEL_COLUMNS
-from scoreboard.sources.wind import MULTI_FORCING_COLUMNS, WIND_MODEL_COLUMNS
+from scoreboard.sources.wind import MULTI_FORCING_COLUMNS, WIND_MODEL_COLUMNS, forcing_at_issue
 from scoreboard.sources.wind import TIDE_FORCING_COLUMNS as _TIDE_FORCING_COLUMNS
 
 # The 6 columns every station shares, whatever its kind. Named rather than
@@ -163,7 +168,13 @@ def build_features(
     feats["hour_sin"] = np.sin(2 * np.pi * future.index.hour / 24)
     feats["hour_cos"] = np.cos(2 * np.pi * future.index.hour / 24)
     if models is None:
-        _add_aligned(feats, forcing, _TIDE_FORCING_COLUMNS)
+        # Narrowed here and nowhere else. A tide frame may be *run-stratified*
+        # (one block per lead day, see `sources.wind.forcing_at_issue`), and
+        # picking the block an issue at `t0` could have had is precisely "how do
+        # I read forcing at t0" — this function's job, not its callers'. Doing it
+        # at the call sites would make the one-code-path guarantee a convention
+        # two callers have to remember instead of a property of the code.
+        _add_aligned(feats, forcing_at_issue(forcing, t0), _TIDE_FORCING_COLUMNS)
         return feats[FEATURE_COLUMNS]
 
     # Each model gets the forcing treatment: nearest-hour alignment and the same

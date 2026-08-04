@@ -71,8 +71,8 @@ from scoreboard.sources.marine import fetch_wave_models_forecast
 from scoreboard.sources.mfobs import fetch_wind_obs
 from scoreboard.sources.waterlevel import fetch_tide_obs
 from scoreboard.sources.wind import (
-    FORECAST_MODEL,
     MULTI_FORCING_COLUMNS,
+    TIDE_FORECAST_MODEL,
     WIND_MODEL_COLUMNS,
     fetch_wind_forecast,
     fetch_wind_models_forecast,
@@ -91,7 +91,7 @@ MIN_TIDE_FIT_DAYS = harmonic.FIT_LOOKBACK_DAYS
 BASELINE_LOOKBACK_H = 24
 BASELINE_HORIZON_H = 48
 # `archive.write_day`'s `source` for the wave path: the forcing archived there
-# is the 3-model frame, not any single named run (unlike tide's FORECAST_MODEL).
+# is the 3-model frame, not any single named run (unlike tide's TIDE_FORECAST_MODEL).
 MULTI_FORCING_SOURCE = "openmeteo:multi"
 # Column prefix of the per-model baseline candidates, by station kind. A `tide`
 # station is absent on purpose: its baseline is a fresh harmonic fit, not a
@@ -430,8 +430,10 @@ def _fetch_inputs(station: Station) -> tuple[pd.DataFrame | None, pd.DataFrame, 
     Wind: **one** request — the per-model wind speed is the baseline and the u/v
     of the same models is the forcing, and Open-Meteo returns both in the same
     payload, so `with_speeds=True` splits one response instead of paying twice.
-    Tide: no model frame, and the single ARPEGE run it has always used — the tide
-    path is deliberately untouched by the multi-model switch.
+    Tide: no model frame, and a single named run — `ecmwf_ifs025` since
+    2026-08-04, because it is the only model whose past runs the training leg can
+    replay stratified by age (`sources.wind`). The tide path stays deliberately
+    untouched by the multi-model switch.
     """
     if station.kind == "wave":
         return (
@@ -442,7 +444,7 @@ def _fetch_inputs(station: Station) -> tuple[pd.DataFrame | None, pd.DataFrame, 
     if station.kind == "wind":
         frame = fetch_wind_models_forecast(station, with_speeds=True)
         return frame[WIND_MODEL_COLUMNS], frame[MULTI_FORCING_COLUMNS], MULTI_FORCING_SOURCE
-    return None, fetch_wind_forecast(station), FORECAST_MODEL
+    return None, fetch_wind_forecast(station), TIDE_FORECAST_MODEL
 
 
 def _run_station(

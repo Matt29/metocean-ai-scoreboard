@@ -1,16 +1,23 @@
-"""Open-Meteo atmospheric forcing fetcher — past ARPEGE runs for training, live
-ARPEGE for inference.
+"""Open-Meteo atmospheric forcing fetcher — past runs for training, live runs
+for inference.
 
 One request per station. Both legs share one JSON contract and one parser, so
 the conventions seen at training are byte-for-byte those seen at inference, and
 since 2026-08-04 so is the *model*: the ERA5 reanalysis leg was deleted rather
 than kept, because a reanalysis is the atmosphere as it turned out.
 
-Residual optimism to keep in mind, and it is NOT fixed here: the Historical
-Forecast API concatenates the freshest runs, so a past "forecast" is issued
-hours — not 24 to 48 h — before its valid time. Measured 2026-08-04 at Brest,
-its pressure correlates 0.9997 with ERA5. Training figures therefore still
-overstate what a real +48 h forecast delivers; see `docs/plan-dev-modele.md`.
+The residual optimism that survived that fix is closed here, on the tide leg,
+2026-08-04. The Historical Forecast API concatenates the freshest runs, so a
+past "forecast" was issued hours — not 24 to 48 h — before its valid time
+(measured at Brest: its pressure correlates 0.9997 with ERA5). A surge model
+trained on it was scored on forcing no +48 h forecast can deliver. The tide leg
+therefore moved to the **Previous Runs API** (`fetch_tide_forcing_history`),
+which serves runs stratified by age, and to `ecmwf_ifs025` — the only model that
+API stratifies (ARPEGE returns 0 % on every `previous_day` wind column, probed
+2026-08-04). The wave and wind legs stay on the Historical Forecast API: there
+the forcing is a secondary input and their baseline is itself a forecast that
+degrades with it, so the same skew does not fall on the model alone
+(`docs/plan-dev-modele.md`).
 
 Open-Meteo returns wind in the meteorological convention (the direction the wind
 comes FROM). We convert to eastward/northward components once, here, because a
@@ -65,14 +72,35 @@ WIND_MODEL_COLUMNS = [f"ws_{m}" for m in WIND_MODELS]
 
 _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 _HISTORICAL_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
+_PREVIOUS_RUNS_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
 # Public (not `_MODEL`): `archive.py` records this as the served forecast's
 # `source` column — it must name exactly the model `fetch_wind_forecast` calls.
-FORECAST_MODEL = "meteofrance_arpege_europe"
+# ECMWF and not ARPEGE since 2026-08-04, for one reason only: the Previous Runs
+# API that makes the *training* forcing honest serves stratified runs for
+# `ecmwf_ifs025` and not for ARPEGE. Serving a model the training leg cannot
+# replay would put back the skew this whole change removes.
+TIDE_FORECAST_MODEL = "ecmwf_ifs025"
 _HOURLY = "wind_speed_10m,wind_direction_10m"
+_TIDE_VARIABLES = ("wind_speed_10m", "wind_direction_10m", "pressure_msl")
 # The single-model legs (tide) ask for pressure too; the multi-model legs
 # (wave/wind) do not, so no station pays for a variable its features exclude.
-_HOURLY_TIDE = f"{_HOURLY},pressure_msl"
+_HOURLY_TIDE = ",".join(_TIDE_VARIABLES)
 _TIMEOUT = 30
+
+# Lead days a `HORIZON_H = 48` issue can reach: the issue's own day, and the two
+# after it. Deeper `previous_day` columns exist (up to 7) and are deliberately
+# not requested — no tide feature ever reads beyond +48 h.
+LEAD_DAYS = (0, 1, 2)
+# Archive walls, both probed 2026-08-04 and both the same kind of fact: the first
+# date Open-Meteo actually serves what a leg asks for. They live here, beside the
+# fetchers they describe, rather than beside `build_dataset`'s clamp — a third leg
+# should find its siblings, not a comment trail across two files. Requesting
+# earlier does not lengthen training: it fabricates issues that `features.py`'s
+# coverage floor then rejects one by one.
+#   tide: first date `previous_day2` is served for ECMWF (2024-02-04 all-null).
+#   multi-model: first date the 3 wind models are served together without a hole.
+TIDE_FORCING_START = date(2024, 2, 5)
+WIND_MODELS_START = date(2024, 2, 3)
 
 log = logging.getLogger(__name__)
 
@@ -136,27 +164,47 @@ def _log_resolved_cell(payload: dict, station: Station) -> None:
         )
 
 
-def _fetch(url: str, params: dict, station: Station, session) -> pd.DataFrame:
-    payload, hourly = _get_payload(url, params, station, session)
-    for key in ("wind_speed_10m", "wind_direction_10m"):
-        if key not in hourly:
-            raise SourceError(station.id, f"open-meteo payload missing {key!r}")
-    out = _parse_uv(hourly, "wind_speed_10m", "wind_direction_10m")
+def _lead_suffix(lead_day: int) -> str:
+    """Open-Meteo's variable suffix for a run `lead_day` days older than the freshest."""
+    return "" if lead_day == 0 else f"_previous_day{lead_day}"
+
+
+def _tide_frame(hourly: dict, station: Station, suffix: str = "") -> pd.DataFrame:
+    """`TIDE_FORCING_COLUMNS` read off one set of payload keys.
+
+    `suffix` selects which run: `""` is the freshest one, `"_previous_dayN"` the
+    one N days older (Previous Runs API). One parser for both, so a stratified
+    lead and a live forecast cannot drift apart in their conventions.
+    """
+    for var in _TIDE_VARIABLES:
+        if f"{var}{suffix}" not in hourly:
+            raise SourceError(station.id, f"open-meteo payload missing {var + suffix!r}")
+    out = _parse_uv(hourly, f"wind_speed_10m{suffix}", f"wind_direction_10m{suffix}")
     # Anomaly, not the raw hPa: the inverse barometer acts on the departure from
     # the standard atmosphere, and a column centred near zero shares the neutral
     # 0.0 fallback the other forcing columns already use for a gap.
-    if "pressure_msl" not in hourly:
-        raise SourceError(station.id, "open-meteo payload missing 'pressure_msl'")
     out["pressure_anom"] = (
-        pd.to_numeric(pd.Series(hourly["pressure_msl"], index=out.index), errors="coerce")
+        pd.to_numeric(pd.Series(hourly[f"pressure_msl{suffix}"], index=out.index), errors="coerce")
         - STANDARD_PRESSURE_HPA
     )
-    out = out.dropna().sort_index()
-    # Same guard as candhis.py: a duplicated index makes the nearest-reindex in
-    # features.py raise instead of returning features.
+    return out[TIDE_FORCING_COLUMNS]
+
+
+def _finalize(out: pd.DataFrame, payload: dict, station: Station) -> pd.DataFrame:
+    """The tail every fetcher shares: sort, drop duplicate hours, log the cell.
+
+    Same guard as candhis.py: a duplicated index makes the nearest-reindex in
+    features.py raise instead of returning features.
+    """
+    out = out.sort_index()
     out = out[~out.index.duplicated(keep="first")]
     _log_resolved_cell(payload, station)
-    return out[TIDE_FORCING_COLUMNS]
+    return out
+
+
+def _fetch(url: str, params: dict, station: Station, session) -> pd.DataFrame:
+    payload, hourly = _get_payload(url, params, station, session)
+    return _finalize(_tide_frame(hourly, station).dropna(), payload, station)
 
 
 def _fetch_models(
@@ -173,66 +221,113 @@ def _fetch_models(
         )
         for m in WIND_MODELS
     ]
-    out = pd.concat(parts, axis=1).sort_index()
-    # Same guard as candhis.py: a duplicated index makes the nearest-reindex in
-    # features.py raise instead of returning features.
-    out = out[~out.index.duplicated(keep="first")]
-    _log_resolved_cell(payload, station)
+    out = _finalize(pd.concat(parts, axis=1), payload, station)
     columns = MULTI_FORCING_COLUMNS + WIND_MODEL_COLUMNS if with_speeds else MULTI_FORCING_COLUMNS
     return out[columns]
 
 
-def fetch_wind_forecast_history(
+def fetch_tide_forcing_history(
     station: Station, date_start: date, date_end: date, session: requests.Session | None = None
 ) -> pd.DataFrame:
-    """Past ARPEGE *forecasts* over [date_start, date_end] — the training twin of
-    `fetch_wind_forecast`.
+    """Past ECMWF forecasts over [date_start, date_end], **stratified by run age**
+    — the training twin of `fetch_wind_forecast`.
 
-    Same model, same variables, same parser as the serve leg: what a `tide`
-    station is trained on is what it will be served. The ERA5 *reanalysis* leg
-    that used to live here was deleted on 2026-08-04: it is the atmosphere as it
-    turned out, not as it was forecast, and training a surge model on it measures
-    the ability to *reconstruct* a storm knowing what it did, which is not the
-    job. `backfill.py` replays past days through this function too, so a
-    backfilled day and a live day now share one forcing source.
-    That skew was harmless while wind was a marginal feature; it stopped being
-    harmless the moment pressure — the surge's first-order driver — became a
-    dominant input. Measured 2026-08-04: on ERA5 forcing the model held 5.6 cm
-    MAE straight through winter storms reaching 40 cm, a skill no forecast can
-    deliver.
+    Returns a *wide* frame: `TIDE_FORCING_COLUMNS` suffixed `_d0`, `_d1`, `_d2`,
+    one block per entry in `LEAD_DAYS`. `_d0` is the freshest run for that valid
+    time, `_d1` the run one day older, `_d2` two days older. Callers never read
+    it directly — `forcing_at_issue` picks the block a given issue could have
+    had. This is what makes a +48 h training row a +48 h *forecast* rather than
+    a near-analysis: see the module docstring for why the previous leg
+    (Historical Forecast API) could not.
 
-    Archive depth: ARPEGE forecasts are served from early 2023 (probed
-    2026-08-04; 2022-09 returns all-null). Not the binding constraint for tide,
-    whose rows already start `FIT_LOOKBACK_DAYS` after the first observation.
+    Measured at Brest over December 2025, against the freshest run: MSL pressure
+    departs by 0.44 hPa at `_d1` and 1.40 hPa at `_d2`; 10 m wind speed by 0.54
+    and 1.05 m/s. That spread is the forecast error the model must now live
+    with, and used not to see at all.
+
+    Archive depth: `TIDE_FORCING_START` — this is now the binding constraint on
+    a tide dataset, ahead of `FIT_LOOKBACK_DAYS`.
     """
-    return _fetch(
-        _HISTORICAL_URL,
+    hourly = [
+        f"{var}{_lead_suffix(day)}" for day in LEAD_DAYS for var in _TIDE_VARIABLES
+    ]
+    payload, payload_hourly = _get_payload(
+        _PREVIOUS_RUNS_URL,
         {
             "latitude": station.lat,
             "longitude": station.lon,
             "start_date": date_start.isoformat(),
             "end_date": date_end.isoformat(),
-            "hourly": _HOURLY_TIDE,
-            "models": FORECAST_MODEL,
+            "hourly": ",".join(hourly),
+            "models": TIDE_FORECAST_MODEL,
             "wind_speed_unit": "ms",
             "timezone": "UTC",
         },
         station,
         session,
     )
+    # No `dropna` across the blocks: a hole in one lead must not delete the other
+    # leads' hours. `features.py` already refuses to serve on the column it
+    # actually reads, per issue, which is the finer-grained guard.
+    return _finalize(
+        pd.concat(
+            [
+                _tide_frame(payload_hourly, station, _lead_suffix(day)).add_suffix(f"_d{day}")
+                for day in LEAD_DAYS
+            ],
+            axis=1,
+        ),
+        payload,
+        station,
+    )
+
+
+def forcing_at_issue(forcing: pd.DataFrame, t0: pd.Timestamp) -> pd.DataFrame:
+    """The run an issue at `t0` could actually have had, as `TIDE_FORCING_COLUMNS`.
+
+    Each valid time takes the block whose age matches its distance from `t0` in
+    whole days: same day -> `_d0`, next day -> `_d1`, and so on, clamped to
+    `LEAD_DAYS`. Open-Meteo stratifies by day and not by run, so `_d0` is the
+    freshest run of the issue's own day — leads under ~18 h therefore keep a
+    little of the old optimism, while everything past 24 h (where the gain was
+    being overstated) is now a genuine day-old forecast.
+
+    Valid times past the deepest lead are dropped, not clamped: serving a
+    2-day-old run at +96 h would be a quiet lie, whereas an absent hour trips
+    `features.py`'s coverage floor and the station is marked missing. Nothing
+    reads that far today (`HORIZON_H` is 48 h), so this is a guard, not a limit.
+
+    Pass-through for anything that is not a stratified frame: the live serve
+    leg, the multi-model wave/wind frames, and the degraded inputs
+    `features.py` is contracted to reject itself (None, empty, wrong columns)
+    all go through untouched, so callers have one call and no branch.
+    """
+    if f"{TIDE_FORCING_COLUMNS[0]}_d{LEAD_DAYS[0]}" not in getattr(forcing, "columns", []):
+        return forcing
+    # The stratified frame spans years and this runs once per issue; only the
+    # issue's own horizon is ever read from the result, so bound the work to it.
+    forcing = forcing.loc[t0.normalize() : t0.normalize() + pd.Timedelta(days=len(LEAD_DAYS))]
+    days = (forcing.index.normalize() - t0.normalize()).days
+    # LEAD_DAYS is 0..N, so a clamped day offset indexes `blocks` directly.
+    picked = np.clip(days, LEAD_DAYS[0], LEAD_DAYS[-1])
+    blocks = np.stack(
+        [forcing[[f"{c}_d{day}" for c in TIDE_FORCING_COLUMNS]].to_numpy() for day in LEAD_DAYS]
+    )
+    rows = blocks[picked, np.arange(len(forcing))]
+    return pd.DataFrame(rows, index=forcing.index, columns=TIDE_FORCING_COLUMNS)
 
 
 def fetch_wind_forecast(
     station: Station, session: requests.Session | None = None, forecast_days: int = 3
 ) -> pd.DataFrame:
-    """Hourly ARPEGE Europe 10 m wind forecast — covers the +48 h horizon."""
+    """Hourly ECMWF IFS 10 m wind + MSL pressure forecast — covers the +48 h horizon."""
     return _fetch(
         _FORECAST_URL,
         {
             "latitude": station.lat,
             "longitude": station.lon,
             "hourly": _HOURLY_TIDE,
-            "models": FORECAST_MODEL,
+            "models": TIDE_FORECAST_MODEL,
             "forecast_days": forecast_days,
             "wind_speed_unit": "ms",
             "timezone": "UTC",
