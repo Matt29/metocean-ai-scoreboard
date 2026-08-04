@@ -18,12 +18,12 @@
     "weak": false
   },
   "brest": {
-    "gain": 0.2288,
-    "gain_debiased": -0.0535,
-    "mae_baseline": 0.0868,
-    "mae_model": 0.0669,
+    "gain": 0.531,
+    "gain_debiased": 0.5325,
+    "mae_baseline": 0.1212,
+    "mae_model": 0.0568,
     "pass": true,
-    "weak": true
+    "weak": false
   },
   "cherbourg": {
     "baseline_model": "ewam",
@@ -71,11 +71,11 @@
     "weak": false
   },
   "saint-malo": {
-    "gain": -0.1335,
-    "gain_debiased": -0.1407,
-    "mae_baseline": 0.1167,
-    "mae_model": 0.1322,
-    "pass": false,
-    "weak": true
+    "gain": 0.3005,
+    "gain_debiased": 0.3016,
+    "mae_baseline": 0.157,
+    "mae_model": 0.1098,
+    "pass": true,
+    "weak": false
   }
 }
