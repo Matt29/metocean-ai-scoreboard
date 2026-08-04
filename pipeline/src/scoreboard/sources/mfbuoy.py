@@ -25,12 +25,10 @@ from __future__ import annotations
 
 import os
 from datetime import timedelta
-from pathlib import Path
 
 import pandas as pd
 import requests
 
-from scoreboard import archive
 from scoreboard.sources import SourceError, make_session
 
 _URL = "https://public-api.meteofrance.fr/public/DPObs/v1/bouees"
@@ -46,17 +44,6 @@ LOOKBACK_HOURS = 90
 # sert la demande « stations de vent ».
 WAVE_COLUMNS = ["haut_vag", "per_moy_vag", "dir_vag"]
 KEY_COLUMNS = ["geo_id_wmo", "validity_time"]
-
-
-def run(archive_dir: Path) -> tuple[pd.DataFrame, list[Path]]:
-    """Fetch the rolling window and merge it into the day archive.
-
-    The orchestration of this command, kept out of `cli.py` for the same reason
-    as `daily.run`/`backfill.run`: the CLI is an argparse facade, and wiring
-    that only ever runs in production is wiring nobody tests.
-    """
-    obs = fetch_buoy_obs()
-    return obs, archive.write_obs_days(archive_dir, obs, key=KEY_COLUMNS)
 
 
 def fetch_buoy_obs(
@@ -114,6 +101,29 @@ def fetch_buoy_obs(
     )
     obs = obs.sort_values(KEY_COLUMNS)
     return obs.drop_duplicates(KEY_COLUMNS, keep="last").reset_index(drop=True)
+
+
+def positions(obs: pd.DataFrame) -> list[dict]:
+    """Une entrée par bouée vue dans la fenêtre : `{id, name, lat, lon, wave}`.
+
+    Tout vient du payload, y compris les positions (règle du projet : jamais de
+    coordonnée en dur). `wave` dit si la bouée a servi au moins une hauteur
+    significative sur la fenêtre — c'est ce qui sépare les 8 bouées exploitables
+    de BOUEE_SARDAIGNE, qui émet vent et pression mais aucune vague. Un booléen
+    recalculé à chaque run plutôt qu'une liste figée : le jour où elle se remet à
+    émettre, la carte le dit sans qu'on ait à y toucher.
+    """
+    g = obs.groupby("geo_id_wmo", sort=True)
+    return [
+        {
+            "id": str(wmo),
+            "name": str(rows["name"].iloc[0]),
+            "lat": round(float(rows["lat"].iloc[0]), 4),
+            "lon": round(float(rows["lon"].iloc[0]), 4),
+            "wave": bool(rows["haut_vag"].notna().any()),
+        }
+        for wmo, rows in g
+    ]
 
 
 def non_null_counts(obs: pd.DataFrame) -> pd.DataFrame:

@@ -12,6 +12,12 @@ consumer (the website, a separate repo) can detect a breaking change:
                                  "mae_ia_7d","mae_baseline_7d","mae_ia_30d",
                                  "mae_baseline_30d","mae_ia_all","mae_baseline_all"}]}
 
+Plus un cinquième fichier, écrit par une autre commande (`archive-obs`, pas
+`daily`) et volontairement hors du contrat des stations :
+
+    data/buoys.json             {"updated","since","buoys":[{"id","name",
+                                 "lat","lon","wave"}]}
+
 `published`/`weak` on every station entry come straight from `models/gate.json`
 (read by the caller, passed in here) — a `pass: false` station is still listed
 (the site can say "tracked, not yet beating the baseline") but never gets a
@@ -101,6 +107,29 @@ def write_stations(out_dir: Path, stations: list[Station], gate: dict) -> dict:
         "stations": [_station_entry(s, gate.get(s.id, {})) for s in stations],
     }
     _atomic_write(out_dir / "stations.json", payload)
+    return payload
+
+
+def write_buoys(out_dir: Path, buoys: list[dict], *, updated: str, since: str | None) -> dict:
+    """`data/buoys.json` — les bouées Météo-France dont on archive les observations.
+
+    Délibérément *pas* dans `stations.json` : ce ne sont pas des stations du
+    scoreboard. Rien n'y est prévu, rien n'y est scoré — seules leurs
+    observations sont collectées, en vue du premier entraînement Méditerranée
+    (demande produit 4). Les mélanger aux stations les ferait passer pour
+    mesurées ; un fichier séparé laisse la carte du site les montrer pour ce
+    qu'elles sont, un réseau d'observation en cours de constitution.
+
+    `since` est le premier jour archivé, c'est-à-dire l'âge réel du corpus —
+    la seule information qui dise quand un entraînement devient envisageable.
+    """
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "updated": updated,
+        "since": since,
+        "buoys": buoys,
+    }
+    _atomic_write(out_dir / "buoys.json", payload)
     return payload
 
 

@@ -7,11 +7,13 @@ vérifiées dans le faux lui-même, pas seulement en sortie.
 
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 import pyarrow.parquet as pq
 import pytest
 
-from scoreboard import archive, cli
+from scoreboard import archive, archive_obs, cli
 from scoreboard.sources import SourceError, mfbuoy
 
 NOW = pd.Timestamp("2026-08-03T09:00:00Z")
@@ -107,6 +109,22 @@ def test_missing_wave_columns_are_an_error():
         mfbuoy.fetch_buoy_obs(now=NOW, session=_Session(_Resp([truncated])))
 
 
+def test_positions_flag_a_buoy_that_serves_no_wave_at_all():
+    """BOUEE_SARDAIGNE émet vent et pression mais aucune vague (0 non-null mesuré
+    sur 76 h) : la carte doit pouvoir la distinguer sans liste écrite à la main."""
+    obs = _obs(
+        _row(),
+        _row(name="BOUEE_SARDAIGNE", wmo="6101035", hs=None),
+        _row(name="BOUEE_SARDAIGNE", wmo="6101035", time="2026-08-03T07:00:00Z", hs=None),
+    )
+
+    by_id = {b["id"]: b for b in mfbuoy.positions(obs)}
+
+    assert by_id["6101001"]["wave"] is True
+    assert by_id["6101035"]["wave"] is False
+    assert by_id["6101035"]["lat"] == 43.36  # lu dans le payload, jamais en dur
+
+
 def test_non_null_counts_are_per_buoy_and_per_variable():
     obs = pd.DataFrame([
         _row(),
@@ -194,13 +212,19 @@ def test_empty_frame_writes_nothing(tmp_path):
 # --- câblage CLI -------------------------------------------------------------
 
 
-def test_run_fetches_then_archives(tmp_path, monkeypatch):
+def test_run_fetches_then_archives_then_publishes(tmp_path, monkeypatch):
     monkeypatch.setattr(mfbuoy, "fetch_buoy_obs", lambda: _obs(_row()))
 
-    obs, written = mfbuoy.run(tmp_path)
+    obs, written = archive_obs.run(tmp_path / "archive", tmp_path / "data")
 
     assert len(obs) == 1
     assert [p.name for p in written] == ["2026-08-03.parquet"]
+    payload = json.loads((tmp_path / "data" / "buoys.json").read_text())
+    assert payload["since"] == "2026-08-03"
+    assert payload["updated"] == "2026-08-03T08:00:00Z"
+    assert payload["buoys"] == [
+        {"id": "6101001", "name": "BOUEE_AZUR", "lat": 43.36, "lon": 7.83, "wave": True}
+    ]
 
 
 def test_cli_dry_run_never_touches_the_committed_archive(tmp_path, monkeypatch, capsys):

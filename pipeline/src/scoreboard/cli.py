@@ -9,7 +9,7 @@ import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from scoreboard import archive, backfill, daily
+from scoreboard import archive, archive_obs, backfill, daily
 from scoreboard.config import load_env
 from scoreboard.sources import SourceError, mfbuoy
 
@@ -61,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "archive-obs":
         obs_dir = _resolve_archive_dir(args.dry_run, out_dir, archive.DEFAULT_OBS_ARCHIVE_DIR)
         try:
-            obs, written = mfbuoy.run(obs_dir)
+            obs, written = archive_obs.run(obs_dir, out_dir)
         except SourceError as exc:
             # Une panne Météo-France ne doit pas coûter au scoreboard son commit
             # quotidien — mais elle doit rester VISIBLE : `::warning::` remonte
