@@ -1,30 +1,31 @@
 # Scoreboard Metocean IA
 
 Un modèle IA **post-traite** la prévision physique officielle (le meilleur des
-5 modèles de vagues Open-Meteo Marine pour la houle — `baseline_model`, choisi
-par station à l'entraînement — un modèle harmonique pour le niveau d'eau) sur
-des stations françaises de référence, et publie chaque jour son écart mesuré
-face à cette baseline officielle. Ce n'est pas un modèle qui remplace la
-physique — c'est une correction statistique dessus, notée publiquement, jour
-après jour.
+5 modèles de vagues Open-Meteo Marine pour la houle et le meilleur des 3
+modèles de vent — `baseline_model`, choisi par station à l'entraînement — un
+modèle harmonique pour le niveau d'eau) sur des stations françaises de
+référence, et publie chaque jour son écart mesuré face à cette baseline
+officielle. Ce n'est pas un modèle qui remplace la physique — c'est une
+correction statistique dessus, notée publiquement, jour après jour.
 
 Spec complète : [`docs/superpowers/specs/2026-07-30-scoreboard-metocean-ia-design.md`](docs/superpowers/specs/2026-07-30-scoreboard-metocean-ia-design.md).
 Justification de chaque source de données : [`docs/data-sources.md`](docs/data-sources.md).
 
 ## Stations
 
-6 stations retenues, **5 publiées** — la station restante est mesurée comme
+9 stations retenues, **8 publiées** — la station restante est mesurée comme
 les autres tous les jours, mais un *gate* qualité (`pipeline/models/gate.json`)
 retient toute station où l'IA ne bat pas sa propre baseline sur les données
 d'entraînement. Ce n'est pas une faiblesse cachée : c'est l'argument du
 produit — ce scoreboard ne publie que ce qu'il peut démontrer.
 
-Pour les stations houle, la baseline officielle n'est pas un modèle fixe : à
-l'entraînement, `scripts/train.py` retient par station le **meilleur** des 5
-modèles de vagues Open-Meteo Marine (`meteofrance_wave`, `ecmwf_wam025`,
-`gwam`, `ewam`, `ncep_gfswave025`) et l'écrit dans l'artefact
-(`baseline_model`) — c'est ce choix, pas un nom générique "MFWAM", que le
-gate et le serve utilisent ensuite.
+Pour les stations houle **et vent**, la baseline officielle n'est pas un modèle
+fixe : à l'entraînement, `scripts/train.py` retient par station le **meilleur**
+des 5 modèles de vagues Open-Meteo Marine (`meteofrance_wave`, `ecmwf_wam025`,
+`gwam`, `ewam`, `ncep_gfswave025`) ou des 3 modèles de vent
+(`meteofrance_arpege_europe`, `ecmwf_ifs025`, `icon_eu`) et l'écrit dans
+l'artefact (`baseline_model`) — c'est ce choix, pas un nom générique "MFWAM",
+que le gate et le serve utilisent ensuite.
 
 | station | variable | source obs | baseline officielle | publiée |
 |---|---|---|---|---|
@@ -34,6 +35,16 @@ gate et le serve utilisent ensuite.
 | Cherbourg | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | oui |
 | Brest | niveau d'eau | SHOM REFMAR | harmonique (utide) | oui |
 | Saint-Malo | niveau d'eau | SHOM REFMAR | harmonique (utide) | non (sous le gate) |
+| Ouessant (Le Stiff) | vent 10 m | Météo-France DPObs | Open-Meteo (`meteofrance_arpege_europe`) | oui |
+| Dieppe | vent 10 m | Météo-France DPObs | Open-Meteo (`meteofrance_arpege_europe`) | oui |
+| Cherbourg (Homet) | vent 10 m | Météo-France DPObs | Open-Meteo (`meteofrance_arpege_europe`) | oui |
+
+Les trois stations de vent sont des **anémomètres côtiers à 10 m au-dessus du
+sol** : un proxy du vent au large, pas le vent au large. Dieppe est à 8,6 km du
+parc éolien de Dieppe-Le Tréport, mais à 40 m d'altitude et bien plus abritée
+(4,61 m/s de moyenne, contre 7,75 à Ouessant). Le critère de sélection de
+chaque station et sa mesure justificative sont dans
+[`docs/data-sources.md`](docs/data-sources.md) § 4quinquies.
 
 ## Architecture
 

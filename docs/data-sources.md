@@ -420,11 +420,104 @@ Valeurs archivées **brutes**, sans filtre de plausibilité (contrairement à
 `candhis.fetch_wave_obs`) : ce corpus est la vérité terrain d'un futur
 entraînement, le filtrage appartient à qui le consomme.
 
+## 4quinquies. Météo-France DPObs + DPClim — vent aux stations terrestres (2026-08-04)
+
+Collecteur : `sources/mfobs.py`. Deux APIs pour **la même mesure**, une par
+usage : DPObs sert le scoring quotidien, DPClim sert l'entraînement. C'est la
+source primaire du `kind = "wind"` (demande produit 3).
+
+**Les deux APIs mesurent bien la même chose — c'est vérifié, pas supposé.**
+Croisement DPObs temps réel / archive DPClim sur les 12 h communes à
+Ouessant-Le Stiff le 2026-08-04 : **écart max 0,0 m/s**, directions
+identiques. Une station de vent n'a donc **pas** le skew train/serve que porte
+le forçage atmosphérique (§ 4bis : ERA5 à l'entraînement, ARPEGE au service).
+Ne pas inventer de correction pour un biais qui n'existe pas.
+
+### DPObs `/station/horaire` — le scoring quotidien
+
+L'endpoint ne sert **qu'une heure par requête** — il n'accepte pas de plage, et
+le paquet toutes-stations répond 404. D'où une boucle horaire, ~30 requêtes par
+station et par run. Quota mesuré le 2026-08-04 : 90 requêtes d'affilée passent,
+~130 non ; le collecteur se throttle à 1,5 s (`_MIN_INTERVAL_S`), soit une
+marge volontairement large — un run quotidien n'est pas pressé, et une station
+faussement « manquante » coûte une journée de scoreboard.
+
+**C'est cette cadence, pas le TOML, qui plafonne le nombre de stations vent**
+publiables : ~7,4 min de run pour 3 stations, linéaire ensuite.
+
+Point de méthode payé en sondage : une hypothèse de seuil ne se réfute qu'au
+delà du seuil. Les 90 requêtes passantes ont d'abord fait écarter à tort
+l'hypothèse « quota » d'un échec survenu vers la 130ᵉ.
+
+### DPClim — l'archive d'entraînement
+
+Commande asynchrone (on commande, on attend, on récupère), avec **trois pièges
+qui ont tous coûté un sondage** et que le docstring de `mfobs.py` répète au
+plus près du code :
+
+1. le fichier arrive en **HTTP 201**, pas 200 — une boucle d'attente qui ne
+   guette que 200 jette la charge utile qu'elle attendait ;
+2. il n'est **livré qu'une fois** (`410 production déjà livrée` ensuite) —
+   d'où le cache disque écrit **avant** toute analyse. Ce cache est la seule
+   copie durable, pas une optimisation ;
+3. une commande couvre **un an au maximum**, d'où le découpage par année.
+
+CSV à virgule décimale.
+
+**Ce qui a débloqué le vent.** `docs/demandes-produit.md` § 3 plaçait le vent
+derrière un préalable « archiver d'abord, entraîner dans 2-3 mois », hérité des
+bouées (§ 4quater). C'était faux : le 403 initial mesurait un **abonnement**,
+pas la disponibilité de la donnée. Le même producteur diffusait le même jeu par
+DPClim (souscrit le jour même) et en fichiers ouverts sur data.gouv.fr, sans
+clé. Entraînement fait le jour même sur 2,5 ans.
+
+### Clés — deux, et non consolidées
+
+`METEOFRANCE_DPCLIM_API_KEY` ouvre DPClim **et** DPObs ;
+`METEOFRANCE_API_KEY` n'ouvre que DPObs. Chaque fonction demande celle dont
+elle a besoin plutôt qu'une clé unique supposée tout couvrir : la couverture
+d'une clé se mesure, elle ne se suppose pas. Les deux sont attendues par
+`.github/workflows/daily.yml` — sans la clé DPClim, les stations vent tombent
+en `missing`.
+
+### Baseline et fenêtre d'entraînement
+
+Baseline = meilleur des 3 modèles de vent Open-Meteo (`meteofrance_arpege_europe`,
+`ecmwf_ifs025`, `icon_eu`), choisi par station comme pour la houle (§ 4ter).
+Retenu sur les trois stations : `meteofrance_arpege_europe`.
+
+Les 3 modèles ne sont servis **simultanément et sans trou** qu'à partir du
+**2024-02-03** (`build_dataset.WIND_MODELS_START`) : avant, `ecmwf_ifs025` est
+absent (0 % jusqu'en janvier 2024, 93 % en février), et rien du tout avant
+2022. Démarrer plus tôt ne rallonge pas l'entraînement — cela fabrique des
+émissions que le plancher de couverture de `features.py` rejette. **Ne pas
+élargir cette borne sans re-sonder.**
+
+Fenêtre effective : 2024-02-03 → veille, **21 936 h/station, obs à 100 %**.
+
+### Les trois stations, une par critère, chacune justifiée par une mesure
+
+| station | critère | mesure qui le justifie |
+|---|---|---|
+| `ouessant` (Le Stiff) | cap/île exposé | FF non-null 99,8 % sur 2020-2026, moyenne **7,75 m/s** — la plus ventée des trois |
+| `dieppe` | site EMR | **8,6 km** du parc de Dieppe-Le Tréport, plus courte distance mesurée entre un poste ouvert et un parc éolien en mer français |
+| `cherbourg-vent` (Homet) | co-localisée | **3,9 km** de la bouée houle `cherbourg` déjà publiée — le même point noté sur deux variables |
+
+**C'est un proxy, et ça doit être dit ainsi.** Un anémomètre côtier à 10 m
+au-dessus du *sol* n'est pas le vent au large. Dieppe est à 8,6 km du parc mais
+à 40 m d'altitude et bien plus abritée (4,61 m/s de moyenne contre 7,75 à
+Ouessant). Écrire « vent au parc » serait exactement le raccourci que ce projet
+a passé trois itérations à débusquer ailleurs.
+
+Valeurs filtrées comme `candhis.fetch_wave_obs` : un vent négatif ou au-delà de
+75 m/s n'est pas une tempête, c'est un capteur en défaut.
+
 ## 5. Résumé des stations retenues
 
 Voir `pipeline/config/stations.toml` — 4 stations houle (Candhis) + 2
 stations niveau d'eau (SHOM REFMAR), toutes vérifiées vivantes le
-2026-07-30.
+2026-07-30, + 3 stations de vent (Météo-France DPObs/DPClim) ajoutées le
+2026-08-04.
 
 | id | kind | source | source_id | zone |
 |---|---|---|---|---|
@@ -434,6 +527,9 @@ stations niveau d'eau (SHOM REFMAR), toutes vérifiées vivantes le
 | cherbourg | wave | candhis | 05008 | Manche |
 | brest | tide | shom | 3 | Iroise (Bretagne) |
 | saint-malo | tide | shom | 410 | Manche |
+| ouessant | wind | mfobs | 29155005 | Iroise (Bretagne) |
+| dieppe | wind | mfobs | 76217001 | Manche est (parc EMR) |
+| cherbourg-vent | wind | mfobs | 50129001 | Manche |
 
 ## Points ouverts / non bloquants
 
