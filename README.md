@@ -49,9 +49,11 @@ grandeur physique : 1,4 hPa d'erreur ECMWF à +48 h, soit ~1,4 cm de baromètre
 inverse contre ~6 cm de MAE modèle. Détail et méthode :
 [`docs/plan-dev-modele.md`](docs/plan-dev-modele.md).
 
-Chiffres publiés au 2026-08-04, après le passage aux constantes harmoniques
-persistées : **brest +50,4 % hors biais** (11,8 → 5,8 cm de MAE) et
-**saint-malo +29,8 %** (15,1 → 10,6 cm).
+Chiffres publiés au 2026-08-04, après l'ajout de la phase de marée et de la
+tendance de pression en features : **brest +53,9 % hors biais** (11,8 → 5,4 cm
+de MAE) et **saint-malo +34,1 %** (15,1 → 9,9 cm). Les deux features apportent
++3,5 et +4,3 points, et pas aux mêmes stations : la tendance de pression fait
+presque tout à Brest, la phase de marée presque tout à Saint-Malo.
 
 `pipeline/models/gate.json` fait foi : le tableau ci-dessous le recopie, il ne
 le décide pas. En cas de désaccord, c'est le tableau qui a vieilli.

@@ -62,6 +62,12 @@ STANDARD_PRESSURE_HPA = 1013.25
 # alone but to the *movement* of the depression: dP/dt is also a proxy for the
 # offshore wind field the station never sees.
 #
+# Measured 2026-08-04 (`--ablate dp_dt_3h,dp_dt_6h`, paired bootstrap over issue
+# days): brest **+2.83 %** off-bias, 95 % CI [+2.16, +3.51], P(delta<=0) = 0 %;
+# saint-malo +0.17 %, indistinguishable from zero, CI [-0.30, +0.66]. The mirror
+# image of `features.TIDE_RATE_COLUMN`, which carries saint-malo and not brest —
+# one station answers to the system moving, the other to its own tidal phase.
+#
 # It is computed HERE, in the parser, and not in `features.py` — the one place
 # where it is safe. On the training leg the forcing frame is stratified by run
 # age (`fetch_tide_forcing_history`), and `forcing_at_issue` hands a row from a

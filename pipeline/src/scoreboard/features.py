@@ -87,10 +87,17 @@ TIDE_ERR_COLUMNS = [f"mean_err_{h}h" for h in TIDE_ERR_WINDOWS_H]
 # Rate of change of the harmonic prediction, m/h — the tide *phase*, and to a
 # first approximation the tidal current. A surge does not add to the tide, it
 # depends on the water height it rides on, so the same wind does not push the
-# same water on a flood and on an ebb. Determining at saint-malo (macrotidal,
-# up to ~13 m of range), and the measured lead on the station's ceiling: its
-# residual carries a semi-diurnal component whose phase `hour_sin`/`hour_cos`
-# cannot see, being solar-24 h (see `docs/plan-dev-modele.md` § Réserves).
+# same water on a flood and on an ebb.
+#
+# Measured 2026-08-04 (`--ablate tide_rate`, then a paired bootstrap resampling
+# issue days): saint-malo **+4.11 %** off-bias, 95 % CI [+2.95, +5.23],
+# P(delta<=0) = 0 %; brest **+0.78 %**, CI [+0.41, +1.16]. The asymmetry was
+# predicted before it was measured: saint-malo is macrotidal (up to ~13 m of
+# range) and its residual carries a semi-diurnal component whose phase
+# `hour_sin`/`hour_cos` cannot see, being solar-24 h, while brest's residual is
+# low-frequency and had little to learn here. See « Plafond propre à saint-malo »
+# in `docs/plan-dev-modele.md` § Réserves ouvertes — this column is the lead that
+# reserve named, and it moved the station's MAE from 0.106 to 0.099 m.
 #
 # Centred over +/-1 h and read through `_aligned_baseline` rather than
 # `.diff()`. Both legs are hourly today (`waterlevel.fetch_tide_obs` resamples

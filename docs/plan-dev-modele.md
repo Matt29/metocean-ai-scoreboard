@@ -39,6 +39,10 @@ de la vérité.
   entraînement *et* service) : une ligne à +48 h est forcée par une prévision
   vieille de deux jours. Ça lève la réserve de forçage quasi-analyse, mesures à
   l'appui — section dédiée plus bas.
+- **Les trois dernières features du backlog, mesurées** — phase de marée et
+  tendance de pression gardées, tension de vent jetée. Section dédiée plus bas.
+  Publié : brest +50,4 → **+53,9 %**, saint-malo +29,8 → **+34,1 %**. Le backlog
+  de features est vide ; ce qui reste ouvert est du diagnostic, pas de la liste.
 - **Conséquence publiée** : **brest et saint-malo passent toutes deux**
   (`gate.json` du 2026-08-04 : gain hors biais +53,25 % et +30,16 %,
   `weak: false`) — pour la première fois sur le critère dur, et non sur une
@@ -370,65 +374,156 @@ justifie pas aujourd'hui.
 
 ---
 
-## Features à tester, par valeur physique attendue
+## Features — les trois dernières, mesurées le 2026-08-04
 
-### 1. Tension de vent — la prochaine
+Les trois pistes ouvertes ont été implémentées ensemble, le jeu reconstruit
+**une seule fois** (le rebuild d'une station `tide` coûte un fetch REFMAR de
+deux ans plus un `utide.solve` tous les 30 j), puis chacune chiffrée par
+ablation sur ce jeu-là. Deux gardées, une jetée.
 
-Aujourd'hui le modèle reçoit `wind_u10` / `wind_v10`, donc une **vitesse**. La
-surcote répond à la **tension** exercée par le vent sur la surface, qui varie en
-U², pas en U. Un vent de 20 m/s ne pousse pas deux fois plus d'eau qu'un vent de
-10 m/s, il en pousse quatre fois plus. Donner U à un modèle en attendant qu'il
-retrouve U² lui fait dépenser de la capacité sur une transformation connue
-d'avance.
+Protocole, identique pour les trois : `--ablate` (mise à zéro, mêmes lignes,
+même split, même graine), puis **bootstrap apparié par jour d'émission**,
+2000 tirages, les deux configurations notées sur le même ré-échantillonnage —
+sinon l'IC porte sur deux gains bruités indépendants au lieu de porter sur leur
+différence. 365 jours d'émission de test, 17 484 lignes.
 
-Forme retenue — deux colonnes, aucune configuration par station :
+| feature | brest | saint-malo | verdict |
+|---|---|---|---|
+| `tide_rate` (phase de marée) | +0,78 pt [+0,41 ; +1,16] | **+4,11 pts** [+2,95 ; +5,23] | **gardée** |
+| `dp_dt_3h` / `dp_dt_6h` | **+2,83 pts** [+2,16 ; +3,51] | +0,17 pt [−0,30 ; +0,66] | **gardée** |
+| `wind_stress_u` / `_v` | −0,05 pt [−0,37 ; +0,26] | −0,04 pt [−0,38 ; +0,31] | **jetée** |
+| les deux gardées, ensemble | +3,49 pts | +4,26 pts | — |
 
-```
-wind_stress_u = wind_u10 * hypot(wind_u10, wind_v10)
-wind_stress_v = wind_v10 * hypot(wind_u10, wind_v10)
-```
+Publié : **brest +50,4 → +53,9 %** (MAE 5,8 → 5,4 cm), **saint-malo
++29,8 → +34,1 %** (10,6 → 9,9 cm). Les deux stations restent PASS, `weak: false`.
 
-C'est τ à un facteur constant près (ρ_air · C_d). Garder les composantes u/v
-plutôt qu'un `U²·cos(θ−θ₀)` avec un axe par station : l'axe qui empile l'eau
-dépend de la géométrie locale, et un modèle par station le retrouve seul à
-partir de deux composantes. Introduire un `θ₀` en config, ce serait un
-paramètre à régler à la main par station, donc une porte ouverte au
-sur-ajustement silencieux.
+Trois faits de méthode valent d'être gardés.
 
-À mesurer : `--ablate wind_stress_u,wind_stress_v`. Question ouverte à trancher
-sur les chiffres — garder u/v **et** la tension (le modèle arbitre), ou
-remplacer. Garder les deux double les colonnes de forçage ; à n'accepter que si
-l'ablation montre que les deux paires portent chacune de l'information.
+**Les contributions s'additionnent.** +0,78 +2,83 = 3,61 contre 3,49 mesurés
+ensemble à brest ; +4,11 +0,17 = 4,28 contre 4,26 à saint-malo. Les deux
+features ne se recouvrent donc pas, et la complémentarité suit la physique des
+deux sites plutôt qu'un réglage : Brest répond au **déplacement** du système
+dépressionnaire, Saint-Malo à la **phase** de sa marée.
 
-### 2. Tendance de pression (dP/dt)
+**La configuration ablatée reproduit exactement le `gate.json` d'avant le
+chantier** (50,36 et 29,83). C'est le contrôle qui manquait aux mesures de
+juillet : il vérifie que le jeu reconstruit ce matin et l'ancien mesurent bien
+la même chose, et donc que les deltas ci-dessus sont des features et non un
+changement de jeu de données.
 
-La surcote ne répond pas seulement à la pression locale mais au déplacement du
-système dépressionnaire. `pressure_anom.diff()` sur 3 h et 6 h est la forme la
-plus simple ; c'est aussi un proxy du champ de vent au large, que la station
-ne voit pas.
+**Deux bugs ont été trouvés par un test qui échoue, aucun par relecture.** La
+pente de marée revenait silencieusement divisée par deux sur la dernière heure
+de l'horizon (le voisin le plus proche de « +1 h » y était l'heure elle-même,
+dans la tolérance d'alignement d'une heure) ; et la tendance de pression, prise
+sur un nombre de lignes plutôt que sur des heures écoulées, n'aurait valu trois
+heures que tant que la jambe reste horaire. À noter pour la prochaine fois : la
+suite est repassée au vert dès les *fixtures* mises à jour — 33 tests cassés par
+la même cause mécanique — et ce vert-là ne testait aucune des trois features.
 
-Attention : une différence temporelle sur une série de prévision se comporte
-différemment d'une différence sur une réanalyse. À vérifier explicitement,
-c'est exactement la famille de skew que ce projet paie régulièrement.
+### 1. Tension de vent — mesurée et jetée
 
-### 3. Interaction marée-surcote
+`wind_stress_u = wind_u10 * hypot(u,v)`, idem en v. L'argument physique est
+juste — la surcote répond à la tension, qui va en U², et donner U à un modèle en
+attendant qu'il retrouve U² lui fait dépenser de la capacité sur une
+transformation connue d'avance — et il n'a rien acheté : −0,05 pt à brest,
+−0,04 à saint-malo, les deux IC95 % à cheval sur zéro, P(Δ≤0) de 63 % et 59 %.
 
-Déterminante à Saint-Malo (macrotidal, marnage jusqu'à ~13 m). Une surcote ne
-s'additionne pas à la marée : elle dépend de la hauteur d'eau, donc de la phase.
-La dérivée temporelle de la prédiction harmonique — le courant de marée, en
-première approximation — capte cette phase sans ajouter de source de données.
+Le code a été retiré. Ce qui reste, et qui est l'information utile pour la
+suite : ablater `wind_u10`/`wind_v10` **pendant que la tension était présente**
+ne coûtait rien non plus (−0,05 à brest, −0,26 à saint-malo). Les deux paires
+sont donc mutuellement substituables — un arbre retrouve U² tout seul à partir
+de u et v — et la question « garder les deux ou remplacer » est tranchée par le
+bas : on garde la paire brute, qui était déjà là.
 
-C'est la piste la plus prometteuse pour saint-malo spécifiquement, et elle
-coûte une colonne dérivée d'une donnée déjà en main.
+**Attention à ne pas sur-lire cette dernière mesure** : elle ne dit pas que le
+vent ne sert à rien. Elle a été prise avec la tension en place, donc avec
+l'information du vent toujours dans le modèle. Le vent lui-même vaut +3,4 pts à
+brest, mesuré le 2026-08-04 (§ Réserves, dette « régression sous la feature
+vent »).
 
-### 4. Mémoire plus longue du résidu
+### 1bis. Ce qui reste de la piste tension
 
-Le modèle a `last_err` et `mean_err_24h`. La surcote est autocorrélée sur 6 à
-12 h ; une moyenne à 24 h lisse précisément l'échelle utile. Ajouter
-`mean_err_3h` / `mean_err_6h`.
+Rien à faire tel quel. Si on y revient, ce ne sera pas pour la forme de la
+transformation mais pour l'axe : un `U²·cos(θ−θ₀)` avec un θ₀ par station a été
+écarté d'emblée ici, parce que c'est un paramètre à régler à la main par
+station, donc une porte ouverte au sur-ajustement. Cet arbitrage-là n'a pas été
+mesuré, il a été refusé sur principe — et il le reste tant que la version sans
+axe ne montre rien.
 
-Le moins cher de la liste : aucune donnée nouvelle, aucune requête, une
-fonction déjà écrite. À faire passer en premier si le temps manque.
+### 2. Tendance de pression (dP/dt) — gardée
+
+`pressure_anom` différenciée sur 3 h et 6 h, hPa/h. **brest +2,83 pts hors
+biais** (IC95 % [+2,16 ; +3,51], P(Δ≤0) = 0 %) ; saint-malo +0,17 pt,
+indistinguable de zéro (IC95 % [−0,30 ; +0,66], P(Δ≤0) = 24 %). Gardée sur la
+règle qui valait déjà pour `mean_err_3h/6h` : une station gagne franchement,
+l'autre ne perd pas, et les deux reçoivent les colonnes — une liste de features
+par station serait un paramètre à régler à la main.
+
+La réserve annoncée ici (« une différence temporelle sur une série de prévision
+ne se comporte pas comme sur une réanalyse ») s'est révélée plus précise que
+prévu, et c'est le seul point de conception qui comptait. Le forçage marée est
+**stratifié par âge de run** : `forcing_at_issue` sert, pour une même émission,
+des lignes issues de runs différents de part et d'autre de chaque frontière de
+jour d'échéance. Une différence posée *après* ce narrowing enjambe donc deux
+runs deux fois par émission, et lit l'écart run-à-run — 0,44 hPa à `_d1`,
+1,40 hPa à `_d2`, soit l'ordre de grandeur d'une vraie tendance de 3 h — comme
+de la météo. Aux heures où une dépression bouge le plus, en prime.
+
+La tendance est donc calculée dans le parser (`sources.wind._tide_frame`), à
+l'intérieur de chaque bloc de run, **avant** tout narrowing ; le narrowing la
+transporte ensuite comme n'importe quelle colonne de forçage. Un test échoue si
+quelqu'un l'en sort : il pose des blocs décalés de 20 hPa avec une pente propre
+de 1 hPa/h, vérifie que le saut de 21 hPa existe bien dans la frame narrowée,
+puis que la tendance y vaut 1 partout — une diff post-narrowing y lirait 7.
+
+Corollaire opérationnel : `fetch_wind_forecast` demande `past_days=1`. Sans un
+jour d'historique, un run émis peu après 00:00 UTC servirait des tendances NaN
+sur le début de son propre horizon, là où l'entraînement, qui couvre deux ans,
+n'en voit jamais — le train/serve skew par la petite porte.
+
+### 3. Interaction marée-surcote — gardée, et c'est le gros morceau
+
+`tide_rate` : dérivée centrée de la prédiction harmonique, m/h — le courant de
+marée en première approximation, donc la phase. **saint-malo +4,11 pts hors
+biais** (IC95 % [+2,95 ; +5,23], P(Δ≤0) = 0 %), brest +0,78 pt (IC95 %
+[+0,41 ; +1,16]). C'est le plus gros gain d'une feature seule à saint-malo
+depuis l'ouverture du scoreboard.
+
+L'asymétrie n'est pas une surprise, elle était **prédite et déjà mesurée** : la
+réserve « plafond propre à saint-malo » avait établi que le résidu y porte une
+composante semi-diurne à phase non stationnaire (autocorrélation qui tombe à
+0,17 à 6 h puis remonte à 0,84 à 12 h) qu'aucune feature ne voyait, `hour_sin`
+et `hour_cos` étant solaires 24 h. C'est exactement ce que la phase de marée
+apporte. À brest, où le résidu est basse fréquence, elle n'avait presque rien à
+apprendre — et rapporte en conséquence.
+
+Deux choix d'implémentation, tous deux dictés par le fait qu'une pente est une
+quantité plus fragile qu'une valeur :
+
+- **Lue à ±1 h par alignement, pas par `.diff()`.** Les deux jambes sont
+  horaires aujourd'hui (`waterlevel.fetch_tide_obs` ré-échantillonne REFMAR à
+  1 h avant l'ajustement), donc `.diff()` marcherait — mais il voudrait dire
+  « une ligne », et une ligne ne vaut une heure que tant que ce resample reste
+  où il est.
+- **Tolérance d'alignement de 30 min et non d'une heure.** À une heure, le
+  voisin le plus proche de « dernière heure de l'horizon + 1 h » est cette heure
+  elle-même : la différence revenait divisée par deux, silencieusement, avec les
+  unités d'une pente centrée. Trouvé par un test, pas par relecture. La
+  dernière heure hérite maintenant de la pente précédente — une ligne sur 48, et
+  la même ligne à l'entraînement et au service.
+
+Coût mesuré de la centration : une différence centrée à ±1 h atténue une M2 de
+4,2 % (facteur sin(ωΔt)/ωΔt). C'est un facteur constant sur toute la colonne,
+donc un changement d'unité et non de forme — sans effet sur un arbre, absorbé
+par le coefficient d'une ridge.
+
+### 4. Mémoire plus longue du résidu — ✅ faite le 2026-08-04
+
+`mean_err_3h` / `mean_err_6h`, commit `bf60c04`. saint-malo +3,5 pts (IC95 %
+[+2,7 ; +4,4]), brest −0,4 pt, indistinguable de zéro. C'est cette mesure qui a
+fixé la règle de décision réutilisée pour les trois ci-dessus.
+
+**Le backlog de features est vide.** Ce qui reste ouvert est plus bas.
 
 ---
 
@@ -473,6 +568,22 @@ fonction déjà écrite. À faire passer en premier si le temps manque.
   peut capter puisque `hour_sin`/`hour_cos` sont solaires 24 h, et l'erreur du
   modèle en garde la signature (−0,26 à 6 h, +0,60 à 12 h). C'est l'appui mesuré
   de l'item « 3. Interaction marée-surcote » ci-dessus.
+
+  **Mise à jour du 2026-08-04, la réserve recule sans se fermer.** La phase de
+  marée était la piste que ce diagnostic désignait, et elle a tenu ce qu'il
+  annonçait : **+4,11 pts**, MAE modèle **0,106 → 0,099 m**. L'écart à brest
+  passe de ×2,0 à ×1,84 (0,099 contre 0,054). Ce qui reste ouvert est donc plus
+  étroit qu'avant et plus difficile : la piste que le diagnostic nommait a été
+  jouée, et il reste 4,5 cm d'écart entre les deux stations sans candidat
+  identifié. Rouvrir ce point demandera un nouveau diagnostic, pas une feature
+  de plus dans la liste — celle-ci est vide.
+
+  Ce qui n'a **pas** été fait et qui serait le premier geste : refaire
+  l'autocorrélation du résidu **du modèle actuel** à saint-malo. Les chiffres
+  ci-dessus (0,17 à 6 h, 0,84 à 12 h) décrivent le résidu de la baseline, avant
+  que la phase de marée n'entre dans le modèle. Si la signature semi-diurne a
+  disparu de l'erreur résiduelle, le plafond restant est d'une autre nature et
+  la description ci-dessus a cessé de le décrire.
 - ~~**Dette brest « régression sous la feature vent ».**~~ **Close le 2026-08-04,
   ablation rejouée : le vent aide, il ne dégrade plus.** Sur la baseline 90 j
   (Task 7B), le vent coûtait −7,7 pts à brest (+2,3 % sans vent → −5,4 % avec

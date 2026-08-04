@@ -1,6 +1,6 @@
 # Évaluation des modèles de post-traitement
 
-Généré par `pipeline/scripts/train.py` le 2026-08-04 14:36 UTC (test = les 365 derniers jours d'émission).
+Généré par `pipeline/scripts/train.py` le 2026-08-04 15:45 UTC (test = les 365 derniers jours d'émission).
 
 Le modèle **post-traite** une prévision physique officielle : il la corrige, il
 ne la remplace jamais. Cette baseline n'est plus imposée : pour une station
@@ -14,8 +14,8 @@ de son observation **sur les seuls jours d'émission d'entraînement** (colonne
 
 | Station | Type | Baseline (meilleur modèle physique) | Modèle ML | Rows train / test | MAE baseline | MAE baseline débiaisée | MAE modèle | Gain affiché | **Gain hors biais** | Verdict |
 |---|---|---|---|---|---|---|---|---|---|---|
-| brest | tide | harmonique | `hgb-per-lead` | 24600 / 17484 | 0.118 | 0.117 | 0.058 | +50.7% | **+50.4%** | PASS |
-| saint-malo | tide | harmonique | `hgb-per-lead` | 26112 / 17484 | 0.151 | 0.151 | 0.106 | +29.9% | **+29.8%** | PASS |
+| brest | tide | harmonique | `hgb-per-lead` | 24600 / 17484 | 0.118 | 0.117 | 0.054 | +54.2% | **+53.9%** | PASS |
+| saint-malo | tide | harmonique | `hgb-per-lead` | 26112 / 17484 | 0.151 | 0.151 | 0.099 | +34.2% | **+34.1%** | PASS |
 
 **Stations non ré-entraînées sur cette fenêtre : pierres-noires, belle-ile, anglet, cherbourg, ouessant, dieppe, cherbourg-vent** — leur
 jeu d'entraînement est absent de `pipeline/data_train/`. Leur artefact et leur
@@ -65,10 +65,10 @@ que la baseline pourrait connaître à l'avance.
 
 | Station | Bande | Heures | MAE baseline | MAE baseline débiaisée | MAE modèle | Gain hors biais |
 |---|---|---|---|---|---|---|
-| brest | décile sup. | 1750 | 0.325 | 0.326 | 0.097 | **+70.2%** |
-| brest | |résidu| > 30 cm | 814 | 0.389 | 0.393 | 0.104 | **+73.6%** |
-| saint-malo | décile sup. | 1750 | 0.411 | 0.411 | 0.180 | **+56.3%** |
-| saint-malo | |résidu| > 30 cm | 2032 | 0.397 | 0.397 | 0.174 | **+56.1%** |
+| brest | décile sup. | 1750 | 0.325 | 0.326 | 0.092 | **+72.0%** |
+| brest | |résidu| > 30 cm | 814 | 0.389 | 0.393 | 0.098 | **+75.1%** |
+| saint-malo | décile sup. | 1750 | 0.411 | 0.411 | 0.165 | **+59.8%** |
+| saint-malo | |résidu| > 30 cm | 2032 | 0.397 | 0.397 | 0.160 | **+59.7%** |
 
 ## Comparaison des modèles ML
 
@@ -85,8 +85,8 @@ ne paie pas sa complexité, et c'est un résultat, pas un échec.
 
 | Station | Baseline physique | `hgb` | `ridge` | `hgb-per-lead` | Publié |
 |---|---|---|---|---|---|
-| brest | tide | +40.6% | +38.1% | **+41.0%** | `hgb-per-lead` |
-| saint-malo | tide | +22.6% | +11.0% | **+26.1%** | `hgb-per-lead` |
+| brest | tide | +40.8% | +41.0% | **+42.8%** | `hgb-per-lead` |
+| saint-malo | tide | +25.5% | +10.7% | **+28.4%** | `hgb-per-lead` |
 
 ## Protocole
 
@@ -154,8 +154,8 @@ ne paie pas sa complexité, et c'est un résultat, pas un échec.
    gain. Le chiffre à citer est donc **« Gain hors biais »**, jamais « Gain
    affiché ». Détail par station (biais obs − baseline, puis les deux gains) :
 
-   * `brest` : biais -0.009 m — gain affiché +50.7%, **hors biais +50.4%**
-   * `saint-malo` : biais -0.003 m — gain affiché +29.9%, **hors biais +29.8%**
+   * `brest` : biais -0.009 m — gain affiché +54.2%, **hors biais +53.9%**
+   * `saint-malo` : biais -0.003 m — gain affiché +34.2%, **hors biais +34.1%**
 
    Aucune station ré-entraînée n'a un gain affiché supérieur au double de son gain hors biais.
    Aucune station de `gate.json` n'est `weak` : toutes battent ce simple débiaisage.
