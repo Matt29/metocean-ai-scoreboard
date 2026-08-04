@@ -64,6 +64,39 @@
       "unit": "m",
       "published": false,
       "weak": true
+    },
+    {
+      "id": "ouessant",
+      "name": "Ouessant (Le Stiff)",
+      "kind": "wind",
+      "lat": 48.473333,
+      "lon": -5.057,
+      "unit": "m/s",
+      "published": true,
+      "weak": false,
+      "baseline_model": "meteofrance_arpege_europe"
+    },
+    {
+      "id": "dieppe",
+      "name": "Dieppe",
+      "kind": "wind",
+      "lat": 49.932833,
+      "lon": 1.09,
+      "unit": "m/s",
+      "published": true,
+      "weak": false,
+      "baseline_model": "meteofrance_arpege_europe"
+    },
+    {
+      "id": "cherbourg-vent",
+      "name": "Cherbourg (Homet)",
+      "kind": "wind",
+      "lat": 49.66,
+      "lon": -1.633333,
+      "unit": "m/s",
+      "published": true,
+      "weak": false,
+      "baseline_model": "meteofrance_arpege_europe"
     }
   ]
 }
