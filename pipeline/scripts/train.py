@@ -50,20 +50,20 @@ REPORT_PATH = ROOT / "docs" / "model-eval.md"
 GATE_PATH = model.MODELS_DIR / "gate.json"
 GATE = 0.05  # the model must beat the baseline, hors biais, by >= 5% to go live
 
-# Held-out issue days, per kind. A contiguous temporal holdout is also a
-# *seasonal* one: 30 days means the verdict is whatever season the retrain
-# happened in. Measured on 2026-08-04, Brest carries 3x more surge in February
-# (21.2 cm) than in July (7.1 cm) — so a 30-day window graded a tide station on
-# the calendar as much as on the model. `tide` therefore holds out a full year;
-# REFMAR's archive depth makes that affordable where the other kinds' does not.
-# `wave` and `wind` keep 30 days for now — the same argument applies to them
-# (Hs is strongly seasonal) and it is open work, not a settled choice.
-TEST_DAYS_BY_KIND = {"tide": 365}
+# Held-out issue days, per kind. Tide keeps one full-year holdout. Wave and wind
+# use 90-day blocks: with >= two years of history, four rolling origins cover
+# them across seasons; shorter archives are explicitly labelled as one degraded
+# holdout instead of being presented as multi-season evidence.
+TEST_DAYS_BY_KIND = {"tide": 365, "wave": 90, "wind": 90}
 DEFAULT_TEST_DAYS = 30
-# The validation slice only has to rank three candidates, not to be seasonally
-# representative, so it does not follow the test window up to a full year — that
-# would eat the train set. Known limitation, stated rather than hidden: model
-# *selection* stays seasonally biased even now that the *verdict* is not.
+ROLLING_FOLDS_BY_KIND = {"wave": 4, "wind": 4}
+ROLLING_FOLDS = 4
+SEASONAL_HISTORY_DAYS = 730
+SEASONAL_STRIDE_DAYS = 90
+MIN_FOLD_COVERAGE = 0.8
+ISSUE_DAY_PURGE = pd.Timedelta(hours=48)
+# The validation slice ranks candidates inside each origin. The last origin's
+# validation chooses the production model; the gate itself uses all test folds.
 VAL_DAYS_CAP = 120
 UNIT = {"wave": "m (Hs)", "tide": "m (water level)", "wind": "m/s (vent 10 m)"}
 # Multi-model kinds: (candidate baseline columns, observation column). A `tide`
@@ -91,6 +91,105 @@ def split_by_issue_day(
     return np.asarray(day > cutoff)
 
 
+def _rolling_cutoffs(days: pd.DatetimeIndex, test_days: int, folds: int) -> list[pd.Timestamp]:
+    """Origins distributed across the available issue-day history.
+
+    Each origin has a preceding training period and a following, contiguous
+    ``test_days`` holdout.  Multi-season origins are allowed only with two
+    calendar years of history; a shorter archive falls back to one honest,
+    latest holdout instead of pretending to cover seasons it does not contain.
+    """
+    days = pd.DatetimeIndex(days).normalize().unique().sort_values()
+    if len(days) == 0:
+        return []
+    if (days.max() - days.min()) < pd.Timedelta(days=SEASONAL_HISTORY_DAYS):
+        latest = days.max() - pd.Timedelta(days=test_days)
+        minimum_origin = days.min() + pd.Timedelta(days=2 * test_days) + ISSUE_DAY_PURGE
+        return [latest] if latest >= minimum_origin else []
+    latest = days.max() - pd.Timedelta(days=test_days)
+    # Quarterly blocks cover one complete recent seasonal cycle. A longer CLI
+    # override widens the stride as well, preserving disjoint test windows.
+    # The two-year eligibility threshold leaves at least one full earlier year
+    # for the expanding train of the first origin.
+    stride_days = max(SEASONAL_STRIDE_DAYS, test_days)
+    origins = [
+        latest - pd.Timedelta(days=stride_days * offset)
+        for offset in reversed(range(folds))
+    ]
+    minimum_origin = days.min() + pd.Timedelta(days=2 * test_days) + ISSUE_DAY_PURGE
+    return [origin for origin in origins if origin >= minimum_origin]
+
+
+def _origin_split(
+    x: pd.DataFrame, origin: pd.Timestamp, test_days: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Train/test masks for one origin, grouped by issue day and purged 48 h."""
+    day = issue_days(x)
+    train = np.asarray(day <= origin - ISSUE_DAY_PURGE)
+    test = np.asarray((day > origin) & (day <= origin + pd.Timedelta(days=test_days)))
+    return train, test
+
+
+def rolling_origin_splits(
+    x: pd.DataFrame, test_days: int, folds: int = ROLLING_FOLDS
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Chronological, disjoint rolling-origin splits grouped by issue day."""
+    day = issue_days(x)
+    splits = []
+    for cutoff in _rolling_cutoffs(day, test_days, folds):
+        train, test = _origin_split(x, cutoff, test_days)
+        if test.any() and train.any():
+            splits.append((train, test))
+    return splits
+
+
+def _debiased_baseline_error(residual: np.ndarray, fold_ids: np.ndarray) -> np.ndarray:
+    """Absolute baseline errors after fitting one constant bias per test fold."""
+    error = np.empty_like(residual, dtype=float)
+    for fold_id in np.unique(fold_ids):
+        selected = fold_ids == fold_id
+        error[selected] = np.abs(residual[selected] - residual[selected].mean())
+    return error
+
+
+def _gain_confidence_interval(
+    level: np.ndarray,
+    x_ev: pd.DataFrame,
+    obs_ev: pd.Series,
+    fold_ids: np.ndarray,
+    draws: int = 2_000,
+) -> tuple[float, float]:
+    """Deterministic 95% cluster-bootstrap CI for gain, resampled by issue day.
+
+    Leads from one run share inputs and errors, so resampling rows would invent
+    precision.  Whole issue days are the independent units.  Summing errors
+    within every selected day preserves the existing hourly-MAE estimand.
+    """
+    residual = obs_ev.to_numpy() - x_ev["baseline"].to_numpy()
+    model_error = np.abs(level - obs_ev.to_numpy())
+    groups = [
+        np.flatnonzero(issue_days(x_ev) == day)
+        for day in issue_days(x_ev).unique().sort_values()
+    ]
+    if len(groups) < 2:
+        base = _debiased_baseline_error(residual, fold_ids).sum()
+        point = (base - model_error.sum()) / base if base else 0.0
+        return float(point), float(point)
+    rng = np.random.default_rng(20260804)
+    values = []
+    for picks in rng.integers(0, len(groups), size=(draws, len(groups))):
+        indices = np.concatenate([groups[i] for i in picks])
+        # Refit the baseline bias inside each replicate and each fold. Fold
+        # baselines may differ, so one global offset is not a valid comparator.
+        base = _debiased_baseline_error(residual[indices], fold_ids[indices]).sum()
+        if base:
+            values.append((base - model_error[indices].sum()) / base)
+    if not values:
+        return 0.0, 0.0
+    low, high = np.quantile(values, (0.025, 0.975))
+    return float(low), float(high)
+
+
 def select_baseline(
     raw: pd.DataFrame,
     train_days: pd.DatetimeIndex,
@@ -116,7 +215,19 @@ def select_baseline(
     return min(mae, key=mae.__getitem__)
 
 
-def _model_data(station: Station, test_days: int) -> tuple | None:
+def _model_origins(station: Station, test_days: int) -> list[pd.Timestamp] | None:
+    """Eligible wave/wind origins from observed raw days, without model choice."""
+    _, obs_column = KIND_MODELS[station.kind]
+    path = DATA_DIR / f"{station.id}_raw.parquet"
+    if not path.exists():
+        print(f"  {station.id}: no raw dataset at {path} — skipped")
+        return None
+    raw = pd.read_parquet(path, columns=[obs_column])
+    obs_days = pd.DatetimeIndex(raw.index[raw[obs_column].notna()]).normalize().unique()
+    return _rolling_cutoffs(obs_days, test_days, ROLLING_FOLDS_BY_KIND[station.kind])
+
+
+def _model_data(station: Station, test_days: int, origin: pd.Timestamp) -> tuple | None:
     """(x, obs, is_test, baseline_model) assembled from the raw multi-model parquet.
 
     One function for `wave` and `wind`: the two differ only by which columns
@@ -134,8 +245,11 @@ def _model_data(station: Station, test_days: int) -> tuple | None:
     # Days are counted on those that carry an observation: a station whose sensor
     # stopped early must still get its 30 *usable* test days.
     obs_days = pd.DatetimeIndex(raw.index[raw[obs_column].notna()]).normalize().unique()
-    cutoff = obs_days.max() - pd.Timedelta(days=test_days)
-    baseline_col = select_baseline(raw, obs_days[obs_days <= cutoff], model_columns, obs_column)
+    # This selection is repeated at every origin.  A baseline selected on a
+    # later fold would leak future observations into an earlier fold's yardstick.
+    baseline_col = select_baseline(
+        raw, obs_days[obs_days <= origin - ISSUE_DAY_PURGE], model_columns, obs_column
+    )
 
     x, obs = assemble(
         station,
@@ -147,14 +261,11 @@ def _model_data(station: Station, test_days: int) -> tuple | None:
     if x.empty:
         print(f"  {station.id}: assembled 0 row — skipped")
         return None
-    # Same `cutoff` timestamp for the split as for the selection, and a row's
-    # issue day is never after its valid day (lead >= 0): every row that fed the
-    # baseline choice (valid day <= cutoff) is therefore a train row. No leak.
     prefix = baseline_col.split("_", 1)[0] + "_"
     return (
         x,
         obs.astype(float),
-        split_by_issue_day(x, test_days, cutoff),
+        [_origin_split(x, origin, test_days)],
         baseline_col.removeprefix(prefix),
     )
 
@@ -167,7 +278,8 @@ def _tide_data(station: Station, test_days: int) -> tuple | None:
         return None
     df = pd.read_parquet(path)
     x = df[FEATURE_COLUMNS].copy()
-    return x, df["y"].astype(float), split_by_issue_day(x, test_days), None
+    test = split_by_issue_day(x, test_days)
+    return x, df["y"].astype(float), [(~test, test)], None
 
 
 def _reference(x_ev: pd.DataFrame, obs_ev: pd.Series) -> tuple[float, float, float]:
@@ -253,72 +365,147 @@ def evaluate(
     ablate: tuple[str, ...] = (),
     model_names: tuple[str, ...] = model.MODEL_NAMES,
 ) -> dict | None:
-    """Pick the ML candidate on a validation slice of TRAIN, then report its
-    single test score.
+    """Pick candidates inside TRAIN, then score only on sealed temporal tests.
 
-    The test window is touched **once**, by the winner. Choosing the candidate on
-    the test set would make the published gain a max over three draws on the same
-    ~30 issue days — the same leak `select_baseline` avoids, one level up.
+    Each rolling origin owns an earlier train/validation pair and one untouched
+    test block. Choosing the candidate on a test block would make the published
+    gain a max over several draws — the same leak ``select_baseline`` avoids.
     """
-    loaded = (
-        _model_data(station, test_days)
-        if station.kind in KIND_MODELS
-        else _tide_data(station, test_days)
-    )
-    if loaded is None:
+    if station.kind in KIND_MODELS:
+        origins = _model_origins(station, test_days)
+        loaded_folds = [
+            _model_data(station, test_days, origin) for origin in origins or []
+        ]
+    else:
+        loaded_folds = [_tide_data(station, test_days)]
+    loaded_folds = [loaded for loaded in loaded_folds if loaded is not None]
+    if not loaded_folds:
         return None
-    x, obs, is_test, baseline_model = loaded
-    if is_test.all() or not is_test.any():
-        print(f"  {station.id}: not enough history for a {test_days}d test split — skipped")
-        return None
 
-    if ablate:
-        # Zeroing beats dropping: same rows, same split, same seed, same model
-        # capacity — and for a tree ensemble a constant column is never split on,
-        # so it is equivalent to removing the feature. This is what produced the
-        # "with / without" ablation tables of the Task 7B / 7C reports.
-        x = x.copy()
-        x[[c for c in ablate if c in x.columns]] = 0.0
-    # Tide: learn the residual; waves: learn the corrected value directly.
-    target = obs - x["baseline"] if station.kind == "tide" else obs
-
-    x_train, target_train, obs_train = x[~is_test], target[~is_test], obs[~is_test]
-    x_test, obs_test = x[is_test], obs[is_test]
-    mae_base, bias, mae_debiased = _reference(x_test, obs_test)
-
-    # Selection: the last `test_days` issue days *of the train window* are the
-    # validation slice. Same mechanics as the test split, one level in.
-    val_scores = {}
-    if len(model_names) > 1:
-        val_days = min(test_days, VAL_DAYS_CAP)
-        is_val = split_by_issue_day(x_train, val_days)
-        if is_val.all() or not is_val.any():
-            print(f"  {station.id}: no room for a {val_days}d validation slice — skipped")
-            return None
-        for name in model_names:
-            m = model.train(x_train[~is_val], target_train[~is_val], name=name)
-            val_scores[name] = _score(
-                _levels(m, x_train[is_val], station.kind), x_train[is_val], obs_train[is_val]
+    fold_levels, fold_x, fold_obs = [], [], []
+    fold_ids = []
+    fold_models = []
+    fold_baselines = []
+    val_scores: dict = {}
+    best = model_names[0]
+    final_x = final_target = None
+    baseline_model = None
+    # Every origin repeats the exact same nested protocol: candidate selection
+    # happens on validation inside that origin's train period, then only that
+    # winner touches the following test block.
+    for x, obs, test_masks, fold_baseline in loaded_folds:
+        if ablate:
+            x = x.copy()
+            x[[c for c in ablate if c in x.columns]] = 0.0
+        target = obs - x["baseline"] if station.kind == "tide" else obs
+        baseline_model = fold_baseline
+        for train_mask, is_test in test_masks:
+            if is_test.all() or not is_test.any() or not train_mask.any():
+                continue
+            if station.kind in KIND_MODELS:
+                observed_test_days = len(issue_days(x)[is_test].unique())
+                if observed_test_days < int(np.ceil(test_days * MIN_FOLD_COVERAGE)):
+                    continue
+            x_train, target_train, obs_train = x[train_mask], target[train_mask], obs[train_mask]
+            current_val_scores = {}
+            if len(model_names) > 1:
+                val_days = min(test_days, VAL_DAYS_CAP)
+                is_val = split_by_issue_day(x_train, val_days)
+                if is_val.all() or not is_val.any():
+                    continue
+                for name in model_names:
+                    m = model.train(x_train[~is_val], target_train[~is_val], name=name)
+                    current_val_scores[name] = _score(
+                        _levels(m, x_train[is_val], station.kind), x_train[is_val], obs_train[is_val]
+                    )
+            current_best = (
+                max(current_val_scores, key=lambda n: current_val_scores[n]["gain_debiased"])
+                if current_val_scores
+                else model_names[0]
             )
-    best = max(val_scores, key=lambda n: val_scores[n]["gain_debiased"]) if val_scores else (
-        model_names[0]
-    )
+            candidate = model.train(x_train, target_train, name=current_best)
+            x_test, obs_test = x[is_test], obs[is_test]
+            level_test = _levels(candidate, x_test, station.kind)
+            fold_levels.append(level_test)
+            fold_x.append(x_test)
+            fold_obs.append(obs_test)
+            fold_ids.append(np.full(len(x_test), len(fold_ids), dtype=int))
+            fold_models.append(current_best)
+            fold_baselines.append(fold_baseline)
+            # Keep the most recent origin's validation table for the report and use
+            # its selected model for the production refit below. Its test remains
+            # excluded from that choice.
+            val_scores, best = current_val_scores, current_best
+            final_x, final_target = x, target
+    if not fold_levels:
+        print(f"  {station.id}: no usable rolling origin — skipped")
+        return None
 
-    # The winner, refitted on the whole train window, is evaluated on the test
-    # window exactly once — no max over candidates here.
-    final = model.train(x_train, target_train, name=best)
-    # Predict once: the summary score and the event bands read the same levels.
-    level_test = _levels(final, x_test, station.kind)
-    scores = _score(level_test, x_test, obs_test)
+    x_test = pd.concat(fold_x)
+    obs_test = pd.concat(fold_obs)
+    level_test = np.concatenate(fold_levels)
+    test_fold_ids = np.concatenate(fold_ids)
+    residual = obs_test.to_numpy() - x_test["baseline"].to_numpy()
+    mae_base = float(np.abs(residual).mean())
+    bias = float(residual.mean())
+    mae_debiased = float(_debiased_baseline_error(residual, test_fold_ids).mean())
+    mae_model = float(np.abs(level_test - obs_test.to_numpy()).mean())
+    scores = {
+        "mae_model": mae_model,
+        "gain": (mae_base - mae_model) / mae_base if mae_base else 0.0,
+        "gain_debiased": (
+            (mae_debiased - mae_model) / mae_debiased if mae_debiased else 0.0
+        ),
+    }
+    ci_low, ci_high = _gain_confidence_interval(
+        level_test, x_test, obs_test, test_fold_ids
+    )
+    n_issue_days = int(len(issue_days(x_test).unique()))
+    if station.kind in KIND_MODELS:
+        protocol = (
+            "rolling-origin multi-saisons"
+            if len(fold_levels) >= ROLLING_FOLDS_BY_KIND[station.kind]
+            else "holdout dégradé"
+        )
+    else:
+        protocol = "holdout annuel"
+    evaluation_ready = station.kind not in KIND_MODELS or protocol == "rolling-origin multi-saisons"
+    # Once the reported heldouts are sealed, baseline selection and training may
+    # use all available rows for the artefact served in production.  This is
+    # intentionally after (and separate from) every reported fold.
+    if station.kind in KIND_MODELS:
+        production = _model_data(
+            station, test_days, pd.Timestamp("2100-01-01", tz="UTC")
+        )
+        assert production is not None
+        final_x, production_obs, _, baseline_model = production
+        if ablate:
+            final_x = final_x.copy()
+            final_x[[c for c in ablate if c in final_x.columns]] = 0.0
+        final_target = (
+            production_obs
+            if station.kind != "tide"
+            else production_obs - final_x["baseline"]
+        )
+    final = model.train(final_x, final_target, name=best)
     row = {
         "events": _event_scores(level_test, x_test, obs_test),
         "test_days": test_days,
         "station": station.id,
         "kind": station.kind,
         "baseline_model": baseline_model,
-        "n_train": int((~is_test).sum()),
-        "n_test": int(is_test.sum()),
+        "n_train": int(len(final_x)),
+        "n_test": int(len(x_test)),
         "n_val": int(is_val.sum()) if val_scores else 0,
+        "n_folds": len(fold_levels),
+        "fold_models": fold_models,
+        "fold_baselines": fold_baselines,
+        "n_issue_days": n_issue_days,
+        "evaluation_protocol": protocol,
+        "evaluation_ready": evaluation_ready,
+        "gain_debiased_ci95_low": ci_low,
+        "gain_debiased_ci95_high": ci_high,
+        "ci_unit": "issue_day",
         "mae_base": mae_base,
         "bias": bias,
         "mae_debiased": mae_debiased,
@@ -327,7 +514,10 @@ def evaluate(
         **scores,
         # Gate on the gain hors biais (spec critère 3): a station whose displayed
         # gain is mostly a constant offset must not pass on that alone.
-        "pass": scores["gain_debiased"] >= GATE,
+        # A positive lower bound is deliberately required even in degraded
+        # mode: short history is labelled as such, never compensated by a
+        # point estimate with indistinguishable-from-zero skill.
+        "pass": evaluation_ready and scores["gain_debiased"] >= GATE and ci_low > 0.0,
         # "weak": the model brings nothing a constant offset would not. Now that
         # `pass` itself requires beating the debiased baseline by >= GATE, a
         # passing station can no longer be weak — the flag is kept as-is (still
@@ -335,7 +525,8 @@ def evaluate(
         "weak": scores["mae_model"] >= mae_debiased,
     }
     print(
-        f"  {station.id}: train {row['n_train']} / test {row['n_test']} rows | "
+        f"  {station.id}: train {row['n_train']} / test {row['n_test']} rows "
+        f"({row['n_folds']} origin(s)) | "
         f"baseline {baseline_model or station.baseline} | "
         f"MAE base {mae_base:.3f} -> {best} {row['mae_model']:.3f} ({row['gain']:+.1%}) | "
         f"{_verdict(row)} -> {'not released (ablation)' if ablate else 'ready for release'}"
@@ -523,13 +714,13 @@ def _ml_comparison(rows: list[dict]) -> list[str]:
     lines = [
         "## Comparaison des modèles ML",
         "",
-        "Gain **hors biais sur la fenêtre de VALIDATION** — pas sur le test. Les trois",
-        "candidats sont entraînés sur le train privé de sa validation, comparés sur",
-        "cette validation, et seul le gagnant (en gras) est ré-entraîné sur tout le",
-        "train puis évalué **une seule fois** sur le test : les chiffres du tableau",
-        "« Résultats par station » ne sont donc jamais un maximum sur trois tirages.",
-        "Les valeurs ci-dessous ne sont pas comparables à celles du test — fenêtre",
-        "différente, modèle entraîné sur moins de données.",
+        "Gain **hors biais sur la dernière fenêtre de VALIDATION** — pas sur le test.",
+        "Chaque origine rolling répète cette sélection dans son seul passé, puis son",
+        "gagnant touche le test suivant. Le tableau montre la validation la plus",
+        "récente, celle qui choisit aussi l'artefact de production ; le score agrégé",
+        "n'est jamais utilisé pour choisir entre les candidats. Les valeurs ci-dessous",
+        "ne sont donc pas comparables au test — fenêtre différente, modèle entraîné",
+        "sur moins de données.",
         "",
         "`ridge` est le **plancher honnête** : un gradient boosting qui ne le bat pas",
         "ne paie pas sa complexité, et c'est un résultat, pas un échec.",
@@ -588,19 +779,6 @@ def _val_window(rows: list[dict]) -> int:
     return min(max((r["test_days"] for r in rows), default=DEFAULT_TEST_DAYS), VAL_DAYS_CAP)
 
 
-def _test_window_phrase(rows: list[dict]) -> str:
-    """"365" when every station shares a window, "30 (wave) / 365 (tide)" otherwise.
-
-    The window is per kind since 2026-08-04, so a single number in the report
-    would be wrong for at least one line — and this report is the document the
-    README copies from.
-    """
-    by_kind = {r["kind"]: r["test_days"] for r in rows}
-    if len(set(by_kind.values())) <= 1:
-        return str(next(iter(by_kind.values()), DEFAULT_TEST_DAYS))
-    return " / ".join(f"{d} ({k})" for k, d in sorted(by_kind.items()))
-
-
 def write_report(
     rows: list[dict],
     gate: dict | None = None,
@@ -615,7 +793,7 @@ def write_report(
         "",
         f"Généré par `pipeline/scripts/train.py` le "
         f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC "
-        f"(test = les {_test_window_phrase(rows)} derniers jours d'émission).",
+        "(fenêtres temporelles et protocole détaillés par station ci-dessous).",
         "",
         "Le modèle **post-traite** une prévision physique officielle : il la corrige, il",
         "ne la remplace jamais. Cette baseline n'est plus imposée : pour une station",
@@ -627,17 +805,29 @@ def write_report(
         "",
         "## Résultats par station",
         "",
-        "| Station | Type | Baseline (meilleur modèle physique) | Modèle ML |"
+        "| Station | Type | Baseline production / folds de test | Modèle ML |"
         " Rows train / test | MAE baseline | MAE baseline débiaisée |"
-        " MAE modèle | Gain affiché | **Gain hors biais** | Verdict |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
+        " MAE modèle | Gain affiché | **Gain hors biais** | IC95% gain | Protocole | Verdict |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
+        production_baseline = r["baseline_model"] or "harmonique"
+        test_baselines = ", ".join(
+            baseline or "harmonique" for baseline in r.get("fold_baselines", [])
+        ) or production_baseline
+        confidence = (
+            f"[{r['gain_debiased_ci95_low']:+.1%}, "
+            f"{r['gain_debiased_ci95_high']:+.1%}] ({r['n_issue_days']} jours)"
+            if "gain_debiased_ci95_low" in r
+            else "—"
+        )
         lines.append(
-            f"| {r['station']} | {r['kind']} | {r['baseline_model'] or 'harmonique'} | "
+            f"| {r['station']} | {r['kind']} | {production_baseline} / {test_baselines} | "
             f"`{r['ml_model']}` | {r['n_train']} / {r['n_test']} | "
             f"{r['mae_base']:.3f} | {r['mae_debiased']:.3f} | {r['mae_model']:.3f} | "
             f"{r['gain']:+.1%} | **{r['gain_debiased']:+.1%}** | "
+            f"{confidence} | {r.get('evaluation_protocol', 'holdout')} "
+            f"({r.get('n_folds', 1)}×{r['test_days']}j) | "
             f"{_verdict(r).replace('*', r'\*')} |"
         )
     if skipped:
@@ -655,14 +845,19 @@ def write_report(
         "MAE en "
         + ", ".join(f"{UNIT[k]} pour les stations `{k}`" for k in dict.fromkeys(r["kind"] for r in rows))
         + ". « MAE baseline débiaisée » = MAE de la baseline après retrait",
-        "de son seul biais moyen sur la fenêtre de test — c'est le garde-fou de la",
+        "de son biais moyen dans chaque fold de test — c'est le garde-fou de la",
         "réserve 4 : un modèle qui ne bat pas cette colonne n'apporte rien de plus",
         "qu'une constante. Gate de mise en ligne : **+5 % de MAE gagnée hors biais**",
         "(critère 3 de la spec) — le gate porte sur `gain_debiased`, jamais sur le",
         "gain affiché, précisément pour qu'une station ne passe pas sur un simple",
         "débiaisage. Une station FAIL reste entraînée et son artefact reste",
         "versionné, mais elle ne doit pas être publiée telle quelle sur le",
-        "scoreboard.",
+        "scoreboard. Le gain est aussi assorti d'un **IC95 % bootstrap par jour",
+        "d'émission** : les leads d'un même run ne sont jamais traités comme des",
+        "observations indépendantes. Le gate exige en plus une borne basse strictement",
+        "positive ; il ne transforme donc pas un gain ponctuel incertain en PASS.",
+        "Une station `wave` ou `wind` en `holdout dégradé` reste FAIL jusqu'à ce que",
+        "les quatre folds saisonniers soient suffisamment couverts.",
         "",
         "**`PASS*`** = la station passe le gate mais **ne bat pas sa propre baseline",
         "débiaisée** : son gain affiché est essentiellement une constante, pas du skill.",
@@ -673,7 +868,9 @@ def write_report(
         "",
         "Ce verdict est aussi émis en donnée dans `pipeline/models/gate.json`",
         "(`{station: {pass, weak, mae_model, mae_baseline, gain, gain_debiased,",
-        "baseline_model}}`) — c'est cette",
+        "gain_debiased_ci95_low, gain_debiased_ci95_high, n_folds, n_issue_days,",
+        "evaluation_protocol, evaluation_ready, ci_unit, baseline_model,",
+        "fold_baselines}}`) — c'est cette",
         "source, pas ce tableau, que le publisher doit lire.",
         "",
     ]
@@ -695,14 +892,17 @@ def write_report(
         "  (émission 06 UTC, lead 1–48 h) ; les lignes d'une même émission partagent",
         "  `last_err` / `mean_err_24h`. Découper sur le temps de validité ferait donc",
         "  fuir une émission entre train et test. Le jour d'émission est reconstruit",
-        f"  comme `valid_time - lead_h`, et les {_test_window_phrase(rows)} derniers jours d'émission",
-        "  forment le test. Jamais de split aléatoire.",
+        "  comme `valid_time - lead_h`. Une émission entière reste toujours du même",
+        "  côté d'une frontière. Jamais de split aléatoire.",
         "* **Choix de la baseline (stations `wave`).** Les 5 modèles de vagues",
         "  Open-Meteo sont comparés à la bouée **sur les seuls jours d'émission",
         "  d'entraînement**, et le plus proche devient la baseline de la station — donc",
         "  le dénominateur de tous les gains ci-dessus. La sélection ne voit jamais la",
         "  fenêtre de test : sinon la baseline serait choisie par les données mêmes qui",
-        "  servent à la juger, ce qui gonflerait mécaniquement le gain.",
+        "  servent à la juger, ce qui gonflerait mécaniquement le gain. Elle peut donc",
+        "  différer entre folds : le rapport et `gate.json` publient cette liste",
+        "  séparément de la baseline re-sélectionnée sur tout l'historique pour la",
+        "  production.",
         "* **Choix du modèle ML — sur validation, jamais sur le test.** Les",
         f"  {_val_window(rows)} derniers jours d'émission **du train** forment une fenêtre de",
         "  validation. Les trois candidats (`hgb`, `ridge`, `hgb-per-lead`) y sont",
@@ -711,6 +911,21 @@ def write_report(
         "  le test. Choisir le modèle sur le test publierait un maximum sur trois",
         "  tirages faits sur la même fenêtre — la même fuite que la sélection de",
         "  baseline évite, un étage plus haut.",
+        "* **Stations `wave` / `wind` — rolling-origin multi-saisons quand l'archive le",
+        "  permet.** À partir de 730 jours d'émissions observées, quatre origines",
+        "  chronologiques sont espacées d'au moins 90 jours et évaluent chacune 90",
+        "  jours par défaut. Un `--test-days` plus long élargit aussi l'espacement,",
+        "  afin que les tests ne se chevauchent jamais. Chaque origine",
+        "  re-sélectionne baseline et modèle uniquement sur son passé, avec une purge",
+        "  de 48 h avant le test. Les fenêtres sont non chevauchantes. Avec moins de",
+        "  730 jours, le rapport dit `holdout dégradé`, ne prétend pas couvrir",
+        "  plusieurs saisons et ne permet pas un PASS. Chaque fold doit aussi couvrir",
+        f"  au moins {MIN_FOLD_COVERAGE:.0%} de ses jours attendus.",
+        "* **Incertitude par station.** L'IC95 % du gain hors biais est un bootstrap",
+        "  déterministe de jours d'émission entiers : les 48 leads corrélés d'un run",
+        "  ne deviennent jamais 48 pseudo-réplications. Le biais de la baseline est",
+        "  ré-estimé dans chaque réplication et chaque fold. Le gate exige à la fois",
+        f"  un gain ponctuel d'au moins {GATE:.0%} et une borne basse strictement positive.",
         "* **Cible.** Stations `wave` : l'observation Hs. Stations `tide` : le résidu",
         "  `obs - harmonique` ; le niveau publié est réassemblé en",
         "  `harmonique + résidu prédit`, et c'est sur ce niveau reconstitué que la MAE",
@@ -806,6 +1021,20 @@ def merge_gate(previous: dict, rows: list[dict], known: set[str]) -> dict:
         }
         if r["baseline_model"]:
             entry["baseline_model"] = r["baseline_model"]
+        for key in ("gain_debiased_ci95_low", "gain_debiased_ci95_high"):
+            if key in r:
+                entry[key] = round(r[key], 4)
+        for key in (
+            "n_folds",
+            "n_issue_days",
+            "test_days",
+            "evaluation_protocol",
+            "evaluation_ready",
+            "ci_unit",
+            "fold_baselines",
+        ):
+            if key in r:
+                entry[key] = r[key]
         gate[r["station"]] = entry
     return gate
 

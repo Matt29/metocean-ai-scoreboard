@@ -145,6 +145,41 @@ def test_score_windows_are_calendar_based_not_count_based():
     assert row["n_days"] == 3
 
 
+def test_scores_weight_each_valid_observation_and_keep_baseline_windows_separate():
+    """Une MAE issue de trois heures pèse trois fois celle issue d'une heure.
+
+    Les valeurs attendues viennent d'un calcul manuel, pas de l'algorithme :
+    ``(1 * 1 + 3 * 3) / (1 + 3) = 2.5``. Le jour MFWAM, pourtant beaucoup
+    plus dense, ne doit pas contaminer les fenêtres de la baseline EWAM.
+    """
+    days = [
+        _ok_day("2026-07-29", 0.0, 0.0, "mfwam") | {"n_points": 100},
+        _ok_day("2026-07-26", 1.0, 4.0, "ewam") | {"n_points": 1},
+        _ok_day("2026-07-30", 3.0, 6.0, "ewam") | {"n_points": 3},
+    ]
+
+    row = publish.compute_scores(days)
+
+    assert row["n_days"] == 2
+    for label in ("7d", "30d", "all"):
+        assert row[f"mae_ia_{label}"] == 2.5
+        assert row[f"mae_baseline_{label}"] == 5.5
+
+
+@pytest.mark.parametrize("n_points", [None, 0, -2, "oops", True, 1.5, float("nan")])
+def test_legacy_or_invalid_n_points_falls_back_to_one_day_weight(n_points):
+    """Les historiques antérieurs et les compteurs corrompus restent publiables."""
+    invalid = _ok_day("2026-07-30", 3.0, 6.0) | {"n_points": n_points}
+    legacy = _ok_day("2026-07-29", 1.0, 4.0)
+    if n_points is None:
+        invalid.pop("n_points")  # forme legacy : champ absent
+
+    row = publish.compute_scores([legacy, invalid])
+
+    assert row["mae_ia_all"] == 2.0
+    assert row["mae_baseline_all"] == 5.0
+
+
 # --- schema contract -----------------------------------------------------
 
 

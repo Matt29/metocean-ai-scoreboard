@@ -7,7 +7,8 @@ consumer (the website, a separate repo) can detect a breaking change:
                                  "unit","published","weak","baseline_model"?}]}
     data/<id>/latest.json       {"station","issued","series":[{"t","ia","baseline"}]}
     data/<id>/history.json      {"station","days":[{"date","status",
-                                 "series"?,"mae_ia"?,"mae_baseline"?}]}   (90d max)
+                                 "series"?,"mae_ia"?,"mae_baseline"?,
+                                 "n_points"?}]}   (90d max)
     data/scores.json            {"updated","stations":[{"id","n_days",
                                  "mae_ia_7d","mae_baseline_7d","mae_ia_30d",
                                  "mae_baseline_30d","mae_ia_all","mae_baseline_all"}]}
@@ -205,8 +206,36 @@ def _current_baseline_model(days: list[dict]) -> str | None:
     )
 
 
+def _score_weight(day: dict) -> int:
+    """Nombre d'observations valides représentées par une MAE journalière.
+
+    Le contrat courant de ``history.json`` pose ``n_points`` comme un entier
+    strictement positif. Les anciens historiques n'ont pas ce champ : ils
+    conservent donc le poids unitaire de l'ancienne moyenne par jour. La même
+    solution de repli s'applique aux valeurs invalides (zéro, négatives,
+    booléens, fractions, texte et non-finis) afin qu'une entrée corrompue ne
+    fasse ni tomber la publication ni disparaître silencieusement des scores.
+    """
+    value = day.get("n_points", 1)
+    if isinstance(value, (bool, str, bytes)):
+        return 1
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 1
+    if not np.isfinite(number) or number <= 0 or not number.is_integer():
+        return 1
+    return int(number)
+
+
 def compute_scores(days: list[dict]) -> dict:
     """MAE aggregates over "ok" days only — a "missing" day must not move them.
+
+    Chaque MAE journalière est pondérée par son ``n_points`` : les scores
+    publics donnent donc le même poids à chaque observation/heure valide, pas
+    à chaque jour. Pour rester compatible avec les historiques publiés avant
+    ``n_points``, une entrée sans compteur (ou avec compteur invalide) reçoit
+    un poids de un jour. Cette règle est additive au schéma 1.
 
     Windows are calendar-based, anchored on the latest "ok" date (not
     wall-clock, so the function stays deterministic from its input): "7d"
@@ -237,9 +266,25 @@ def compute_scores(days: list[dict]) -> dict:
             window = [d for d in ok if date.fromisoformat(d["date"]) > cutoff]
         else:
             window = ok
-        row[f"mae_ia_{label}"] = round(sum(d["mae_ia"] for d in window) / len(window), 4) if window else None
+        weights = [_score_weight(d) for d in window]
+        total_weight = sum(weights)
+        row[f"mae_ia_{label}"] = (
+            round(
+                sum(day["mae_ia"] * weight for day, weight in zip(window, weights))
+                / total_weight,
+                4,
+            )
+            if window
+            else None
+        )
         row[f"mae_baseline_{label}"] = (
-            round(sum(d["mae_baseline"] for d in window) / len(window), 4) if window else None
+            round(
+                sum(day["mae_baseline"] * weight for day, weight in zip(window, weights))
+                / total_weight,
+                4,
+            )
+            if window
+            else None
         )
     return row
 

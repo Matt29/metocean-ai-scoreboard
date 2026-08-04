@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
@@ -103,8 +104,7 @@ def test_per_lead_router_routes_each_slice_to_its_own_model():
 
 
 def test_model_selection_never_looks_at_the_test_window(tmp_path, monkeypatch):
-    """The published candidate is chosen on validation, and its reported score
-    is a single test evaluation — not the best of three test scores."""
+    """Candidate selection calls the scorer on validation, never on the test."""
     raw = _raw(days=120)
     raw["hs_gwam"] = raw["hs"] + 0.02
     monkeypatch.setattr(train, "DATA_DIR", tmp_path)
@@ -118,13 +118,108 @@ def test_model_selection_never_looks_at_the_test_window(tmp_path, monkeypatch):
     )
     row = train.evaluate(STATION, test_days=10, model_names=("ridge", "hgb"))
 
-    # 2 validation scores + exactly 1 test score, and the published numbers are
-    # that last one — the test window is evaluated once, by the winner alone.
-    assert len(seen) == 3
-    assert seen[-1] == row["n_test"]
+    # `_score` is used only for candidate selection on validation. Aggregate
+    # test metrics follow a separate path after the winner is locked.
+    assert len(seen) == 2
     assert seen[0] == seen[1] == row["n_val"] != row["n_test"]
     assert row["ml_model"] in ("ridge", "hgb")
     assert set(row["val_scores"]) == {"ridge", "hgb"}
+    assert row["evaluation_protocol"] == "holdout dégradé"
+    assert row["evaluation_ready"] is False
+    assert row["pass"] is False
+
+
+def test_wave_evaluation_uses_multiple_rolling_issue_day_folds_and_reports_ci(tmp_path, monkeypatch):
+    """A wave verdict spans several origins; its uncertainty is resampled by
+    issue day, never by correlated lead rows."""
+    raw = _raw(days=160)
+    raw["hs_gwam"] = raw["hs"] + 0.02
+    monkeypatch.setattr(train, "DATA_DIR", tmp_path)
+    raw.to_parquet(tmp_path / "synthetic_raw.parquet")
+
+    monkeypatch.setattr(train, "SEASONAL_HISTORY_DAYS", 100)
+    monkeypatch.setattr(train, "SEASONAL_STRIDE_DAYS", 10)
+    row = train.evaluate(STATION, test_days=10, model_names=("ridge",))
+
+    assert row["n_folds"] == 4
+    assert row["n_test"] > 4 * 24 * 8
+    assert row["test_days"] == 10
+    assert row["gain_debiased_ci95_low"] <= row["gain_debiased"] <= row["gain_debiased_ci95_high"]
+    assert row["ci_unit"] == "issue_day"
+    assert row["evaluation_ready"] is True
+
+
+@pytest.mark.parametrize("holdout_days", [90, 120])
+def test_rolling_origins_keep_whole_issue_days_and_purge_future_rows(holdout_days):
+    idx = pd.date_range("2024-01-01", periods=800 * 24, freq="h", tz="UTC")
+    x = pd.DataFrame({"lead_h": np.tile(np.arange(1, 25), 800)}, index=idx)
+    splits = train.rolling_origin_splits(x, test_days=holdout_days, folds=4)
+
+    assert len(splits) == 4
+    days = train.issue_days(x)
+    seen = set()
+    starts = []
+    for train_mask, test_mask in splits:
+        train_days = set(days[train_mask])
+        fold_days = set(days[test_mask])
+        assert not seen.intersection(fold_days)
+        assert not train_days.intersection(fold_days)
+        seen.update(fold_days)
+        starts.append(min(fold_days))
+        assert max(train_days) <= min(fold_days) - pd.Timedelta(days=3)
+        # Every lead from an issue is on the same side of the fold boundary.
+        assert all(test_mask[days == day].all() for day in fold_days)
+        assert all(train_mask[days == day].all() for day in train_days)
+    stride = max(train.SEASONAL_STRIDE_DAYS, holdout_days)
+    assert [(right - left).days for left, right in pairwise(starts)] == [stride] * 3
+    assert (max(seen) - min(seen)).days >= stride * 3 + holdout_days - 1
+
+
+def test_each_rolling_origin_selects_its_baseline_without_later_observations(
+    tmp_path, monkeypatch
+):
+    raw = _raw(days=160)
+    raw["hs_gwam"] = raw["hs"] + 0.02
+    monkeypatch.setattr(train, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(train, "SEASONAL_HISTORY_DAYS", 100)
+    monkeypatch.setattr(train, "SEASONAL_STRIDE_DAYS", 10)
+    raw.to_parquet(tmp_path / "synthetic_raw.parquet")
+    selections = []
+    selected_columns = [*MODEL_COLUMNS[:4], MODEL_COLUMNS[-1]]
+
+    def record_selection(frame, train_days, *args):
+        selections.append(pd.DatetimeIndex(train_days).max())
+        return selected_columns[len(selections) - 1]
+
+    monkeypatch.setattr(train, "select_baseline", record_selection)
+
+    row = train.evaluate(STATION, test_days=10, model_names=("ridge",))
+
+    assert row["n_folds"] == 4
+    assert selections[:4] == sorted(selections[:4])
+    assert len(set(selections[:4])) == 4
+    assert selections[-1] > selections[-2]  # separate production refit on all history
+    assert row["fold_baselines"] == [column.removeprefix("hs_") for column in selected_columns[:4]]
+    assert row["baseline_model"] == selected_columns[-1].removeprefix("hs_")
+
+
+def test_gate_rejects_a_positive_point_gain_when_its_ci_crosses_zero(tmp_path, monkeypatch):
+    raw = _raw(days=120)
+    raw["hs_gwam"] = raw["hs"] + 0.02
+    monkeypatch.setattr(train, "DATA_DIR", tmp_path)
+    raw.to_parquet(tmp_path / "synthetic_raw.parquet")
+    monkeypatch.setattr(
+        train,
+        "_debiased_baseline_error",
+        lambda residual, fold_ids: np.ones_like(residual, dtype=float),
+    )
+    monkeypatch.setattr(train, "_gain_confidence_interval", lambda *_args: (-0.01, 0.2))
+
+    row = train.evaluate(STATION, test_days=10, model_names=("ridge",))
+
+    assert row["gain_debiased"] > train.GATE
+    assert row["gain_debiased_ci95_low"] < 0
+    assert not row["pass"]
 
 
 def test_merge_gate_keeps_skipped_stations_and_drops_retired_ones():
@@ -147,6 +242,29 @@ def test_merge_gate_keeps_skipped_stations_and_drops_retired_ones():
     assert gate["anglet"] == {
         "pass": True, "weak": False, "mae_model": 0.1063, "mae_baseline": 0.1178,
         "gain": 0.0978, "gain_debiased": 0.0543, "baseline_model": "ewam",
+    }
+
+
+def test_merge_gate_persists_the_station_uncertainty_contract():
+    row = {
+        "station": "anglet", "baseline_model": "ewam", "pass": True,
+        "weak": False, "mae_model": 0.1, "mae_base": 0.2, "gain": 0.5,
+        "gain_debiased": 0.4, "gain_debiased_ci95_low": 0.123456,
+        "gain_debiased_ci95_high": 0.654321, "n_folds": 4,
+        "n_issue_days": 360, "evaluation_protocol": "rolling-origin multi-saisons",
+        "evaluation_ready": True, "ci_unit": "issue_day",
+        "fold_baselines": ["ewam", "gwam", "ewam", "mfwam"],
+    }
+
+    gate = train.merge_gate({}, [row], known={"anglet"})
+
+    assert gate["anglet"] == {
+        "pass": True, "weak": False, "mae_model": 0.1, "mae_baseline": 0.2,
+        "gain": 0.5, "gain_debiased": 0.4, "baseline_model": "ewam",
+        "gain_debiased_ci95_low": 0.1235, "gain_debiased_ci95_high": 0.6543,
+        "n_folds": 4, "n_issue_days": 360,
+        "evaluation_protocol": "rolling-origin multi-saisons", "evaluation_ready": True,
+        "ci_unit": "issue_day", "fold_baselines": ["ewam", "gwam", "ewam", "mfwam"],
     }
 
 
