@@ -114,7 +114,7 @@ def test_model_selection_never_looks_at_the_test_window(tmp_path, monkeypatch):
     seen = []
     real_score = train._score
     monkeypatch.setattr(
-        train, "_score", lambda est, x, obs, kind: seen.append(len(x)) or real_score(est, x, obs, kind)
+        train, "_score", lambda level, x, obs: seen.append(len(x)) or real_score(level, x, obs)
     )
     row = train.evaluate(STATION, test_days=10, model_names=("ridge", "hgb"))
 
@@ -194,3 +194,45 @@ def test_station_filter_never_evicts_the_untrained_stations_from_the_gate(tmp_pa
     assert gate["brest"] == previous["brest"]
     assert gate["ouessant"]["pass"] is True
     assert "retiree" not in gate, "seule la sortie de stations.toml évince une entrée"
+
+
+def _eval_window(resid: np.ndarray) -> tuple[pd.DataFrame, pd.Series]:
+    idx = pd.date_range("2026-01-01", periods=len(resid), freq="h", tz="UTC", name="time")
+    baseline = pd.Series(5.0, index=idx)
+    return pd.DataFrame({"baseline": baseline}), baseline + resid
+
+
+def test_event_diagnostic_debiases_on_the_whole_window_not_on_the_band():
+    """The band's own mean must never be the offset the baseline gets for free.
+
+    Recomputing the bias inside the storm hours would hand the baseline a
+    per-event correction it cannot have in advance, turning the competitor into
+    a straw man in the opposite direction. Here 900 calm hours are +2 cm off and
+    100 storm hours +40 cm, so the whole-window bias is 5.8 cm and the storm band
+    must stay 34.2 cm from a debiased baseline — not the ~0 a band-local
+    debiasing would produce.
+    """
+    resid = np.concatenate([np.full(900, 0.02), np.full(100, 0.40)])
+    x_ev, obs_ev = _eval_window(resid)
+
+    # Niveaux d'un modèle à résidu nul : la baseline elle-même.
+    events = train._event_scores(x_ev["baseline"].to_numpy(), x_ev, obs_ev)
+    storm = next(e for e in events if e["label"] == "|résidu| > 30 cm")
+
+    assert storm["n"] == 100
+    whole_window_bias = resid.mean()
+    assert storm["mae_debiased"] == pytest.approx(0.40 - whole_window_bias, abs=1e-9)
+    # A band-local debiasing would have collapsed this to ~0.
+    assert storm["mae_debiased"] > 0.30
+
+
+def test_event_diagnostic_skips_a_band_too_thin_to_mean_anything():
+    """Fewer than a day of qualifying hours yields no row rather than a number
+    built on a handful of points."""
+    resid = np.concatenate([np.full(1000, 0.01), np.full(5, 0.40)])
+    x_ev, obs_ev = _eval_window(resid)
+
+    levels = x_ev["baseline"].to_numpy()
+    labels = [e["label"] for e in train._event_scores(levels, x_ev, obs_ev)]
+
+    assert "|résidu| > 30 cm" not in labels

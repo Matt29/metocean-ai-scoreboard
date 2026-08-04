@@ -48,11 +48,32 @@ DATA_DIR = ROOT / "pipeline" / "data_train"
 REPORT_PATH = ROOT / "docs" / "model-eval.md"
 GATE_PATH = model.MODELS_DIR / "gate.json"
 GATE = 0.05  # the model must beat the baseline, hors biais, by >= 5% to go live
+
+# Held-out issue days, per kind. A contiguous temporal holdout is also a
+# *seasonal* one: 30 days means the verdict is whatever season the retrain
+# happened in. Measured on 2026-08-04, Brest carries 3x more surge in February
+# (21.2 cm) than in July (7.1 cm) — so a 30-day window graded a tide station on
+# the calendar as much as on the model. `tide` therefore holds out a full year;
+# REFMAR's archive depth makes that affordable where the other kinds' does not.
+# `wave` and `wind` keep 30 days for now — the same argument applies to them
+# (Hs is strongly seasonal) and it is open work, not a settled choice.
+TEST_DAYS_BY_KIND = {"tide": 365}
+DEFAULT_TEST_DAYS = 30
+# The validation slice only has to rank three candidates, not to be seasonally
+# representative, so it does not follow the test window up to a full year — that
+# would eat the train set. Known limitation, stated rather than hidden: model
+# *selection* stays seasonally biased even now that the *verdict* is not.
+VAL_DAYS_CAP = 120
 UNIT = {"wave": "m (Hs)", "tide": "m (water level)", "wind": "m/s (vent 10 m)"}
 # Multi-model kinds: (candidate baseline columns, observation column). A `tide`
 # station is absent — its baseline is a harmonic fit, not a column to choose.
 KIND_MODELS = {"wave": (MODEL_COLUMNS, "hs"), "wind": (WIND_MODEL_COLUMNS, "wind_speed")}
 ABLATABLE = sorted(set(FEATURE_COLUMNS) | set(WAVE_FEATURE_COLUMNS) | set(WIND_FEATURE_COLUMNS))
+
+
+def _test_days(kind: str, override: int | None = None) -> int:
+    """Held-out issue days for `kind` — `TEST_DAYS_BY_KIND`, or the CLI override."""
+    return override if override is not None else TEST_DAYS_BY_KIND.get(kind, DEFAULT_TEST_DAYS)
 
 
 def issue_days(x: pd.DataFrame) -> pd.DatetimeIndex:
@@ -156,10 +177,65 @@ def _reference(x_ev: pd.DataFrame, obs_ev: pd.Series) -> tuple[float, float, flo
     return mae_base, bias, float(np.abs(resid - bias).mean())
 
 
-def _score(est, x_ev: pd.DataFrame, obs_ev: pd.Series, kind: str) -> dict:
-    """MAE and both gains of one fitted candidate on one eval window."""
+# Amplitude bands the event diagnostic reports on, beyond the whole window.
+# `None` threshold = the top decile of |residual|, whatever it is worth at that
+# station; the absolute one is what an operator actually cares about.
+EVENT_BANDS = (("décile sup.", None), ("|résidu| > 30 cm", 0.30))
+
+
+def _event_scores(level: np.ndarray, x_ev: pd.DataFrame, obs_ev: pd.Series) -> list[dict]:
+    """Skill restricted to the hours where there is something to predict.
+
+    A MAE over every hour is dominated by calm ones, where the physical baseline
+    is already near-optimal and every candidate ties. That average answers "is
+    the model better on an ordinary day", which nobody asks; the question is
+    whether it holds up during the event. Reported as a **diagnostic only** —
+    the gate stays on the whole window, because narrowing the metric to the
+    hours a model does best on is exactly the move this project refuses.
+
+    The debiasing uses the **whole-window** bias, never one recomputed on the
+    band: a per-storm offset is not something the baseline could know in
+    advance, and granting it one would flatter the competitor into a straw man
+    in the opposite direction.
+    """
+    resid = obs_ev.to_numpy() - x_ev["baseline"].to_numpy()
+    abs_resid = np.abs(resid)
+    bias = float(resid.mean())
+    err_model = np.abs(level - obs_ev.to_numpy())
+
+    out = []
+    for label, threshold in EVENT_BANDS:
+        cut = np.quantile(abs_resid, 0.9) if threshold is None else threshold
+        mask = abs_resid >= cut
+        if mask.sum() < 24:  # less than a day of such hours: not worth a number
+            continue
+        mae_debiased = float(np.abs(resid[mask] - bias).mean())
+        mae_model = float(err_model[mask].mean())
+        out.append({
+            "label": label,
+            "n": int(mask.sum()),
+            "mae_base": float(abs_resid[mask].mean()),
+            "mae_debiased": mae_debiased,
+            "mae_model": mae_model,
+            "gain_debiased": (mae_debiased - mae_model) / mae_debiased if mae_debiased else 0.0,
+        })
+    return out
+
+
+def _levels(est, x_ev: pd.DataFrame, kind: str) -> np.ndarray:
+    """The candidate's prediction on the observation's own scale.
+
+    A `tide` model learns the residual, so its output only becomes a water level
+    once the harmonic baseline is added back; every other kind predicts the value
+    directly. One place decides that, because two places drifting apart would
+    silently compare a residual against a level.
+    """
     pred = model.predict(est, x_ev)
-    level = x_ev["baseline"].to_numpy() + pred if kind == "tide" else pred
+    return x_ev["baseline"].to_numpy() + pred if kind == "tide" else pred
+
+
+def _score(level: np.ndarray, x_ev: pd.DataFrame, obs_ev: pd.Series) -> dict:
+    """MAE and both gains of one fitted candidate on one eval window."""
     mae_model = float(np.abs(level - obs_ev.to_numpy()).mean())
     mae_base, _, mae_debiased = _reference(x_ev, obs_ev)
     return {
@@ -213,13 +289,16 @@ def evaluate(
     # validation slice. Same mechanics as the test split, one level in.
     val_scores = {}
     if len(model_names) > 1:
-        is_val = split_by_issue_day(x_train, test_days)
+        val_days = min(test_days, VAL_DAYS_CAP)
+        is_val = split_by_issue_day(x_train, val_days)
         if is_val.all() or not is_val.any():
-            print(f"  {station.id}: no room for a {test_days}d validation slice — skipped")
+            print(f"  {station.id}: no room for a {val_days}d validation slice — skipped")
             return None
         for name in model_names:
             m = model.train(x_train[~is_val], target_train[~is_val], name=name)
-            val_scores[name] = _score(m, x_train[is_val], obs_train[is_val], station.kind)
+            val_scores[name] = _score(
+                _levels(m, x_train[is_val], station.kind), x_train[is_val], obs_train[is_val]
+            )
     best = max(val_scores, key=lambda n: val_scores[n]["gain_debiased"]) if val_scores else (
         model_names[0]
     )
@@ -227,8 +306,12 @@ def evaluate(
     # The winner, refitted on the whole train window, is evaluated on the test
     # window exactly once — no max over candidates here.
     final = model.train(x_train, target_train, name=best)
-    scores = _score(final, x_test, obs_test, station.kind)
+    # Predict once: the summary score and the event bands read the same levels.
+    level_test = _levels(final, x_test, station.kind)
+    scores = _score(level_test, x_test, obs_test)
     row = {
+        "events": _event_scores(level_test, x_test, obs_test),
+        "test_days": test_days,
         "station": station.id,
         "kind": station.kind,
         "baseline_model": baseline_model,
@@ -302,9 +385,9 @@ def _failure_notes(rows: list[dict], gate_failed: list[str]) -> list[str]:
         f"   atteint pas les +{GATE:.0%} exigés : il ne trouve pas de signal exploitable",
         "   dans les features actuelles. Le forçage vent 10 m (`wind_u10`/`wind_v10`)",
         "   en fait partie depuis Task 7B — il a payé sur les stations de houle exposée",
-        "   mais **pas** sur celles ci-dessous — et la pression au niveau de la mer, le",
-        "   candidat suivant le plus évident, a été testée et écartée (voir la section",
-        "   « Pistes testées et écartées »). L'explication est donc ailleurs :",
+        "   mais **pas** sur celles ci-dessous. La pression au niveau de la mer, elle,",
+        "   n'est servie qu'aux stations `tide` (voir « Pistes testées et écartées ») :",
+        "   ce n'est donc pas un levier disponible ici. L'explication est ailleurs :",
         "   historique d'entraînement trop court, forçage local mal représenté par la",
         "   maille du modèle atmosphérique, ou grandeur encore absente. À trancher",
         "   station par station, mesure à l'appui — `train.py --ablate <colonnes>` chiffre",
@@ -347,13 +430,22 @@ def _rejected_leads() -> list[str]:
         "  | brest | tide | −2,0 pts |",
         "  | saint-malo | tide | **+4,8 pts** (mais reste sous le gate) |",
         "",
-        "  Seule `saint-malo` en profite, sans repasser au-dessus de son propre",
-        "  débiaisage ; `anglet` tombait sous le gate à cause d'elle. Lecture la plus",
-        "  simple : sur un historique court, une colonne sans effet direct sur les",
-        "  stations `wave` ajoute surtout de la variance. Conditionner la feature au",
-        "  `kind` de la station a été écarté : cela créerait deux chemins de",
-        "  construction de features, alors que l'unicité de ce chemin est la garantie",
-        "  centrale du projet contre le train/serve skew.",
+        "  Seule `saint-malo` en profitait, `anglet` tombait sous le gate à cause",
+        "  d'elle. Lecture d'alors : sur un historique court, une colonne sans effet",
+        "  direct sur les stations `wave` ajoute surtout de la variance.",
+        "",
+        "  **Verdict rouvert le 2026-08-04, et inversé pour les `tide` seulement.**",
+        "  Les deux mesures `tide` ci-dessus comparaient à la baseline harmonique de",
+        "  90 jours, dont la constituante annuelle non résolue laissait une dérive",
+        "  saisonnière dans le résidu. Pression et dérive sont toutes deux basse",
+        "  fréquence : l'ablation ne pouvait pas les séparer, et le verdict a donc été",
+        "  pris dans le seul régime où il était ininterprétable. Re-mesurée sur la",
+        "  baseline à 730 jours, la pression rapporte **+17 points** sur `brest`.",
+        "  Elle est servie aux `tide` via `wind.TIDE_FORCING_COLUMNS`, et à elles",
+        "  seules — une houle n'a pas de réponse baromètre inverse. L'objection",
+        "  « deux chemins de features » ne tenait pas : `features.py` porte déjà",
+        "  `WAVE_FEATURE_COLUMNS` et `WIND_FEATURE_COLUMNS`, seule la *fonction*",
+        "  `build_features` est unique, et elle le reste.",
         "  Détail : `.superpowers/sdd/2026-07-30-scoreboard-metocean-ia/task-7C-report.md`.",
         "",
     ]
@@ -399,9 +491,62 @@ def _ml_comparison(rows: list[dict]) -> list[str]:
     return lines + [""]
 
 
+def _event_diagnostic(rows: list[dict]) -> list[str]:
+    """Skill on the hours that carry an event — reported, never gated on."""
+    if not any(r.get("events") for r in rows):
+        return []
+    lines = [
+        "## Skill sur les événements — diagnostic, pas un critère",
+        "",
+        "La MAE sur la fenêtre entière est dominée par les heures calmes, où la",
+        "baseline physique est déjà quasi optimale et où tous les candidats font",
+        "match nul. Elle répond à « le modèle est-il meilleur un jour ordinaire ? »,",
+        "que personne ne demande. Le tableau ci-dessous restreint la mesure aux",
+        "heures où il y a quelque chose à prévoir.",
+        "",
+        "**Ce tableau ne décide rien.** Le gate reste sur la fenêtre entière :",
+        "restreindre la métrique aux heures où un modèle réussit le mieux serait",
+        "exactement le déplacement de poteaux que ce projet refuse. Il est là pour",
+        "dire *où* le skill se trouve, pas pour repêcher une station.",
+        "",
+        "Le débiaisage utilise le biais de la **fenêtre entière**, jamais un biais",
+        "recalculé sur la bande : une correction par tempête n'est pas quelque chose",
+        "que la baseline pourrait connaître à l'avance.",
+        "",
+        "| Station | Bande | Heures | MAE baseline | MAE baseline débiaisée | MAE modèle | Gain hors biais |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for r in rows:
+        for e in r.get("events", []):
+            lines.append(
+                f"| {r['station']} | {e['label']} | {e['n']} | {e['mae_base']:.3f} | "
+                f"{e['mae_debiased']:.3f} | {e['mae_model']:.3f} | "
+                f"**{e['gain_debiased']:+.1%}** |"
+            )
+    lines.append("")
+    return lines
+
+
+def _val_window(rows: list[dict]) -> int:
+    """Validation slice actually used, i.e. the test window capped by `VAL_DAYS_CAP`."""
+    return min(max((r["test_days"] for r in rows), default=DEFAULT_TEST_DAYS), VAL_DAYS_CAP)
+
+
+def _test_window_phrase(rows: list[dict]) -> str:
+    """"365" when every station shares a window, "30 (wave) / 365 (tide)" otherwise.
+
+    The window is per kind since 2026-08-04, so a single number in the report
+    would be wrong for at least one line — and this report is the document the
+    README copies from.
+    """
+    by_kind = {r["kind"]: r["test_days"] for r in rows}
+    if len(set(by_kind.values())) <= 1:
+        return str(next(iter(by_kind.values()), DEFAULT_TEST_DAYS))
+    return " / ".join(f"{d} ({k})" for k, d in sorted(by_kind.items()))
+
+
 def write_report(
     rows: list[dict],
-    test_days: int,
     gate: dict | None = None,
     skipped: list[str] | None = None,
 ) -> None:
@@ -414,7 +559,7 @@ def write_report(
         "",
         f"Généré par `pipeline/scripts/train.py` le "
         f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC "
-        f"(test = les {test_days} derniers jours d'émission).",
+        f"(test = les {_test_window_phrase(rows)} derniers jours d'émission).",
         "",
         "Le modèle **post-traite** une prévision physique officielle : il la corrige, il",
         "ne la remplace jamais. Cette baseline n'est plus imposée : pour une station",
@@ -485,6 +630,7 @@ def write_report(
         if gate_failed
         else "**Toutes les stations de `gate.json` passent le gate.**\n",
     ]
+    lines += _event_diagnostic(rows)
     lines += _ml_comparison(rows)
     lines += [
         "## Protocole",
@@ -493,7 +639,7 @@ def write_report(
         "  (émission 06 UTC, lead 1–48 h) ; les lignes d'une même émission partagent",
         "  `last_err` / `mean_err_24h`. Découper sur le temps de validité ferait donc",
         "  fuir une émission entre train et test. Le jour d'émission est reconstruit",
-        f"  comme `valid_time - lead_h`, et les {test_days} derniers jours d'émission",
+        f"  comme `valid_time - lead_h`, et les {_test_window_phrase(rows)} derniers jours d'émission",
         "  forment le test. Jamais de split aléatoire.",
         "* **Choix de la baseline (stations `wave`).** Les 5 modèles de vagues",
         "  Open-Meteo sont comparés à la bouée **sur les seuls jours d'émission",
@@ -502,7 +648,7 @@ def write_report(
         "  fenêtre de test : sinon la baseline serait choisie par les données mêmes qui",
         "  servent à la juger, ce qui gonflerait mécaniquement le gain.",
         "* **Choix du modèle ML — sur validation, jamais sur le test.** Les",
-        f"  {test_days} derniers jours d'émission **du train** forment une fenêtre de",
+        f"  {_val_window(rows)} derniers jours d'émission **du train** forment une fenêtre de",
         "  validation. Les trois candidats (`hgb`, `ridge`, `hgb-per-lead`) y sont",
         "  comparés, à features et baseline identiques ; le meilleur gain hors biais",
         "  gagne, est ré-entraîné sur tout le train, puis évalué **une seule fois** sur",
@@ -613,7 +759,12 @@ def merge_gate(previous: dict, rows: list[dict], known: set[str]) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--test-days", type=int, default=30, help="issue days held out for test")
+    ap.add_argument(
+        "--test-days",
+        type=int,
+        help=f"issue days held out for test (default: per kind, {TEST_DAYS_BY_KIND} "
+        f"else {DEFAULT_TEST_DAYS})",
+    )
     ap.add_argument(
         "--model",
         choices=model.MODEL_NAMES,
@@ -642,7 +793,7 @@ def main() -> int:
     load_env()
 
     model_names = (args.model,) if args.model else model.MODEL_NAMES
-    print(f"Training {', '.join(model_names)} (test = last {args.test_days} issue days):")
+    print(f"Training {', '.join(model_names)}:")
     if ablate:
         print(f"  ABLATION: {', '.join(ablate)} zeroed — artefacts and report NOT written")
     # Deux listes, jamais une seule : `configured` est ce que le dépôt déclare
@@ -659,7 +810,7 @@ def main() -> int:
     rows = [
         r
         for st in stations
-        if (r := evaluate(st, args.test_days, ablate, model_names)) is not None
+        if (r := evaluate(st, _test_days(st.kind, args.test_days), ablate, model_names)) is not None
     ]
     if not rows:
         print("nothing trained")
@@ -677,7 +828,7 @@ def main() -> int:
     GATE_PATH.write_text(json.dumps(gate, indent=2, sort_keys=True) + "\n")
 
     skipped = [s.id for s in configured if s.id not in {r["station"] for r in rows}]
-    write_report(rows, args.test_days, gate, skipped)
+    write_report(rows, gate, skipped)
     failed = [r["station"] for r in rows if not r["pass"]]
 
     print(f"\nreport -> {REPORT_PATH}")
