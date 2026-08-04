@@ -10,9 +10,10 @@ that loses to its own baseline is never published):
    `history.json` day entry.
 2. Build today's baseline: for a `wave` station, the Open-Meteo wave model the
    artefact was *trained against* (`baseline_model`, one marine request per
-   station) — for a `tide` station, a harmonic fit refitted on today's full
-   observation history (résolution 4 — a stale fit is exactly the bug this
-   project already paid for once, see `docs/data-sources.md`).
+   station) — for a `tide` station, a harmonic fit refitted every run on the
+   trailing `TIDE_FIT_LOOKBACK_DAYS` of observations (résolution 4 — a stale fit
+   is exactly the bug this project already paid for once, see
+   `docs/data-sources.md`).
 3. Fetch the atmospheric forcing — the 3 candidate models for wave, the single
    ARPEGE run for tide — and run inference through the trained model. The
    feature columns built here must match the artefact's `feature_columns`
@@ -20,9 +21,12 @@ that loses to its own baseline is never published):
    model was never fitted on.
 4. Publish today's `latest.json`.
 5. Archive the served wind forecast (`archive.write_day`, Task A1) for every
-   station that reached step 4 — the corpus a future retrain needs to remove
-   the ERA5-train/ARPEGE-serve skew documented in `docs/data-sources.md`. A
-   failure here is logged, never allowed to undo the publish above.
+   station that reached step 4 — the corpus a future retrain needs to measure
+   what a *real* +48 h forecast costs. Training now uses past ARPEGE runs rather
+   than ERA5, but Open-Meteo's Historical Forecast API concatenates its freshest
+   runs, so those "forecasts" are near-analysis (see `docs/plan-dev-modele.md`).
+   This archive is the only honest instrument for that gap. A failure here is
+   logged, never allowed to undo the publish above.
 
 Each station is wrapped in its own try/except (résolution 5): *any* exception
 anywhere in a station's pipeline — obs, scoring, baseline, forcing, or model —
@@ -38,11 +42,15 @@ review that caught a silent bug here): `OBS_LOOKBACK_DAYS` is a short window
 covering the feature engineering needs (`last_err`/`mean_err_24h`) and the
 scoring of the previous issue. `TIDE_FIT_LOOKBACK_DAYS` is the *harmonic fit*
 window — utide needs enough history to separate the main tidal constituents
-(M2/S2 need 14.8 days apart, M2/N2 need 27.6 days), so a fit on only a few
-days silently returns nonsense amplitudes rather than raising. Below
-`MIN_TIDE_FIT_DAYS` (the same 30-day floor `scripts/build_dataset.py` already
-enforces at training time) the station is marked missing instead of serving
-a degenerate baseline.
+(M2/S2 need 14.8 days apart, M2/N2 need 27.6 days, S2/K2 and K1/P1 need 182.6,
+Sa a full year — and 365 days sits exactly on that threshold, hence 730), so a
+fit on only a few days silently returns nonsense
+amplitudes rather than raising. It must stay equal to
+`harmonic.FIT_LOOKBACK_DAYS`, which the training backtest fits on: a shorter
+serve window than train window is a skew on the baseline itself. Below
+`MIN_TIDE_FIT_DAYS` (the same floor `scripts/build_dataset.py` enforces at
+training time, both tracking `harmonic.FIT_LOOKBACK_DAYS`) the station is
+marked missing instead of serving a degenerate baseline.
 """
 
 from __future__ import annotations
@@ -74,8 +82,12 @@ log = logging.getLogger(__name__)
 
 ISSUE_HOUR = 6  # UTC, matches dataset.assemble's training default
 OBS_LOOKBACK_DAYS = 4  # wave: >= 24h (mean_err_24h) + margin for a short outage
-TIDE_FIT_LOOKBACK_DAYS = 90  # utide needs months, not days, to separate constituents
-MIN_TIDE_FIT_DAYS = 30  # same hard floor as scripts/build_dataset.py's `24 * 30`
+TIDE_FIT_LOOKBACK_DAYS = harmonic.FIT_LOOKBACK_DAYS  # two years — see that constant
+# Same hard floor as scripts/build_dataset.py. It tracks the target window rather
+# than sitting below it: a station served on 30 days of history would be back in
+# the exact short-record regime FIT_LOOKBACK_DAYS exists to eliminate — no Sa, no
+# S2/K2 — so a new tide station stays `missing` until it has a real year.
+MIN_TIDE_FIT_DAYS = harmonic.FIT_LOOKBACK_DAYS
 BASELINE_LOOKBACK_H = 24
 BASELINE_HORIZON_H = 48
 # `archive.write_day`'s `source` for the wave path: the forcing archived there
@@ -108,8 +120,10 @@ def iso(t: pd.Timestamp) -> str:
 
 def _fetch_obs(station: Station, run_date: date) -> pd.Series:
     """One station-level fetch (résolution 5). Tide requests `TIDE_FIT_LOOKBACK_DAYS`
-    (chunked internally by `fetch_tide_obs`, ~3 HTTP requests — still one call here
-    and well within quota) so the harmonic fit below never starves for history.
+    (chunked internally by `fetch_tide_obs` at 30 days a request, so ~25 HTTP calls
+    and ~80 MB per tide station per run) so the harmonic fit below never starves
+    for history. That cost is why `docs/plan-dev-modele.md` designs persisting the
+    fitted coefficients instead of refetching the window every day.
 
     Le dispatch porte sur `station.source`, pas sur `station.kind` : c'est la
     source qui détermine à qui on parle, et deux sources peuvent servir le même
@@ -169,7 +183,12 @@ def _baseline_window(
     # year causally), production runs exactly once a day, so "refit every
     # run" costs the same as "refit every 30 days" would, but never serves a
     # fit older than today's obs (résolution 4).
-    past = obs[obs.index <= t0].dropna()
+    # Bound the fit window here, explicitly, rather than trusting `_fetch_obs` to
+    # have asked for exactly that span: the training backtest slices it explicitly
+    # (`harmonic.causal_predict`), so leaving the serve side's window implicit in
+    # the fetch is how the two silently diverged in the first place.
+    lookback = pd.Timedelta(days=TIDE_FIT_LOOKBACK_DAYS)
+    past = obs[(obs.index <= t0) & (obs.index > t0 - lookback)].dropna()
     min_hours = MIN_TIDE_FIT_DAYS * 24
     if len(past) < min_hours:
         raise SourceError(

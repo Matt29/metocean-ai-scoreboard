@@ -71,6 +71,45 @@ def test_causal_predict_ignores_observations_after_the_issue():
 
 
 
+def test_causal_predict_fit_window_slides_instead_of_expanding():
+    """Obs older than `lookback_days` must not reach the fit.
+
+    The daily run can only fetch a bounded window, so a backtest fitting on the
+    expanding history would score a baseline better than the served one. Poison
+    the oldest observations: inside the bound they are invisible, outside it they
+    move the baseline — the second half is what gives this test teeth.
+    """
+    index = pd.date_range("2026-01-01", periods=300 * 24, freq="h", tz="UTC")
+    obs = _tide(index, index[0])
+    first_cutoff = index[0] + pd.Timedelta(days=200)
+    times = pd.date_range(first_cutoff, first_cutoff + pd.Timedelta(days=60), freq="h", tz="UTC")
+
+    poisoned = obs.copy()
+    poisoned[poisoned.index < index[0] + pd.Timedelta(days=90)] += 100.0
+
+    def run(series, lookback):
+        return causal_predict(
+            series, LAT, times, first_cutoff=first_cutoff,
+            refit_days=1000, lookback_days=lookback,  # one cutoff, keeps the test cheap
+        )
+
+    # Window [cutoff-100d, cutoff) = days 100..200 — entirely after the poison.
+    bounded_clean, bounded_poisoned = run(obs, 100), run(poisoned, 100)
+    assert not bounded_clean.empty
+    pd.testing.assert_series_equal(bounded_clean, bounded_poisoned)
+
+    # Window [cutoff-250d, cutoff) reaches back into it, so the fit must move.
+    assert np.abs(run(obs, 250) - run(poisoned, 250)).mean() > 1.0
+
+
+def test_causal_predict_rejects_a_non_advancing_lookback():
+    """`lookback_days=0` would fit on an empty window — fail fast instead."""
+    index = pd.date_range("2026-01-01", periods=60 * 24, freq="h", tz="UTC")
+    obs = _tide(index, index[0])
+    with pytest.raises(ValueError, match="lookback_days"):
+        causal_predict(obs, LAT, index, first_cutoff=index[0], lookback_days=0)
+
+
 def test_causal_predict_rejects_a_non_advancing_refit_cadence():
     """`refit_days=0` would grow the cutoff list forever — fail fast instead."""
     index = pd.date_range("2026-01-01", periods=60 * 24, freq="h", tz="UTC")
