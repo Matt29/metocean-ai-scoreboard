@@ -29,6 +29,15 @@ tenue à l'écart de l'entraînement. Ce ne sont pas des jours notés en direct 
 n'y en a encore quasiment aucun. Le post doit le dire, en une phrase, sans s'en
 excuser.
 
+⚠️ **Le site affiche des chiffres plus bas que le post, et c'est attendu.** État
+au 2026-08-04 après re-génération de l'historique sur le pipeline actuel :
+brest **+26,9 %** (0,048 m contre 0,066 m), saint-malo **+11,4 %** (0,096 contre
+0,109). L'écart avec le backtest annuel (+50,4 % / +29,8 %) est **saisonnier** :
+la fenêtre notée est un mois d'été, le creux annuel de surcote, où l'harmonique
+seule s'en sort déjà bien — sa MAE tombe à 6,6 cm contre 11,8 cm en moyenne
+annuelle. Le post traite ce point de front plutôt que de l'éviter ; ne pas
+supprimer ce paragraphe en raccourcissant.
+
 ---
 
 ## Post 1 — l'annonce (à publier maintenant)
@@ -92,11 +101,19 @@ ou rien. Brest et Saint-Malo, qui échouaient au critère dur, le passent
 maintenant.
 
 **Une réserve, écrite plutôt que cachée.** Ces chiffres sont du backtest, sur
-une année tenue à l'écart de l'entraînement. Ce ne sont pas encore des jours
-notés en direct — le compteur public vient de repartir de zéro, et c'est voulu :
-les stations de vent viennent d'émettre leur première prévision, les stations de
-houle repartent de 1 jour noté. Rien n'est maquillé derrière un historique
-reconstitué. Les jours seront publiés au fur et à mesure, y compris les mauvais.
+une année tenue à l'écart de l'entraînement. Le compteur en direct, lui, vient de
+repartir de zéro : les stations de vent ont émis leur première prévision, et
+chaque jour noté s'ajoutera au fur et à mesure, y compris les mauvais.
+
+**Et si vous cliquez, le tableau affichera un chiffre plus bas que celui-ci.**
+C'est normal, et c'est la deuxième chose que je voulais montrer. Le scoreboard
+note les jours au fil de l'eau — donc aujourd'hui, un mois d'été. Or la surcote
+est un phénomène d'hiver : Brest en porte **trois fois moins en juillet qu'en
+février**. Un mois d'août contient peu de chose à prévoir, l'harmonique seule s'y
+débrouille presque aussi bien, et l'écart se referme mécaniquement. Le chiffre
+annuel et le chiffre du mois disent la même vérité à deux saisons différentes.
+C'est exactement pour ça qu'un scoreboard se lit sur la durée, et qu'une
+annonce ponctuelle ne prouve rien.
 
 Une station de houle, Cherbourg, reste sous le gate. Elle reste au tableau avec
 son verdict écrit, plutôt que retirée de la liste. C'est le genre de ligne qu'on
