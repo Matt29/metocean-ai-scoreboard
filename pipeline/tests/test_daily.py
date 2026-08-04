@@ -4,7 +4,7 @@ SourceError must never take the others down with it."""
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
@@ -88,12 +88,35 @@ def _wave_obs_df(start, periods, value=1.3):
 
 
 def _tide_obs_df(start, date_end, value=2.0):
-    """Hourly obs spanning the whole requested window — the harmonic fit floor
-    and the lookback both track `harmonic.FIT_LOOKBACK_DAYS` (one year), so the
-    mock has to actually reflect the window daily.py asks for, not a fixed
-    handful of days."""
+    """Hourly obs spanning the whole requested window — depuis les constantes
+    persistées, ce n'est plus qu'`OBS_LOOKBACK_DAYS`, mais le mock reflète
+    toujours la fenêtre réellement demandée plutôt qu'une durée fixe."""
     idx = pd.date_range(start, date_end, freq="1h", tz="UTC", inclusive="left")
     return pd.DataFrame({"level": np.full(len(idx), value)}, index=idx)
+
+
+class _FakeHarmonic:
+    """Les constantes persistées, sans utide : `daily` n'en lit que `fitted_at`
+    (péremption) et `predict` (la baseline servie)."""
+
+    def __init__(self, fitted_at):
+        self.fitted_at = fitted_at
+
+    def predict(self, times):
+        return pd.Series(2.0, index=times)
+
+
+def _patch_harmonic(monkeypatch, fitted_at=None):
+    fitted_at = fitted_at if fitted_at is not None else pd.Timestamp(RUN_DATE, tz="UTC")
+    monkeypatch.setattr(
+        daily.harmonic.HarmonicModel, "load", lambda path: _FakeHarmonic(fitted_at)
+    )
+    # Le rafraîchissement est neutralisé par défaut : sans ça, chaque test de
+    # `daily.run` déclencherait un vrai ajustement et **écrirait un artefact dans
+    # le `pipeline/models/` du dépôt** (constaté : `tide-b-harmonic.joblib` créé
+    # par la suite de tests). Les tests qui portent sur le rafraîchissement
+    # lui-même le re-patchent explicitement, plus bas.
+    monkeypatch.setattr(daily, "_ensure_harmonic", lambda *a, **k: None)
 
 
 def _marine_df(run_date=RUN_DATE, forecast_days=3, past_days=2):
@@ -176,6 +199,7 @@ def patched_sources(monkeypatch):
         lambda station, start, date_end=None: _wind_obs_df(start),
     )
     monkeypatch.setattr(daily.model, "load_artifact", _artifact)
+    _patch_harmonic(monkeypatch)
     return monkeypatch
 
 
@@ -534,19 +558,108 @@ def test_stale_pending_is_dropped_after_max_age(tmp_path, patched_sources):
     assert stale["series"] == entry["series"]  # scored points untouched
 
 
-def test_harmonic_fit_below_30_days_of_tide_obs_marks_the_station_missing(
-    tmp_path, patched_sources
-):
-    """Blocker 1 regression: a short tide history must never silently fit a
-    degenerate harmonic baseline (utide can't separate M2/S2/N2 on a few days)."""
-    patched_sources.setattr(
-        daily, "fetch_tide_obs",
-        lambda station, start, date_end=None: _tide_obs_df(date_end - pd.Timedelta(days=10), date_end),
+def test_expired_harmonic_constants_mark_the_station_missing(tmp_path, patched_sources):
+    """Un cron de ré-ajustement mort doit faire une station manquante, pas une
+    baseline périmée servie en silence. La péremption est `harmonic.REFIT_DAYS`,
+    la cadence même que le backtest rejoue : au-delà, la production servirait une
+    baseline plus vieille que celle sur laquelle le modèle a été noté."""
+    t0 = pd.Timestamp(RUN_DATE, tz="UTC") + pd.Timedelta(hours=daily.ISSUE_HOUR)
+    fresh = t0 - pd.Timedelta(days=daily.harmonic.REFIT_DAYS)
+    _patch_harmonic(patched_sources, fitted_at=fresh)
+    assert daily.run(
+        RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+    )["tide-b"]["status"] == "ok"
+
+    _patch_harmonic(patched_sources, fitted_at=fresh - pd.Timedelta(days=1))
+    summary = daily.run(
+        RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
     )
-    summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    assert summary["tide-b"]["status"] == "missing"
+    assert "harmonique" in summary["tide-b"]["reason"]
+
+
+def test_fresh_constants_are_not_refitted(tmp_path, monkeypatch):
+    """Le run ne doit pas repayer les deux ans de REFMAR tous les matins : tant
+    que l'artefact est dans sa cadence, aucun ajustement."""
+    calls = []
+    monkeypatch.setattr(daily, "refit_harmonic", lambda *a, **k: calls.append(a))
+    monkeypatch.setattr(daily.harmonic, "artifact_path", lambda sid, md=None: tmp_path / f"{sid}.joblib")
+    (tmp_path / "tide-b.joblib").touch()
+    fresh = pd.Timestamp(RUN_DATE, tz="UTC") - pd.Timedelta(days=daily.harmonic.REFIT_DAYS)
+    monkeypatch.setattr(daily.harmonic.HarmonicModel, "load", lambda path: _FakeHarmonic(fresh))
+
+    daily._ensure_harmonic(TIDE, RUN_DATE)
+
+    assert calls == []
+
+
+def test_stale_or_missing_constants_are_refitted_by_the_run_itself(tmp_path, monkeypatch):
+    """La cadence servie en production doit être celle du backtest *par
+    construction* — donc le run se rafraîchit lui-même, sans cron séparé."""
+    calls = []
+    monkeypatch.setattr(daily, "refit_harmonic", lambda *a, **k: calls.append(a))
+    monkeypatch.setattr(daily.harmonic, "artifact_path", lambda sid, md=None: tmp_path / f"{sid}.joblib")
+
+    # Artefact absent (station neuve) : on ajuste.
+    daily._ensure_harmonic(TIDE, RUN_DATE)
+    assert len(calls) == 1
+
+    # Artefact d'un jour trop vieux : on ajuste aussi.
+    (tmp_path / "tide-b.joblib").touch()
+    stale = pd.Timestamp(RUN_DATE, tz="UTC") - pd.Timedelta(days=daily.harmonic.REFIT_DAYS + 1)
+    monkeypatch.setattr(daily.harmonic.HarmonicModel, "load", lambda path: _FakeHarmonic(stale))
+    daily._ensure_harmonic(TIDE, RUN_DATE)
+    assert len(calls) == 2
+
+
+def test_a_station_too_young_to_fit_is_refused_loudly(tmp_path, monkeypatch):
+    """Moins de deux ans d'obs : pas d'ajustement sur une fenêtre trop courte —
+    utide y rendrait des amplitudes fausses sans jamais lever."""
+    monkeypatch.setattr(
+        daily, "fetch_tide_obs",
+        lambda station, start, date_end=None: _tide_obs_df(date_end - timedelta(days=30), date_end),
+    )
+    monkeypatch.setattr(daily.harmonic, "artifact_path", lambda sid, md=None: tmp_path / f"{sid}.joblib")
+
+    with pytest.raises(SourceError, match="pas d'ajustement"):
+        daily.refit_harmonic(TIDE, RUN_DATE)
+    assert not (tmp_path / "tide-b.joblib").exists()
+
+
+def test_a_failed_refresh_mid_run_marks_the_station_missing_not_served(tmp_path, patched_sources):
+    """`_ensure_harmonic` tourne avant `_fetch_obs`, dans le même bloc `try` de
+    `_run_station` : un ré-ajustement qui échoue au milieu d'un run complet doit
+    rendre la station `missing`, jamais servir un artefact partiel ou périmé — et
+    ne doit pas emporter les autres stations avec lui."""
+
+    def _boom(station, today, models_dir=None):
+        raise SourceError(station.id, "refmar 503")
+
+    patched_sources.setattr(daily, "_ensure_harmonic", _boom)
+
+    summary = daily.run(
+        RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+    )
 
     assert summary["tide-b"]["status"] == "missing"
     assert not (tmp_path / "tide-b" / "latest.json").exists()
+    assert summary["wave-a"]["status"] == "ok"
+
+
+def test_the_daily_tide_fetch_no_longer_asks_for_the_fit_window(tmp_path, patched_sources):
+    """Le gain de la persistance : ~4 jours de REFMAR par run au lieu de deux ans
+    (~50 requêtes, ~160 Mo). Une régression ici est silencieuse — le run reste
+    vert, il coûte juste 50 s de plus chaque matin."""
+    seen = {}
+
+    def _tide(station, start, date_end=None):
+        seen["span"] = (date_end - start).days
+        return _tide_obs_df(start, date_end)
+
+    patched_sources.setattr(daily, "fetch_tide_obs", _tide)
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+
+    assert seen["span"] <= daily.OBS_LOOKBACK_DAYS + 1  # +1 : `date_end` = demain
 
 
 # --- Task 6: the multi-model serve path ------------------------------------
@@ -671,7 +784,7 @@ def test_serve_baseline_covers_the_full_24h_error_window(patched_sources):
     today 00:00) only ~6 h are covered before a 06:00 issue, and the mean is
     silently computed on those — while training averages over the full window."""
     t0 = pd.Timestamp(RUN_DATE, tz="UTC") + pd.Timedelta(hours=daily.ISSUE_HOUR)
-    baseline = daily._baseline_window(WAVE, pd.Series(dtype=float), t0, _marine_df(), BASELINE_MODEL)
+    baseline = daily._baseline_window(WAVE, t0, _marine_df(), BASELINE_MODEL)
 
     past = baseline[baseline.index <= t0]
     assert len(past) == 24  # the full window `_baseline_window` clips to

@@ -45,6 +45,24 @@ def test_save_load_roundtrip(tmp_path):
 
     future = pd.date_range(t[-1] + pd.Timedelta(hours=1), periods=24, freq="h", tz="UTC")
     pd.testing.assert_series_equal(model.predict(future), loaded.predict(future))
+    # La date du fit voyage avec les coefficients : c'est elle, et pas la date
+    # d'écriture du fichier, qui dit à `daily` si l'artefact est périmé.
+    assert loaded.fitted_at == t[-1]
+
+
+def test_fit_does_not_extrapolate_the_secular_trend():
+    """Cicatrice du module : utide extrapole la tendance qu'il a estimée, et un
+    fit servi pendant des mois la propage — un fit de 90 j gelé avait porté un
+    offset de -0,3 m. Sur une série qui monte de 1 m/an, la prédiction à +180 j
+    doit rester centrée, pas suivre la rampe."""
+    t = pd.date_range("2026-01-01", periods=400 * 24, freq="h", tz="UTC")
+    hours = (t - t[0]) / pd.Timedelta(hours=1)
+    obs = pd.Series(2.0 * np.sin(2 * np.pi * hours / 12.42) + hours / (365 * 24), index=t)
+
+    future = pd.date_range(t[-1] + pd.Timedelta(days=180), periods=24 * 30, freq="h", tz="UTC")
+    drift = fit(obs, LAT).predict(future).mean() - obs.mean()
+
+    assert abs(drift) < 0.10  # la rampe extrapolée vaudrait ~+0,7 m
 
 
 def test_causal_predict_ignores_observations_after_the_issue():
@@ -58,8 +76,11 @@ def test_causal_predict_ignores_observations_after_the_issue():
     poisoned = obs.copy()
     poisoned[poisoned.index >= cut] += 100.0
 
-    clean_pred = causal_predict(obs, LAT, times, first_cutoff=first_cutoff)
-    poisoned_pred = causal_predict(poisoned, LAT, times, first_cutoff=first_cutoff)
+    # Cadence explicite et plus courte que `REFIT_DAYS` : le contrat anti-fuite
+    # ne dépend pas d'elle, mais la deuxième moitié du test (le refit finit par
+    # voir le poison) a besoin d'un refit dans la fenêtre de 6 mois évaluée.
+    clean_pred = causal_predict(obs, LAT, times, first_cutoff=first_cutoff, refit_days=30)
+    poisoned_pred = causal_predict(poisoned, LAT, times, first_cutoff=first_cutoff, refit_days=30)
 
     # Everything a forecast issued at or before `cut` can cover (t0 + 48h max).
     served = clean_pred.index <= cut + pd.Timedelta(hours=48)

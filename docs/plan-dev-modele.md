@@ -279,11 +279,94 @@ Trois conditions :
    d'une péremption. Sans ça, un cron cassé sert silencieusement un fit vieux
    de deux ans.
 
-**À mesurer avant de fixer la cadence** : le coût réel d'un fit vieux de 6 mois,
-par `causal_predict` à `refit_days=30` contre `refit_days=180`, même fenêtre
-d'évaluation. Quelques millimètres → prendre 6 mois. Un centimètre → cadence
-mensuelle, qui garde déjà ~30× du gain. Choisir sur le chiffre, pas sur
-l'intuition.
+**Mesuré le 2026-08-04, cadence retenue : 30 jours** — après avoir failli
+retenir 180, ce qui est la partie instructive.
+
+Première mesure, sur la **baseline seule** (`causal_predict`, même fenêtre
+d'évaluation : 2025-07-12 → 2026-08-04, 9313 h, `trend=False`) :
+
+| refit | Brest | Saint-Malo |
+|---|---|---|
+| 30 j | 11,65 cm | 14,99 cm |
+| 180 j | 11,72 cm | 15,63 cm |
+| 365 j | 11,85 cm | 16,11 cm |
+
+Six mois de péremption coûtent 0,7 mm à Brest et 6,4 mm à Saint-Malo — sous le
+centimètre, donc le cas « quelques millimètres → prendre 6 mois ». Verdict
+provisoire : 180 j.
+
+**Re-mesuré de bout en bout, après le modèle ML** — la seule quantité qu'on
+publie. Les deux changements du chantier ont dû être séparés, parce qu'ils
+avaient été introduits ensemble :
+
+| configuration | brest | saint-malo |
+|---|---|---|
+| refit 30 j, `trend=True` (état d'avant le chantier) | +53,3 % — 5,6 cm | +31,4 % — 10,6 cm |
+| refit 30 j, `trend=False` | **+50,7 % — 5,8 cm** | **+29,9 % — 10,6 cm** |
+| refit 180 j, `trend=False` | +48,7 % — 6,1 cm | +31,1 % — 10,8 cm |
+
+À Brest, `trend=False` coûte 2,6 pts et la cadence à 180 j en coûte 2,0 de plus.
+Le produit perd donc 3 mm sur la cadence là où la baseline seule n'en perdait que
+0,7 : **le modèle ML compense en partie les refits fréquents**, et une mesure
+prise sur la baseline seule ne pouvait pas le voir. À Saint-Malo la cadence est
+neutre, voire favorable.
+
+30 j rend ces 2 points et ne coûte rien d'opérationnel : le fit de ~50 s tombe
+une fois par mois au lieu d'une fois par jour, et le semestre n'aurait économisé
+que 50 s de plus par an. **Leçon générale, payée une fois de plus : mesurer la
+quantité publiée, jamais un proxy en amont** — c'est la même erreur de forme que
+la pression écartée le 2026-08-03 sur une baseline dérivante.
+
+`trend=False` reste retenu malgré ses 2,6 pts : c'est la condition 2, et elle
+achète un biais 2 à 3× meilleur (−1,4 / −1,8 cm contre +0,6 / −0,1 cm).
+**Réserve honnête** : cet arbitrage n'a pas été re-mesuré à 30 jours de
+péremption. L'argument d'origine (l'offset de −0,3 m) venait d'un fit figé bien
+plus vieux, et extrapoler une tendance sur 30 jours n'est pas l'extrapoler sur
+six mois. À rouvrir si on veut récupérer ces 2,6 points.
+
+Implémenté : `harmonic.REFIT_DAYS` (constante partagée backtest/production),
+`HarmonicModel.fitted_at` persisté, et `daily` qui marque la station `missing`
+au-delà de la péremption.
+
+**Ce que ça économise, mesuré le 2026-08-04 à Brest** : le fetch REFMAR
+quotidien passe de 730 jours (17 511 lignes, ~50 requêtes chunkées, **24,3 s**) à
+4 jours (87 lignes, une requête, **0,4 s**), auxquels s'ajoute le `utide.solve`
+qui ne tourne plus qu'une fois par mois. Soit ~25 s par station de marée et par
+jour, ×2 stations.
+
+⚠️ Un chiffre a été retiré ici : « le `daily --dry-run` complet tombe de ~50 s à
+2,4 s ». Il ne résiste pas à la vérification — le run complet mesuré après coup a
+pris **8 min**, dominé par Candhis et Open-Meteo pour les 8 stations, que ce
+chantier ne touche pas. L'économie est réelle mais elle est sur la jambe marée,
+pas sur le run entier. Même erreur de forme que la cadence choisie sur la
+baseline seule : mesurer précisément la portion qu'on a changée, et ne pas
+extrapoler au tout.
+
+**Le ré-ajustement est fait par le run lui-même** (`daily._ensure_harmonic`), pas
+par un cron séparé. C'est ce qui rend la condition 1 structurelle au lieu de
+conventionnelle : la cadence servie en production ne peut plus diverger de celle
+que `causal_predict` rejoue, puisqu'il n'y a qu'une constante et qu'un seul
+endroit qui décide de rafraîchir. Un cron semestriel séparé aurait été un
+deuxième réglage à garder d'accord avec le premier — exactement la famille de
+skew que ce chantier existait pour fermer. Coût : ~50 s **une fois par
+semestre**, sur le run qui franchit la péremption.
+
+Deux gardes, une seule cadence : `_ensure_harmonic` rafraîchit en amont,
+`_baseline_window` refuse en aval. Si le rafraîchissement échoue (REFMAR
+indisponible), la station est `missing` — jamais servie sur des constantes
+périmées. `scripts/fit_harmonic.py` reste comme CLI d'amorçage d'une station
+neuve, et appelle la même fonction de production.
+
+`.github/workflows/daily.yml` commite désormais `pipeline/models` : sans ça le
+fit rafraîchi serait jeté avec le runner et repayé à chaque run.
+
+**Anti-causalité assumée du backfill.** Une journée rejouée est reconstruite avec
+les constantes *du jour*, donc ajustées sur des observations postérieures à la
+journée en question. C'est minuscule — les constantes décrivent un site, pas la
+météo d'un jour — et ces journées portent `backfilled`. À rouvrir seulement si
+l'historique rejoué sert un jour à *mesurer* quelque chose plutôt qu'à remplir le
+graphe : il faudrait alors un fit par journée rejouée, ce que le coût ne
+justifie pas aujourd'hui.
 
 ---
 

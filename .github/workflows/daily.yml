@@ -116,8 +116,20 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          if git status --porcelain -- data pipeline/data_forecast_archive pipeline/data_obs_archive | grep -q .; then
-            git add data pipeline/data_forecast_archive pipeline/data_obs_archive
+          # Les constantes harmoniques sont dans la liste parce que le run les
+          # ré-ajuste tout seul tous les `harmonic.REFIT_DAYS` : sans ça le fit
+          # rafraîchi serait jeté avec le runner, et chaque run d'après le
+          # paierait à nouveau (~50 s) sans jamais le persister.
+          #
+          # Le motif est volontairement `*-harmonic.joblib` et non `pipeline/models`
+          # entier. Les trois autres répertoires ont l'invariant « tout ce qui y
+          # change pendant un run est légitime à commiter automatiquement » ;
+          # `pipeline/models` ne l'a pas — il contient `gate.json` et les `.joblib`
+          # du modèle ML, qui n'ont jamais changé que par un retrain local et
+          # humain. Un `git add` au répertoire ouvrirait la première voie de
+          # commit automatique vers ces fichiers-là.
+          if git status --porcelain -- data pipeline/data_forecast_archive pipeline/data_obs_archive 'pipeline/models/*-harmonic.joblib' | grep -q .; then
+            git add data pipeline/data_forecast_archive pipeline/data_obs_archive 'pipeline/models/*-harmonic.joblib'
             if [ -n "$BACKFILL_SINCE" ]; then
               git commit -m "chore(data): backfill since $BACKFILL_SINCE"
             else

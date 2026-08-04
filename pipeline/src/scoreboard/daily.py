@@ -4,16 +4,19 @@ For each station whose gate verdict is `pass: true` (résolution 2 — a station
 that loses to its own baseline is never published):
 
 1. Fetch the station's observations (one request, see `sources.candhis` /
-   `sources.waterlevel` quotas) and use them to score the predictions this
+   `sources.waterlevel` quotas, `OBS_LOOKBACK_DAYS` deep whatever the kind) and
+   use them to score the predictions this
    station published *yesterday* (read back from its own `latest.json`,
    matched to observations by nearest hour) — the scored result becomes a new
    `history.json` day entry.
 2. Build today's baseline: for a `wave` station, the Open-Meteo wave model the
    artefact was *trained against* (`baseline_model`, one marine request per
-   station) — for a `tide` station, a harmonic fit refitted every run on the
-   trailing `TIDE_FIT_LOOKBACK_DAYS` of observations (résolution 4 — a stale fit
-   is exactly the bug this project already paid for once, see
-   `docs/data-sources.md`).
+   station) — for a `tide` station, the harmonic constants
+   persisted in `models/<station>-harmonic.joblib`, served as long as they are
+   younger than `harmonic.REFIT_DAYS` (une analyse harmonique décrit un *site*,
+   pas une journée — le SHOM publie des constantes et les ports s'en servent des
+   années). Passé cet âge la station est marquée missing plutôt que servie
+   silencieusement par un cron mort.
 3. Fetch the atmospheric forcing — the 3 candidate models for wave, the single
    ARPEGE run for tide — and run inference through the trained model. The
    feature columns built here must match the artefact's `feature_columns`
@@ -37,20 +40,13 @@ scored (keyed by *that issue's own* `issued` date, however long ago it was
 issued) versus the day *this run* failed to issue anything at all (keyed by
 `run_date`) — a single run can write both in the same call.
 
-Two lookback windows, deliberately different since v1.1 (see the Task 8
-review that caught a silent bug here): `OBS_LOOKBACK_DAYS` is a short window
-covering the feature engineering needs (`last_err`/`mean_err_24h`) and the
-scoring of the previous issue. `TIDE_FIT_LOOKBACK_DAYS` is the *harmonic fit*
-window — utide needs enough history to separate the main tidal constituents
-(M2/S2 need 14.8 days apart, M2/N2 need 27.6 days, S2/K2 and K1/P1 need 182.6,
-Sa a full year — and 365 days sits exactly on that threshold, hence 730), so a
-fit on only a few days silently returns nonsense
-amplitudes rather than raising. It must stay equal to
-`harmonic.FIT_LOOKBACK_DAYS`, which the training backtest fits on: a shorter
-serve window than train window is a skew on the baseline itself. Below
-`MIN_TIDE_FIT_DAYS` (the same floor `scripts/build_dataset.py` enforces at
-training time, both tracking `harmonic.FIT_LOOKBACK_DAYS`) the station is
-marked missing instead of serving a degenerate baseline.
+Une seule fenêtre d'obs depuis que les constantes harmoniques sont persistées
+(2026-08-04) : `OBS_LOOKBACK_DAYS`, qui couvre les besoins du feature
+engineering (`last_err`/`mean_err_24h`) et le scoring de l'émission
+précédente. La marée avait la sienne, deux ans de REFMAR retéléchargés chaque
+matin (~50 requêtes, ~160 Mo, ~50 s) pour ré-ajuster une analyse qui ne bouge
+pas d'un jour sur l'autre ; cette profondeur-là vit maintenant dans
+`scripts/fit_harmonic.py`, à la cadence `harmonic.REFIT_DAYS`.
 """
 
 from __future__ import annotations
@@ -82,20 +78,14 @@ log = logging.getLogger(__name__)
 
 ISSUE_HOUR = 6  # UTC, matches dataset.assemble's training default
 OBS_LOOKBACK_DAYS = 4  # wave: >= 24h (mean_err_24h) + margin for a short outage
-TIDE_FIT_LOOKBACK_DAYS = harmonic.FIT_LOOKBACK_DAYS  # two years — see that constant
-# Same hard floor as scripts/build_dataset.py. It tracks the target window rather
-# than sitting below it: a station served on 30 days of history would be back in
-# the exact short-record regime FIT_LOOKBACK_DAYS exists to eliminate — no Sa, no
-# S2/K2 — so a new tide station stays `missing` until it has a real year.
-MIN_TIDE_FIT_DAYS = harmonic.FIT_LOOKBACK_DAYS
 BASELINE_LOOKBACK_H = 24
 BASELINE_HORIZON_H = 48
 # `archive.write_day`'s `source` for the wave path: the forcing archived there
 # is the 3-model frame, not any single named run (unlike tide's TIDE_FORECAST_MODEL).
 MULTI_FORCING_SOURCE = "openmeteo:multi"
 # Column prefix of the per-model baseline candidates, by station kind. A `tide`
-# station is absent on purpose: its baseline is a fresh harmonic fit, not a
-# column picked out of a multi-model frame.
+# station is absent on purpose: its baseline is the station's persisted
+# harmonic constants, not a column picked out of a multi-model frame.
 MODEL_PREFIX = {"wave": "hs_", "wind": "ws_"}
 # A day scored the morning after its issue only meets ~24h of its own leads —
 # the 25-48h tail stays "pending" in its history entry and is completed by
@@ -119,11 +109,10 @@ def iso(t: pd.Timestamp) -> str:
 
 
 def _fetch_obs(station: Station, run_date: date) -> pd.Series:
-    """One station-level fetch (résolution 5). Tide requests `TIDE_FIT_LOOKBACK_DAYS`
-    (chunked internally by `fetch_tide_obs` at 30 days a request, so ~25 HTTP calls
-    and ~80 MB per tide station per run) so the harmonic fit below never starves
-    for history. That cost is why `docs/plan-dev-modele.md` designs persisting the
-    fitted coefficients instead of refetching the window every day.
+    """One station-level fetch (résolution 5), `OBS_LOOKBACK_DAYS` deep quelle que
+    soit la source : depuis que les constantes harmoniques sont persistées, la
+    marée n'a plus besoin de ses deux ans d'historique au quotidien (une requête
+    REFMAR au lieu de ~50, ~0,3 Mo au lieu de ~160).
 
     Le dispatch porte sur `station.source`, pas sur `station.kind` : c'est la
     source qui détermine à qui on parle, et deux sources peuvent servir le même
@@ -142,21 +131,75 @@ def _fetch_obs(station: Station, run_date: date) -> pd.Series:
         df = fetch_wind_obs(station, start, date_end=run_date)
         return df["wind_speed"].astype(float).dropna().sort_index()
     if station.source == "shom":
-        start = run_date - timedelta(days=TIDE_FIT_LOOKBACK_DAYS)
+        start = run_date - timedelta(days=OBS_LOOKBACK_DAYS)
         df = fetch_tide_obs(station, start, date_end=run_date + timedelta(days=1))
         return df["level"].astype(float).dropna().sort_index()
     raise SourceError(station.id, f"aucun collecteur d'obs pour la source {station.source!r}")
 
 
+
+
+def refit_harmonic(
+    station: Station, today: date, models_dir: Path | None = None
+) -> harmonic.HarmonicModel:
+    """Ajuste les constantes sur `FIT_LOOKBACK_DAYS` d'obs et les persiste.
+
+    Le seul endroit du pipeline de production qui paie encore les deux ans de
+    REFMAR (~50 requêtes, ~160 Mo par station) — une fois par semestre au lieu
+    d'une fois par jour. `scripts/fit_harmonic.py` n'est qu'une CLI par-dessus :
+    ajuster à la main et ajuster en production doivent rester le même code.
+    """
+    end = today + timedelta(days=1)
+    obs = fetch_tide_obs(station, end - timedelta(days=harmonic.FIT_LOOKBACK_DAYS), date_end=end)
+    level = obs["level"].dropna()
+    if not harmonic.enough_for_fit(level):
+        # Station neuve : pas d'artefact, donc `missing` au quotidien jusqu'à ses
+        # deux ans d'obs. Refusé bruyamment, jamais ajusté sur moins. Le plancher
+        # est celui de l'entraînement, pas un second réglage (`harmonic`).
+        raise SourceError(
+            station.id, f"seulement {len(level)}h d'obs — pas d'ajustement harmonique"
+        )
+    fitted = harmonic.fit(level, station.lat)
+    fitted.save(harmonic.artifact_path(station.id, models_dir))
+    log.info("%s: constantes harmoniques ré-ajustées sur %sh, fit daté du %s",
+             station.id, len(level), f"{fitted.fitted_at:%Y-%m-%d}")
+    return fitted
+
+
+def _ensure_harmonic(station: Station, today: date, models_dir: Path | None = None) -> None:
+    """Ré-ajuste les constantes si elles manquent ou dépassent `REFIT_DAYS`.
+
+    Le run se rafraîchit lui-même plutôt que de dépendre d'un cron séparé à
+    maintenir : la cadence servie en production devient alors identique à celle
+    que `causal_predict` rejoue à l'entraînement **par construction**, et non
+    parce que deux réglages sont d'accord. C'était le vrai risque de la
+    conception (voir `docs/plan-dev-modele.md`).
+
+    La péremption reste vérifiée en aval dans `_baseline_window`, et ce n'est pas
+    une redondance : `fitted_at` date la **dernière observation vue**, pas
+    l'instant du fit. Un flux REFMAR en retard peut donc produire un artefact
+    déjà périmé sans que rien n'ait échoué ici. L'amont rafraîchit, l'aval
+    refuse — deux pannes différentes, une seule cadence.
+    """
+    path = harmonic.artifact_path(station.id, models_dir)
+    if path.exists():
+        age = (pd.Timestamp(today, tz="UTC") - harmonic.HarmonicModel.load(path).fitted_at).days
+        if age <= harmonic.REFIT_DAYS:
+            return
+        log.info("%s: constantes vieilles de %s j (> %s) — ré-ajustement",
+                 station.id, age, harmonic.REFIT_DAYS)
+    refit_harmonic(station, today, models_dir)
+
+
 def _baseline_window(
     station: Station,
-    obs: pd.Series,
     t0: pd.Timestamp,
     models: pd.DataFrame | None,
     baseline_model: str | None,
+    models_dir: Path | None = None,
 ) -> pd.Series:
-    """`[t0-24h, t0+48h]` baseline series — one physical model's column, or a fresh
-    harmonic fit.
+    """`[t0-24h, t0+48h]` baseline series — one physical model's column, or the
+    station's persisted harmonic constants.
 
     `baseline_model` is the artefact's own (`models/<station>.joblib`), never a
     module default: serving a station off a different physical model than the one
@@ -177,26 +220,21 @@ def _baseline_window(
         # to the trained horizon so `lead_h` never extrapolates past 48h.
         return baseline[(baseline.index > lo) & (baseline.index <= hi)]
 
-    # Tide: refit daily on every observation available up to t0. One
-    # utide.solve call per tide station per run is negligible — unlike
-    # training's 30-day-cadence backtest (needs ~180 fits/station to replay a
-    # year causally), production runs exactly once a day, so "refit every
-    # run" costs the same as "refit every 30 days" would, but never serves a
-    # fit older than today's obs (résolution 4).
-    # Bound the fit window here, explicitly, rather than trusting `_fetch_obs` to
-    # have asked for exactly that span: the training backtest slices it explicitly
-    # (`harmonic.causal_predict`), so leaving the serve side's window implicit in
-    # the fetch is how the two silently diverged in the first place.
-    lookback = pd.Timedelta(days=TIDE_FIT_LOOKBACK_DAYS)
-    past = obs[(obs.index <= t0) & (obs.index > t0 - lookback)].dropna()
-    min_hours = MIN_TIDE_FIT_DAYS * 24
-    if len(past) < min_hours:
+    # Marée : les constantes persistées, jamais un fit du jour. La péremption est
+    # exactement `harmonic.REFIT_DAYS`, la cadence que `causal_predict` rejoue à
+    # l'entraînement — tolérer un artefact plus vieux, ce serait servir une
+    # baseline plus périmée que celle sur laquelle le modèle a été noté.
+    # Artefact absent (station neuve, jamais ajustée) : le `FileNotFoundError`
+    # remonte tel quel à `_run_station`, qui marque la station missing en
+    # nommant le fichier manquant — pas la peine de le rhabiller.
+    fitted = harmonic.HarmonicModel.load(harmonic.artifact_path(station.id, models_dir))
+    age = (t0 - fitted.fitted_at).days
+    if age > harmonic.REFIT_DAYS:
         raise SourceError(
             station.id,
-            f"only {len(past)}h of tide obs (< {min_hours}h / {MIN_TIDE_FIT_DAYS}d) — "
-            "refusing a degenerate harmonic fit",
+            f"constantes harmoniques vieilles de {age} j (> {harmonic.REFIT_DAYS} j) — "
+            "le ré-ajustement du run a dû échouer, voir les logs",
         )
-    fitted = harmonic.fit(past, station.lat)
     window = pd.date_range(
         t0 - pd.Timedelta(hours=BASELINE_LOOKBACK_H),
         t0 + pd.Timedelta(hours=BASELINE_HORIZON_H),
@@ -406,7 +444,7 @@ def issue_series(
     """
     artifact = model.load_artifact(station.id, models_dir=models_dir)
     baseline_model = artifact["baseline_model"]
-    baseline = _baseline_window(station, obs, t0, models, baseline_model)
+    baseline = _baseline_window(station, t0, models, baseline_model, models_dir)
     feats = build_features(baseline, obs, t0, forcing, models=models)
     if list(feats.columns) != list(artifact["feature_columns"]):
         raise SourceError(
@@ -457,6 +495,11 @@ def _run_station(
     archive_dir: Path,
 ) -> dict:
     try:
+        # Avant tout le reste : des constantes fraîches, sinon la station est
+        # `missing` plus bas. Une fois par semestre, ce seul appel coûte les
+        # ~50 s de REFMAR que le run quotidien ne paie plus.
+        if station.kind == "tide":
+            _ensure_harmonic(station, run_date, models_dir)
         obs = _fetch_obs(station, run_date)
     except Exception as exc:  # noqa: BLE001 - one station's failure must never be global
         log.warning("%s: obs fetch failed: %s", station.id, exc)

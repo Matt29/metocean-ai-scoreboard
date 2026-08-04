@@ -119,7 +119,7 @@ def _deep_obs(station: Station, since: date, until: date, today: date) -> pd.Ser
         df = fetch_wind_obs_archive(station, start, date_end)
         return df["wind_speed"].astype(float).dropna().sort_index()
     if station.source == "shom":
-        start, date_end = _deep_window(since, until, today, daily.TIDE_FIT_LOOKBACK_DAYS)
+        start, date_end = _deep_window(since, until, today, daily.OBS_LOOKBACK_DAYS)
         df = fetch_tide_obs(station, start, date_end=date_end)
         return df["level"].astype(float).dropna().sort_index()
     raise SourceError(station.id, f"aucun collecteur d'obs pour la source {station.source!r}")

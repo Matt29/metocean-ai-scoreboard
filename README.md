@@ -40,14 +40,18 @@ run** : une ligne à +48 h est forcée par une prévision ECMWF réellement émi
 deux jours plus tôt (Previous Runs API d'Open-Meteo), et le run quotidien sert
 le même modèle. Cette contrainte a été posée le 2026-08-04 pour lever un doute
 sur les chiffres — le forçage d'entraînement provenait jusque-là de runs
-concaténés au plus frais, donc d'une quasi-analyse. Le doute est levé : les
-gains ne bougent quasiment pas (brest +53,1 → +53,3 %, saint-malo +30,0 →
-+28,0 %) et la pente gain/échéance reste la même. Le forçage n'est pas
-accessoire pour autant — l'annuler coûte 14 points à Brest — mais son **âge**
-ne coûte presque rien, ce qui est cohérent avec l'ordre de grandeur physique :
-1,4 hPa d'erreur ECMWF à +48 h, soit ~1,4 cm de baromètre inverse contre 5,6 cm
-de MAE modèle. Détail et méthode :
+concaténés au plus frais, donc d'une quasi-analyse. Le doute est levé : à ce
+changement-là les gains n'ont quasiment pas bougé (brest +53,1 → +53,3 %,
+saint-malo +30,0 → +28,0 %) et la pente gain/échéance est restée la même. Le
+forçage n'est pas accessoire pour autant — l'annuler coûte 14 points à Brest —
+mais son **âge** ne coûte presque rien, ce qui est cohérent avec l'ordre de
+grandeur physique : 1,4 hPa d'erreur ECMWF à +48 h, soit ~1,4 cm de baromètre
+inverse contre ~6 cm de MAE modèle. Détail et méthode :
 [`docs/plan-dev-modele.md`](docs/plan-dev-modele.md).
+
+Chiffres publiés au 2026-08-04, après le passage aux constantes harmoniques
+persistées : **brest +50,4 % hors biais** (11,8 → 5,8 cm de MAE) et
+**saint-malo +29,8 %** (15,1 → 10,6 cm).
 
 `pipeline/models/gate.json` fait foi : le tableau ci-dessous le recopie, il ne
 le décide pas. En cas de désaccord, c'est le tableau qui a vieilli.
@@ -94,7 +98,8 @@ GitHub Actions (cron, voir .github/workflows/daily.yml)
         ├─ 1. score les prédictions publiées hier (obs Candhis/SHOM d'aujourd'hui)
         ├─ 2. baseline du jour : meilleur modèle vague Open-Meteo Marine
         │      (`baseline_model`, choisi par station à l'entraînement) ou
-        │      refit harmonique (utide)
+        │      constantes harmoniques persistées (`models/<station>-harmonic.joblib`,
+        │      ré-ajustées par le run lui-même quand elles dépassent 30 j)
         ├─ 3. prévision atmosphérique Open-Meteo (ARPEGE/ICON/ECMWF selon le kind)
         │      → inférence du modèle IA (par station)
         ├─ 4. publie data/<station>/latest.json + history.json + data/scores.json

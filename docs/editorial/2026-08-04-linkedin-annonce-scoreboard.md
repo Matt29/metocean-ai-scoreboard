@@ -12,8 +12,12 @@ versions s'interdisaient tout pourcentage sur la marée, parce que les chiffres
 levée** : le forçage d'entraînement des stations de marée est passé à des runs
 ECMWF stratifiés par âge — une ligne à +48 h est forcée par une prévision
 réellement émise deux jours plus tôt — et les gains n'ont quasiment pas bougé
-(brest +53,1 → +53,3 %, saint-malo +30,0 → +28,0 %). Le post peut donc citer
-des chiffres. Détail et méthode : `docs/plan-dev-modele.md`.
+(brest +53,1 → +53,3 %). Le post peut donc citer des chiffres.
+
+Chiffres publiés en fin de journée, **après** le passage aux constantes
+harmoniques persistées, qui a coûté ~2 points à Brest : **brest +50,4 %**
+(11,8 → 5,8 cm), **saint-malo +29,8 %** (15,1 → 10,6 cm). Ce sont ceux-là qui
+sont dans le post. Vérifier `gate.json` avant publication, jamais ce fichier.
 
 État au 2026-08-04, recopié de `gate.json` : **8 stations notées sur 9**, une
 seule sous le gate (cherbourg, houle). Brest ET Saint-Malo passent, sur le gain
@@ -53,19 +57,19 @@ harmonique ne se trompe jamais sur la lune et ne voit jamais une dépression.
 Tout ce qui reste entre elle et le marégraphe — la surcote — est précisément ce
 que le vent et la pression ajoutent. C'est ça que le modèle apprend.
 
-Sur l'année de test tenue à l'écart, à Brest : **11,9 cm d'erreur moyenne pour
-l'harmonique, 5,6 cm pour le modèle.** L'erreur est divisée par deux. À
-Saint-Malo, 15,5 → 11,2 cm.
+Sur l'année de test tenue à l'écart, à Brest : **11,8 cm d'erreur moyenne pour
+l'harmonique, 5,8 cm pour le modèle.** L'erreur est divisée par deux. À
+Saint-Malo, 15,1 → 10,6 cm.
 
 Trois choses rendent ce chiffre défendable, et c'est le vrai sujet du post :
 
-**1. Il tient à l'échéance.** +63 % à 1-6 h, encore **+50 % à 37-48 h**. Un
+**1. Il tient à l'échéance.** +61 % à 1-6 h, encore **+47 % à 37-48 h**. Un
 modèle qui ne gagnerait qu'à très courte échéance ferait du nowcasting déguisé :
 il lirait l'erreur d'hier et la prolongerait. Ici la marge survit à deux jours.
 
 **2. C'est bien de la physique, pas un recalage.** Si je coupe le vent et la
-pression et que je ne laisse que la mémoire de l'erreur passée, le gain tombe de
-53 à 39 %. Ces 14 points sont la part que seule la météo peut expliquer.
+pression et que je ne laisse que la mémoire de l'erreur passée, le gain perd
+14 points. C'est la part que seule la météo peut expliquer.
 
 **3. Il est mesuré contre une baseline déjà débiaisée.** Le gate d'entrée du
 scoreboard ne compare pas à l'harmonique brute, mais à l'harmonique dont on a
@@ -150,7 +154,7 @@ affirmations du post (le réseau publié, et ce que le modèle prédit vraiment)
 1. **`figure-brest-surcote.png`** (dans ce dossier, généré depuis les données du
    dépôt) — **l'image de tête**. Une seule émission, celle du 22 janvier 2026 à
    06 UTC, et ses 48 h : niveau observé, prédiction harmonique, modèle IA ; en
-   dessous, la surcote seule. Sur ces 48 h, 46 cm d'erreur pour l'harmonique,
+   dessous, la surcote seule. Sur ces 48 h, 44 cm d'erreur pour l'harmonique,
    11 cm pour le modèle. C'est le visuel qui montre en une seconde ce qu'aucune
    phrase ne fait passer : l'harmonique est *décalée vers le bas pendant deux
    jours*, et c'est cet écart-là que le modèle prédit.
@@ -205,6 +209,10 @@ apparaître de jours rejoués depuis les archives dans le cadrage.
 - **Ne jamais écrire que la pression « n'a pas marché ».** Elle a fait gagner
   17 points sur Brest. Ce qui a échoué à un moment, c'est le modèle face à une
   baseline encore mal conditionnée — deux choses différentes.
+- **Les chiffres de ce fichier vieillissent à chaque retrain.** Ils ont déjà
+  bougé deux fois le 2026-08-04 (forçage ECMWF, puis constantes harmoniques
+  persistées). `gate.json` et `docs/model-eval.md` font foi — relire les deux
+  avant de publier, et corriger le post plutôt que l'inverse.
 - **Saint-Malo passe désormais le gate.** L'ancienne note « ne pas arrondir, elle
   échoue à 0,05 point » est périmée : c'était vrai à la fenêtre harmonique de
   365 j. Vérifier `gate.json` avant de publier, jamais ce fichier.
