@@ -202,8 +202,53 @@ Deux corrections de cadrage issues du premier run réel :
   exploitables**, pas 9, tant que le comptage quotidien ne montre pas le
   contraire.
 
-Reste à faire pour cette demande : inscription des bouées comme stations
-scorées (`stations.toml`, gate, verdict, publication) et carte.
+### ✅ Les deux préalables mesurés, tranchés le 2026-08-04
+
+Comptés sur les 4 jours d'archive (`data_obs_archive/`, 713 lignes) :
+
+| WMO | lat | lon | heures | dont Hs non-null |
+|---|---|---|---|---|
+| 6100001 | 43.37 | 7.85 | 80 | 80 |
+| 6100002 | 42.07 | 4.66 | 75 | 75 |
+| 6101031 | 41.76 | 7.59 | 80 | 80 |
+| 6101032 | 41.60 | 10.20 | 75 | 75 |
+| 6101033 | 42.81 | 8.42 | 84 | 84 |
+| 6101034 | 41.58 | 5.51 | 79 | 79 |
+| **6101035** | 40.49 | 6.69 | 76 | **0** |
+| 6101036 | 42.34 | 6.71 | 80 | 80 |
+| 6200001 (Gascogne) | 45.23 | -4.97 | 84 | 84 |
+
+**8 bouées exploitables, confirmé** : les 8 servent la houle 100 % des heures
+où elles émettent ; 6101035 reste à 0 sur 76 h. À revoir seulement si un
+comptage ultérieur la voit émettre.
+
+**Couverture Open-Meteo aux 9 positions : 100 %**, sur 2025-08-01 → 2026-08-01
+(8784 h), pour les 5 modèles de vagues *et* les 3 modèles de vent. Le préalable
+« sonder la couverture Marine avant d'inscrire une bouée » (plus bas) est donc
+levé : aucune bouée n'est disqualifiée par la donnée d'entrée. Méthode :
+`scripts/probe_coverage.py` transposé aux positions lues dans l'archive d'obs.
+
+### ⛔ L'inscription ne peut rien produire avant le premier entraînement
+
+Le cadrage ci-dessous supposait un service « baseline seule » en attendant le
+modèle. **Ce mode n'existe pas** : `daily.run` ne fait tourner que les stations
+dont le gate passe (`published = [s for s in stations if gate[s.id]["pass"]]`).
+Une bouée inscrite sans artefact n'est donc ni scorée, ni archivée — elle
+n'apparaît que comme une ligne « en attente » dans `stations.json`.
+
+Et rien dans le corpus d'entraînement n'en dépend : `scripts/build_dataset.py`
+lit les features dans les archives *historiques* Open-Meteo (100 % dispo,
+mesuré ci-dessus), pas dans `data_forecast_archive/`. Le seul compteur qui
+tourne est celui des obs, et il tourne déjà.
+
+**Conclusion : inscrire les bouées en `stations.toml` est à faire au moment de
+l'entraînement Med (2026-10/11), pas avant.** Le travail restant d'ici là est
+la carte (volet 2), qui ne dépend d'aucun modèle.
+
+Reste à faire pour cette demande : la carte maintenant ; l'inscription des
+bouées comme stations scorées (`stations.toml`, dispatch de source dans
+`daily._fetch_obs`, obs d'entraînement lues dans `data_obs_archive/`, gate,
+verdict, publication) avec l'entraînement d'octobre.
 
 ### Le chemin imposé par la rétention de `/bouees`
 
@@ -213,9 +258,9 @@ scorées (`stations.toml`, gate, verdict, publication) et carte.
   historiques existent (l'archive Open-Meteo Marine couvre la Méditerranée),
   mais il n'y a AUCUNE archive d'obs bouées MF via cette API. Donc :
   **archiver les obs dès maintenant** (fait, cf. ci-dessus : le cron quotidien
-  les committe, même mécanique que `data_forecast_archive/`), servir d'abord en
-  « baseline seule » (gate non passé, non publié — le mécanisme existe),
-  puis entraîner quand ~2-3 mois d'obs sont accumulés.
+  les committe, même mécanique que `data_forecast_archive/`), puis entraîner
+  quand ~2-3 mois d'obs sont accumulés. (Le « servir d'abord en baseline
+  seule » envisagé ici n'existe pas dans le pipeline — voir ci-dessus.)
 - Nouveau module source `sources/mfbuoy.py` (auth `apikey`, quotas ~50-60
   req/min largement suffisants) ; `kind = "wave"` réutilise toute la chaîne
   multi-modèles du chantier 2026-08. Vérifier la couverture Marine API sur
