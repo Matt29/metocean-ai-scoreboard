@@ -13,11 +13,14 @@ Justification de chaque source de données : [`docs/data-sources.md`](docs/data-
 
 ## Stations
 
-9 stations retenues, **8 publiées** — la station restante est mesurée comme
+9 stations retenues, **7 publiées** — les deux restantes sont mesurées comme
 les autres tous les jours, mais un *gate* qualité (`pipeline/models/gate.json`)
 retient toute station où l'IA ne bat pas sa propre baseline sur les données
 d'entraînement. Ce n'est pas une faiblesse cachée : c'est l'argument du
 produit — ce scoreboard ne publie que ce qu'il peut démontrer.
+
+`pipeline/models/gate.json` fait foi : le tableau ci-dessous le recopie, il ne
+le décide pas. En cas de désaccord, c'est le tableau qui a vieilli.
 
 Pour les stations houle **et vent**, la baseline officielle n'est pas un modèle
 fixe : à l'entraînement, `scripts/train.py` retient par station le **meilleur**
@@ -32,8 +35,8 @@ que le gate et le serve utilisent ensuite.
 | Pierres Noires | houle (Hs) | Candhis | Open-Meteo Marine (`ncep_gfswave025`) | oui |
 | Belle-Île | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | oui |
 | Anglet | houle (Hs) | Candhis | Open-Meteo Marine (`meteofrance_wave`) | oui |
-| Cherbourg | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | oui |
-| Brest | niveau d'eau | SHOM REFMAR | harmonique (utide) | oui |
+| Cherbourg | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | non (sous le gate) |
+| Brest | niveau d'eau | SHOM REFMAR | harmonique (utide) | oui (signalée `weak`) |
 | Saint-Malo | niveau d'eau | SHOM REFMAR | harmonique (utide) | non (sous le gate) |
 | Ouessant (Le Stiff) | vent 10 m | Météo-France DPObs | Open-Meteo (`meteofrance_arpege_europe`) | oui |
 | Dieppe | vent 10 m | Météo-France DPObs | Open-Meteo (`meteofrance_arpege_europe`) | oui |
