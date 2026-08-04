@@ -18,13 +18,20 @@ coverage is checked per column and `SourceError` is raised below
 `_MIN_FORCING_COVERAGE`: the daily run marks the station missing and does not
 publish it, rather than publishing a silently wrong correction.
 
-`wave_models` (optional, wave stations only) is the same kind of input as
-`forcing`: a *forecast* of Hs by several wave models at each lead's valid time.
-Like `forcing` it may legitimately carry values posterior to `t0` and is never
-truncated; unlike `obs_recent` it cannot leak. Passing it switches the frame to
-`WAVE_FEATURE_COLUMNS` (per-model Hs + their spread + multi-model wind), and the
-forcing frame is then read on `MULTI_FORCING_COLUMNS`. Passing nothing leaves
-the tide path exactly as it was.
+`models` (optional, multi-model stations) is the same kind of input as
+`forcing`: a *forecast* of the observed quantity by several physical models at
+each lead's valid time — Hs by the 5 wave models for `kind="wave"`, 10 m wind
+speed by the 3 atmospheric models for `kind="wind"`. Like `forcing` it may
+legitimately carry values posterior to `t0` and is never truncated; unlike
+`obs_recent` it cannot leak. Passing it switches the frame to
+`model_feature_columns(models.columns)` (per-model value + their spread +
+multi-model wind), and the forcing frame is then read on
+`MULTI_FORCING_COLUMNS`. Passing nothing leaves the tide path exactly as it was.
+
+The column list is taken from the frame itself rather than from a per-kind
+constant: that is what makes the wave and wind paths **one** code path instead
+of two, and one code path is this project's central guarantee against
+train/serve skew.
 """
 
 from __future__ import annotations
@@ -35,7 +42,7 @@ import pandas as pd
 from scoreboard.sources import SourceError
 from scoreboard.sources.marine import MODEL_COLUMNS
 from scoreboard.sources.wind import FORCING_COLUMNS as _FORCING_COLUMNS
-from scoreboard.sources.wind import MULTI_FORCING_COLUMNS
+from scoreboard.sources.wind import MULTI_FORCING_COLUMNS, WIND_MODEL_COLUMNS
 
 FEATURE_COLUMNS = [
     "baseline",
@@ -53,12 +60,20 @@ FEATURE_COLUMNS = [
     "wind_v10",
 ]
 
-# Wave stations: the same 6 leading columns, then one Hs column per wave model,
-# their row-wise dispersion (a cheap uncertainty proxy), then the wind of each
-# candidate atmospheric model instead of the single one.
-WAVE_FEATURE_COLUMNS = (
-    FEATURE_COLUMNS[: -len(_FORCING_COLUMNS)] + MODEL_COLUMNS + ["model_spread"] + MULTI_FORCING_COLUMNS
-)
+def model_feature_columns(model_columns: list[str]) -> list[str]:
+    """Multi-model stations: the same 6 leading columns, then one column per
+    physical model, their row-wise dispersion (a cheap uncertainty proxy), then
+    the wind of each candidate atmospheric model instead of the single one."""
+    return (
+        FEATURE_COLUMNS[: -len(_FORCING_COLUMNS)]
+        + list(model_columns)
+        + ["model_spread"]
+        + MULTI_FORCING_COLUMNS
+    )
+
+
+WAVE_FEATURE_COLUMNS = model_feature_columns(MODEL_COLUMNS)
+WIND_FEATURE_COLUMNS = model_feature_columns(WIND_MODEL_COLUMNS)
 
 # 0.0 on every forcing column means calm, i.e. "no atmospheric forcing
 # correction" — the neutral fallback, consistent with the never-NaN contract.
@@ -67,9 +82,11 @@ _NEUTRAL_FORCING = 0.0
 # Both providers deliver a gap-free hourly grid, so a few missing hours are a
 # blip while a third of the horizon missing is a degraded fetch, not weather.
 _MIN_FORCING_COVERAGE = 0.9
-# Hs only: hours of hole a linear-in-time interpolation may bridge. A sea state
-# barely moves over 3 h; beyond that we would be inventing a swell.
-_MAX_HS_GAP = 3
+# Model columns only: hours of hole a linear-in-time interpolation may bridge.
+# A sea state barely moves over 3 h; beyond that we would be inventing a swell.
+# Same bound kept for wind speed — 3 h is already generous for a gust-scale
+# quantity, and widening it would fabricate the very weather being measured.
+_MAX_MODEL_GAP = 3
 
 _ALIGN_TOLERANCE = pd.Timedelta("1h")
 
@@ -111,12 +128,12 @@ def build_features(
     obs_recent: pd.Series,
     t0: pd.Timestamp,
     forcing: pd.DataFrame,
-    wave_models: pd.DataFrame | None = None,
+    models: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """One row per baseline hour strictly after `t0`.
 
-    Columns `FEATURE_COLUMNS`, or `WAVE_FEATURE_COLUMNS` when `wave_models` is
-    given (a forecast frame with `MODEL_COLUMNS`, see the module docstring).
+    Columns `FEATURE_COLUMNS`, or `model_feature_columns(models.columns)` when
+    `models` is given (a multi-model forecast frame, see the module docstring).
     """
     baseline = baseline.dropna().sort_index()
     # Anti-leak: everything after t0 is discarded before any feature is computed.
@@ -143,26 +160,27 @@ def build_features(
     feats["mean_err_24h"] = mean_err_24h
     feats["hour_sin"] = np.sin(2 * np.pi * future.index.hour / 24)
     feats["hour_cos"] = np.cos(2 * np.pi * future.index.hour / 24)
-    if wave_models is None:
+    if models is None:
         _add_aligned(feats, forcing, _FORCING_COLUMNS)
         return feats[FEATURE_COLUMNS]
 
     # Each model gets the forcing treatment: nearest-hour alignment and the same
     # 90% coverage floor, so a dead model raises instead of being served as flat
     # water. Short holes are interpolated in time first, because the 0.0 fallback
-    # is wrong for Hs: 0 m of sea does not exist, and an isolated zero would
-    # inflate `model_spread` exactly where the data is missing. The wind columns
-    # below keep the 0.0 fill — a 0 m/s wind is an ordinary calm. Holes longer
-    # than `_MAX_HS_GAP` stay NaN and are caught by the coverage floor.
+    # is wrong for a model column: 0 m of sea does not exist, and an isolated zero
+    # would inflate `model_spread` exactly where the data is missing. The wind
+    # forcing below keeps the 0.0 fill — a 0 m/s wind is an ordinary calm. Holes
+    # longer than `_MAX_MODEL_GAP` stay NaN and are caught by the coverage floor.
+    model_columns = list(models.columns)
     _add_aligned(
         feats,
-        wave_models.sort_index().interpolate(method="time", limit=_MAX_HS_GAP),
-        MODEL_COLUMNS,
+        models.sort_index().interpolate(method="time", limit=_MAX_MODEL_GAP),
+        model_columns,
     )
     # Vectorised `_finite`: the guard above already forecloses NaN, kept because
     # "a feature is never NaN" is a contract, not an inference from the caller.
     feats["model_spread"] = np.nan_to_num(
-        feats[MODEL_COLUMNS].to_numpy().std(axis=1), nan=0.0, posinf=0.0, neginf=0.0
+        feats[model_columns].to_numpy().std(axis=1), nan=0.0, posinf=0.0, neginf=0.0
     )
     _add_aligned(feats, forcing, MULTI_FORCING_COLUMNS)
-    return feats[WAVE_FEATURE_COLUMNS]
+    return feats[model_feature_columns(model_columns)]

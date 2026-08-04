@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -167,3 +168,29 @@ def test_evaluate_writes_an_artefact_carrying_baseline_model_and_feature_columns
     artefact = model.load_artifact("synthetic", models_dir=tmp_path)
     assert artefact["baseline_model"] == "gwam"
     assert artefact["feature_columns"] == WAVE_FEATURE_COLUMNS
+
+
+def test_station_filter_never_evicts_the_untrained_stations_from_the_gate(tmp_path, monkeypatch):
+    """`--station` restreint ce qu'on ENTRAÎNE, jamais ce que `gate.json` a le
+    droit de contenir. Confondre les deux dépublierait en silence toute station
+    absente du run — un entraînement ciblé sur une station en retirerait cinq."""
+    gate_path = tmp_path / "gate.json"
+    previous = {
+        "anglet": {"pass": True, "weak": False},
+        "brest": {"pass": True, "weak": False},
+        "retiree": {"pass": True, "weak": False},  # plus dans stations.toml
+    }
+    gate_path.write_text(json.dumps(previous))
+    monkeypatch.setattr(train, "GATE_PATH", gate_path)
+
+    configured = {"anglet", "brest", "ouessant"}
+    rows = [{
+        "station": "ouessant", "baseline_model": "icon_eu", "pass": True, "weak": False,
+        "mae_model": 1.0, "mae_base": 1.2, "gain": 0.16, "gain_debiased": 0.10,
+    }]
+    gate = train.merge_gate(json.loads(gate_path.read_text()), rows, known=configured)
+
+    assert gate["anglet"] == previous["anglet"], "station non entraînée : verdict intact"
+    assert gate["brest"] == previous["brest"]
+    assert gate["ouessant"]["pass"] is True
+    assert "retiree" not in gate, "seule la sortie de stations.toml évince une entrée"

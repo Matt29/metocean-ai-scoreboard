@@ -5,10 +5,10 @@ from __future__ import annotations
 import pandas as pd
 
 from scoreboard.config import Station
-from scoreboard.features import FEATURE_COLUMNS, WAVE_FEATURE_COLUMNS, build_features
+from scoreboard.features import FEATURE_COLUMNS, build_features, model_feature_columns
 from scoreboard.sources import SourceError
 
-OBS_COLUMN = {"wave": "hs", "tide": "level"}
+OBS_COLUMN = {"wave": "hs", "tide": "level", "wind": "wind_speed"}
 HORIZON_H = 48
 
 
@@ -18,14 +18,14 @@ def assemble(
     baseline: pd.DataFrame,
     forcing: pd.DataFrame,
     issue_hours: list[int] | None = None,
-    wave_models: pd.DataFrame | None = None,
+    models: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.Series]:
     """Stack (X, y) over simulated daily issues at `issue_hours` UTC.
 
     `obs` is the station's observation frame (hourly); `baseline` holds the
     official forecast / harmonic prediction in its first column; `forcing` holds
     the hourly `wind_u10`/`wind_v10` columns (see `sources.wind`). Target is the
-    observation at the same valid time. `wave_models` (wave stations only) is
+    observation at the same valid time. `models` (multi-model stations) is
     passed through to `build_features` verbatim — see its docstring.
     """
     if station.kind not in OBS_COLUMN:
@@ -35,7 +35,9 @@ def assemble(
     obs_s = obs[OBS_COLUMN[station.kind]].astype(float).dropna().sort_index()
     base_s = baseline.iloc[:, 0].astype(float).dropna().sort_index()
 
-    columns = WAVE_FEATURE_COLUMNS if wave_models is not None else FEATURE_COLUMNS
+    columns = (
+        model_feature_columns(list(models.columns)) if models is not None else FEATURE_COLUMNS
+    )
     empty = (pd.DataFrame(columns=columns), pd.Series(dtype=float))
     if obs_s.empty or base_s.empty:
         return empty
@@ -53,7 +55,7 @@ def assemble(
             if window.empty:
                 continue
             try:
-                feats = build_features(window, obs_s, t0, forcing, wave_models=wave_models)
+                feats = build_features(window, obs_s, t0, forcing, models=models)
             except SourceError:
                 continue  # forcing gap on this issue: drop it rather than train on zeros
             if feats.empty:

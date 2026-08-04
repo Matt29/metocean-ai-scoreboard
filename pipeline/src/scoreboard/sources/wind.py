@@ -33,6 +33,13 @@ FORCING_COLUMNS = ["wind_u10", "wind_v10"]
 WIND_MODELS = ["meteofrance_arpege_europe", "ecmwf_ifs025", "icon_eu"]
 MULTI_FORCING_COLUMNS = [f"{c}_{m}" for m in WIND_MODELS for c in ("wind_u10", "wind_v10")]
 
+# Wind speed per model — the *baseline* candidates of a `kind="wind"` station,
+# the exact mirror of `marine.MODEL_COLUMNS` for waves. Same payload as the u/v
+# forcing above (Open-Meteo returns speed and direction in one response), so
+# `with_speeds=True` costs no extra request: it only keeps a column the parser
+# was already computing and discarding.
+WIND_MODEL_COLUMNS = [f"ws_{m}" for m in WIND_MODELS]
+
 _ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 _HISTORICAL_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
@@ -58,7 +65,14 @@ def _parse_uv(hourly: dict, speed_key: str, dir_key: str) -> pd.DataFrame:
     rad = np.deg2rad(direction.to_numpy())
     speed = speed.to_numpy()
     out = pd.DataFrame(
-        {"wind_u10": -speed * np.sin(rad), "wind_v10": -speed * np.cos(rad)}, index=index
+        {
+            "wind_u10": -speed * np.sin(rad),
+            "wind_v10": -speed * np.cos(rad),
+            # Kept alongside u/v rather than recomputed as hypot(u, v): that
+            # round-trip is lossy whenever direction is null while speed is not.
+            "wind_speed": speed,
+        },
+        index=index,
     )
     out.index.name = "time"
     return out
@@ -111,11 +125,17 @@ def _fetch(url: str, params: dict, station: Station, session) -> pd.DataFrame:
     return out[FORCING_COLUMNS]
 
 
-def _fetch_models(url: str, params: dict, station: Station, session) -> pd.DataFrame:
+def _fetch_models(
+    url: str, params: dict, station: Station, session, with_speeds: bool = False
+) -> pd.DataFrame:
     payload, hourly = _get_payload(url, params, station, session)
     parts = [
         _parse_uv(hourly, f"wind_speed_10m_{m}", f"wind_direction_10m_{m}").rename(
-            columns={"wind_u10": f"wind_u10_{m}", "wind_v10": f"wind_v10_{m}"}
+            columns={
+                "wind_u10": f"wind_u10_{m}",
+                "wind_v10": f"wind_v10_{m}",
+                "wind_speed": f"ws_{m}",
+            }
         )
         for m in WIND_MODELS
     ]
@@ -124,7 +144,8 @@ def _fetch_models(url: str, params: dict, station: Station, session) -> pd.DataF
     # features.py raise instead of returning features.
     out = out[~out.index.duplicated(keep="first")]
     _log_resolved_cell(payload, station)
-    return out[MULTI_FORCING_COLUMNS]
+    columns = MULTI_FORCING_COLUMNS + WIND_MODEL_COLUMNS if with_speeds else MULTI_FORCING_COLUMNS
+    return out[columns]
 
 
 def fetch_wind_history(
@@ -168,9 +189,17 @@ def fetch_wind_forecast(
 
 
 def fetch_wind_models_history(
-    station: Station, date_start: date, date_end: date, session: requests.Session | None = None
+    station: Station,
+    date_start: date,
+    date_end: date,
+    session: requests.Session | None = None,
+    with_speeds: bool = False,
 ) -> pd.DataFrame:
-    """Hourly 10 m wind from the 3 candidate models (Task 0) over [date_start, date_end]."""
+    """Hourly 10 m wind from the 3 candidate models (Task 0) over [date_start, date_end].
+
+    `with_speeds` adds `WIND_MODEL_COLUMNS` (the per-model speed a `kind="wind"`
+    station uses as baseline candidates) to the same frame, from the same request.
+    """
     return _fetch_models(
         _HISTORICAL_URL,
         {
@@ -185,13 +214,26 @@ def fetch_wind_models_history(
         },
         station,
         session,
+        with_speeds,
     )
 
 
 def fetch_wind_models_forecast(
-    station: Station, session: requests.Session | None = None, forecast_days: int = 3
+    station: Station,
+    session: requests.Session | None = None,
+    forecast_days: int = 3,
+    with_speeds: bool = False,
+    past_days: int = 2,
 ) -> pd.DataFrame:
-    """Hourly 10 m wind forecast from the 3 candidate models — covers the +48 h horizon."""
+    """Hourly 10 m wind forecast from the 3 candidate models — covers the +48 h horizon.
+
+    `past_days` matters for the same reason it does in `marine.fetch_wave_models_forecast`:
+    when this frame *is* the baseline (a `kind="wind"` station), the serve path reads it
+    backwards from `t0` to build `last_err` / `mean_err_24h`. Without history before
+    00:00 UTC the 24 h error window would be averaged over 6 h at serve time and over a
+    full 24 h at train time — the exact train/serve skew this project keeps paying for.
+    Harmless on the wave path, which only reads this frame forward as forcing.
+    """
     return _fetch_models(
         _FORECAST_URL,
         {
@@ -200,9 +242,11 @@ def fetch_wind_models_forecast(
             "hourly": _HOURLY,
             "models": ",".join(WIND_MODELS),
             "forecast_days": forecast_days,
+            "past_days": past_days,
             "wind_speed_unit": "ms",
             "timezone": "UTC",
         },
         station,
         session,
+        with_speeds,
     )

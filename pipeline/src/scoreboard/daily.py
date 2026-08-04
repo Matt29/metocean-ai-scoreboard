@@ -60,9 +60,12 @@ from scoreboard.features import build_features
 from scoreboard.sources import SourceError
 from scoreboard.sources.candhis import fetch_wave_obs
 from scoreboard.sources.marine import fetch_wave_models_forecast
+from scoreboard.sources.mfobs import fetch_wind_obs
 from scoreboard.sources.waterlevel import fetch_tide_obs
 from scoreboard.sources.wind import (
     FORECAST_MODEL,
+    MULTI_FORCING_COLUMNS,
+    WIND_MODEL_COLUMNS,
     fetch_wind_forecast,
     fetch_wind_models_forecast,
 )
@@ -78,6 +81,10 @@ BASELINE_HORIZON_H = 48
 # `archive.write_day`'s `source` for the wave path: the forcing archived there
 # is the 3-model frame, not any single named run (unlike tide's FORECAST_MODEL).
 MULTI_FORCING_SOURCE = "openmeteo:multi"
+# Column prefix of the per-model baseline candidates, by station kind. A `tide`
+# station is absent on purpose: its baseline is a fresh harmonic fit, not a
+# column picked out of a multi-model frame.
+MODEL_PREFIX = {"wave": "hs_", "wind": "ws_"}
 # A day scored the morning after its issue only meets ~24h of its own leads —
 # the 25-48h tail stays "pending" in its history entry and is completed by
 # `_rescore_pending` on later runs, as obs catch up. Beyond this age, every
@@ -102,43 +109,58 @@ def iso(t: pd.Timestamp) -> str:
 def _fetch_obs(station: Station, run_date: date) -> pd.Series:
     """One station-level fetch (résolution 5). Tide requests `TIDE_FIT_LOOKBACK_DAYS`
     (chunked internally by `fetch_tide_obs`, ~3 HTTP requests — still one call here
-    and well within quota) so the harmonic fit below never starves for history."""
-    if station.kind == "wave":
+    and well within quota) so the harmonic fit below never starves for history.
+
+    Le dispatch porte sur `station.source`, pas sur `station.kind` : c'est la
+    source qui détermine à qui on parle, et deux sources peuvent servir le même
+    `kind` (les bouées Méditerranée serviront de la houle sans être Candhis).
+    Une source sans collecteur lève, au lieu d'atterrir silencieusement chez
+    celui du kind — c'est ce qui rendrait faux, et non manquant, un jour publié.
+    """
+    if station.source == "candhis":
         start = run_date - timedelta(days=OBS_LOOKBACK_DAYS)
         df = fetch_wave_obs(station, start)
         return df["hs"].astype(float).dropna().sort_index()
-    start = run_date - timedelta(days=TIDE_FIT_LOOKBACK_DAYS)
-    df = fetch_tide_obs(station, start, date_end=run_date + timedelta(days=1))
-    return df["level"].astype(float).dropna().sort_index()
+    if station.source == "mfobs":
+        # ~30 requêtes (DPObs ne sert qu'une heure à la fois, cf. `sources.mfobs`)
+        # — le coût qui plafonne le nombre de stations vent publiables.
+        start = run_date - timedelta(days=OBS_LOOKBACK_DAYS)
+        df = fetch_wind_obs(station, start, date_end=run_date)
+        return df["wind_speed"].astype(float).dropna().sort_index()
+    if station.source == "shom":
+        start = run_date - timedelta(days=TIDE_FIT_LOOKBACK_DAYS)
+        df = fetch_tide_obs(station, start, date_end=run_date + timedelta(days=1))
+        return df["level"].astype(float).dropna().sort_index()
+    raise SourceError(station.id, f"aucun collecteur d'obs pour la source {station.source!r}")
 
 
 def _baseline_window(
     station: Station,
     obs: pd.Series,
     t0: pd.Timestamp,
-    wave_models: pd.DataFrame | None,
+    models: pd.DataFrame | None,
     baseline_model: str | None,
 ) -> pd.Series:
-    """`[t0-24h, t0+48h]` baseline series — one wave model's column, or a fresh
+    """`[t0-24h, t0+48h]` baseline series — one physical model's column, or a fresh
     harmonic fit.
 
     `baseline_model` is the artefact's own (`models/<station>.joblib`), never a
-    module default: serving a station off a different wave model than the one it
-    was trained to correct is a silent, unmeasurable regression.
+    module default: serving a station off a different physical model than the one
+    it was trained to correct is a silent, unmeasurable regression.
     """
     lo = t0 - pd.Timedelta(hours=BASELINE_LOOKBACK_H)
     hi = t0 + pd.Timedelta(hours=BASELINE_HORIZON_H)
-    if station.kind == "wave":
+    if prefix := MODEL_PREFIX.get(station.kind):
         if not baseline_model:
             raise SourceError(station.id, "artefact carries no baseline_model — retrain needed")
-        col = f"hs_{baseline_model}"
-        if wave_models is None or col not in wave_models.columns:
-            raise SourceError(station.id, f"marine frame has no {col!r} column")
-        baseline = wave_models[col].astype(float).dropna()
+        col = f"{prefix}{baseline_model}"
+        if models is None or col not in models.columns:
+            raise SourceError(station.id, f"model frame has no {col!r} column")
+        baseline = models[col].astype(float).dropna()
         if baseline.empty:
             raise SourceError(station.id, f"{col} is entirely null")
-        # The marine fetch covers a wider margin than the model was trained on;
-        # clip back to the trained horizon so `lead_h` never extrapolates past 48h.
+        # The fetch covers a wider margin than the model was trained on; clip back
+        # to the trained horizon so `lead_h` never extrapolates past 48h.
         return baseline[(baseline.index > lo) & (baseline.index <= hi)]
 
     # Tide: refit daily on every observation available up to t0. One
@@ -347,7 +369,7 @@ def issue_series(
     station: Station,
     obs: pd.Series,
     t0: pd.Timestamp,
-    wave_models: pd.DataFrame | None,
+    models: pd.DataFrame | None,
     forcing: pd.DataFrame,
     models_dir: Path | None,
 ) -> tuple[list[dict], str | None]:
@@ -356,8 +378,8 @@ def issue_series(
     issue) and `backfill.py` (a-posteriori forcing/obs, a past day's issue) — one
     code path, résolution 1's "ne duplique pas la logique de prédiction".
 
-    The artefact drives everything about the wave path: which Open-Meteo model is
-    the baseline, and which feature columns the estimator was fitted on. A frame
+    The artefact drives everything about a multi-model path: which Open-Meteo model
+    is the baseline, and which feature columns the estimator was fitted on. A frame
     that does not match those columns exactly is refused (`SourceError` — the
     caller marks the station missing) rather than silently reordered or subset by
     `model.predict`: a model asked to correct a different baseline, or fed a
@@ -365,8 +387,8 @@ def issue_series(
     """
     artifact = model.load_artifact(station.id, models_dir=models_dir)
     baseline_model = artifact["baseline_model"]
-    baseline = _baseline_window(station, obs, t0, wave_models, baseline_model)
-    feats = build_features(baseline, obs, t0, forcing, wave_models=wave_models)
+    baseline = _baseline_window(station, obs, t0, models, baseline_model)
+    feats = build_features(baseline, obs, t0, forcing, models=models)
     if list(feats.columns) != list(artifact["feature_columns"]):
         raise SourceError(
             station.id,
@@ -383,10 +405,13 @@ def issue_series(
 
 
 def _fetch_inputs(station: Station) -> tuple[pd.DataFrame | None, pd.DataFrame, str]:
-    """`(wave_models, forcing, archive source)` for one station.
+    """`(models, forcing, archive source)` for one station.
 
     Wave: the 5 wave models (baseline + features) and the 3 candidate wind runs.
-    Tide: no wave frame, and the single ARPEGE run it has always used — the tide
+    Wind: **one** request — the per-model wind speed is the baseline and the u/v
+    of the same models is the forcing, and Open-Meteo returns both in the same
+    payload, so `with_speeds=True` splits one response instead of paying twice.
+    Tide: no model frame, and the single ARPEGE run it has always used — the tide
     path is deliberately untouched by the multi-model switch.
     """
     if station.kind == "wave":
@@ -395,6 +420,9 @@ def _fetch_inputs(station: Station) -> tuple[pd.DataFrame | None, pd.DataFrame, 
             fetch_wind_models_forecast(station),
             MULTI_FORCING_SOURCE,
         )
+    if station.kind == "wind":
+        frame = fetch_wind_models_forecast(station, with_speeds=True)
+        return frame[WIND_MODEL_COLUMNS], frame[MULTI_FORCING_COLUMNS], MULTI_FORCING_SOURCE
     return None, fetch_wind_forecast(station), FORECAST_MODEL
 
 
@@ -424,8 +452,8 @@ def _run_station(
         log.warning("%s: scoring the previous issue failed: %s", station.id, exc)
 
     try:
-        wave_models, forcing, forcing_source = _fetch_inputs(station)
-        series, baseline_model = issue_series(station, obs, t0, wave_models, forcing, models_dir)
+        model_frame, forcing, forcing_source = _fetch_inputs(station)
+        series, baseline_model = issue_series(station, obs, t0, model_frame, forcing, models_dir)
     except Exception as exc:  # noqa: BLE001 - SourceError, a missing model file,
         # sklearn/pandas/utide raising on a degenerate input: none of it may
         # escape and abort the other stations' loop iteration.
@@ -446,7 +474,7 @@ def _run_station(
         # Wave frame (`hs_*`, includes the baseline itself) alongside the wind
         # forcing: without it the anti-skew corpus is missing 5 of the 18 wave
         # features a future retrain needs (Task 7 review).
-        archived = forcing if wave_models is None else pd.concat([forcing, wave_models], axis=1)
+        archived = forcing if model_frame is None else pd.concat([forcing, model_frame], axis=1)
         valid_times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in series])
         archive.write_day(archive_dir, station.id, t0, valid_times, archived, source=forcing_source)
     except Exception as exc:  # noqa: BLE001 - archiving must never fail the run

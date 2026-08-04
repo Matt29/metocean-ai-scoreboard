@@ -22,13 +22,13 @@ def load_env(path: Path = _ENV_FILE) -> None:
         key, _, value = line.partition("=")
         os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
-_VALID_KINDS = {"wave", "tide"}
-_VALID_SOURCES = {"candhis", "shom", "ioc"}
-# "marine-best" = wave stations: the real baseline choice lives in the
-# artefact/gate (which of the 5 Open-Meteo wave models won at train time),
-# not here — this value is just a marker, not a source of truth. "harmonic"
+_VALID_KINDS = {"wave", "tide", "wind"}
+_VALID_SOURCES = {"candhis", "shom", "ioc", "mfobs"}
+# "marine-best" / "wind-best": the real baseline choice lives in the
+# artefact/gate (which of the candidate physical models won at train time),
+# not here — these values are just markers, not sources of truth. "harmonic"
 # stays meaningful: tide stations really are always the utide fit.
-_VALID_BASELINES = {"marine-best", "harmonic"}
+_VALID_BASELINES = {"marine-best", "wind-best", "harmonic"}
 
 _DEFAULT_PATH = Path(__file__).resolve().parents[2] / "config" / "stations.toml"
 

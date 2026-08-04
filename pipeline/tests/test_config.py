@@ -1,3 +1,4 @@
+from collections import Counter
 from pathlib import Path
 from scoreboard.config import load_stations, Station
 
@@ -30,6 +31,11 @@ def test_load_stations_rejects_bad_kind(tmp_path: Path):
 
 def test_load_stations_default_loads_real_config():
     """Guards config drift: the real pipeline/config/stations.toml must always
-    parse and match the 6 stations decided in Task 1."""
+    parse, and every station must declare a kind/source/baseline the loader
+    accepts. The count is asserted per kind rather than as one total, so adding
+    a station of one kind cannot silently mask the loss of another."""
     stations = load_stations()
-    assert len(stations) == 6
+    kinds = Counter(s.kind for s in stations)
+    assert kinds == {"wave": 4, "tide": 2, "wind": 3}
+    assert len({s.id for s in stations}) == len(stations)
+    assert all(s.source_id for s in stations)

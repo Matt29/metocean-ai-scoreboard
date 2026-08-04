@@ -275,3 +275,19 @@ def test_backfilled_count_follows_the_same_window():
 
     assert row["n_days"] == 2
     assert row["n_days_backfilled"] == 1  # the legacy backfilled day is out
+
+
+def test_station_entry_publishes_the_unit_of_its_kind(tmp_path):
+    """`unit` est une donnée publique : une station de vent servie en mètres est
+    une erreur de fait, pas un détail d'affichage."""
+    stations = [
+        Station(id="w", name="W", kind="wave", lat=1.0, lon=2.0,
+                source="candhis", source_id="1", baseline="marine-best"),
+        Station(id="t", name="T", kind="tide", lat=3.0, lon=4.0,
+                source="shom", source_id="2", baseline="harmonic"),
+        Station(id="v", name="V", kind="wind", lat=5.0, lon=6.0,
+                source="mfobs", source_id="3", baseline="wind-best"),
+    ]
+    payload = publish.write_stations(tmp_path, stations, gate={})
+    units = {s["id"]: s["unit"] for s in payload["stations"]}
+    assert units == {"w": "m", "t": "m", "v": "m/s"}

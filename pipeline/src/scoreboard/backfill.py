@@ -57,10 +57,17 @@ import pandas as pd
 
 from scoreboard import daily, publish
 from scoreboard.config import Station, load_stations
+from scoreboard.sources import SourceError
 from scoreboard.sources.candhis import fetch_wave_obs
 from scoreboard.sources.marine import fetch_wave_models_history
+from scoreboard.sources.mfobs import fetch_wind_obs_archive
 from scoreboard.sources.waterlevel import fetch_tide_obs
-from scoreboard.sources.wind import fetch_wind_history, fetch_wind_models_history
+from scoreboard.sources.wind import (
+    MULTI_FORCING_COLUMNS,
+    WIND_MODEL_COLUMNS,
+    fetch_wind_history,
+    fetch_wind_models_history,
+)
 
 log = logging.getLogger(__name__)
 
@@ -96,21 +103,33 @@ def _deep_obs(station: Station, since: date, until: date, today: date) -> pd.Ser
     """One fetch covering the whole backfill window (résolution 1) — same lookback
     depth `daily._fetch_obs` uses per-day, just anchored once at `since`. `date_end`
     is clamped to `today`: REFMAR/Open-Meteo reject a future end date outright (see
-    `_deep_forcing`), and there is no archived observation to fetch beyond "now" anyway."""
-    if station.kind == "wave":
+    `_deep_forcing`), and there is no archived observation to fetch beyond "now" anyway.
+
+    Le dispatch porte sur `station.source`, pas sur `station.kind` : c'est la
+    source qui détermine à qui on parle. Voir `daily._fetch_obs`, même règle.
+    """
+    if station.source == "candhis":
         start = since - timedelta(days=daily.OBS_LOOKBACK_DAYS)
         df = fetch_wave_obs(station, start)  # candhis has no end param: serves up to "now"
         return df["hs"].astype(float).dropna().sort_index()
-    start, date_end = _deep_window(since, until, today, daily.TIDE_FIT_LOOKBACK_DAYS)
-    df = fetch_tide_obs(station, start, date_end=date_end)
-    return df["level"].astype(float).dropna().sort_index()
+    if station.source == "mfobs":
+        # DPClim, pas DPObs : le temps réel ne garde qu'une fenêtre glissante de
+        # quelques jours, donc lui seul ne peut pas rejouer un jour ancien.
+        start, date_end = _deep_window(since, until, today, daily.OBS_LOOKBACK_DAYS)
+        df = fetch_wind_obs_archive(station, start, date_end)
+        return df["wind_speed"].astype(float).dropna().sort_index()
+    if station.source == "shom":
+        start, date_end = _deep_window(since, until, today, daily.TIDE_FIT_LOOKBACK_DAYS)
+        df = fetch_tide_obs(station, start, date_end=date_end)
+        return df["level"].astype(float).dropna().sort_index()
+    raise SourceError(station.id, f"aucun collecteur d'obs pour la source {station.source!r}")
 
 
 def _deep_inputs(
     station: Station, since: date, until: date, today: date
 ) -> tuple[pd.DataFrame | None, pd.DataFrame]:
-    """`(wave_models, forcing)` over the whole replay window — the one place the
-    wave and tide paths pick different sources, mirroring `daily._fetch_inputs`.
+    """`(models, forcing)` over the whole replay window — the one place the
+    wave, wind and tide paths pick different sources, mirroring `daily._fetch_inputs`.
 
     Archived fields, not live forecasts (résolution 2): the 5 wave models plus
     the 3 candidate winds for a wave station, the single ERA5/ARPEGE leg for a
@@ -127,6 +146,11 @@ def _deep_inputs(
             fetch_wave_models_history(station, start, date_end),
             fetch_wind_models_history(station, start, date_end),
         )
+    if station.kind == "wind":
+        # Une seule requête : vitesses (baseline) et u/v (forçage) sortent du même
+        # payload — même économie que `daily._fetch_inputs`.
+        frame = fetch_wind_models_history(station, start, date_end, with_speeds=True)
+        return frame[WIND_MODEL_COLUMNS], frame[MULTI_FORCING_COLUMNS]
     return None, fetch_wind_history(station, start, date_end)
 
 
@@ -144,7 +168,7 @@ def _backfill_station(
 
     try:
         obs = _deep_obs(station, since, until, today)
-        wave_models, forcing = _deep_inputs(station, since, until, today)
+        model_frame, forcing = _deep_inputs(station, since, until, today)
     except Exception as exc:  # noqa: BLE001 - a deep-fetch failure must not abort other stations
         log.warning("%s: backfill deep-fetch failed: %s", station.id, exc)
         for d in missing:
@@ -163,7 +187,7 @@ def _backfill_station(
         t0 = pd.Timestamp(d, tz="UTC") + pd.Timedelta(hours=daily.ISSUE_HOUR)
         try:
             series, baseline_model = daily.issue_series(
-                station, obs, t0, wave_models, forcing, models_dir
+                station, obs, t0, model_frame, forcing, models_dir
             )
         except Exception as exc:  # noqa: BLE001 - degenerate baseline, missing model, bad forcing
             log.warning("%s: backfill issue failed for %s: %s", station.id, d, exc)

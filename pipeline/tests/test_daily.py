@@ -12,10 +12,10 @@ import pytest
 
 from scoreboard import daily
 from scoreboard.config import Station
-from scoreboard.features import FEATURE_COLUMNS, WAVE_FEATURE_COLUMNS
+from scoreboard.features import FEATURE_COLUMNS, WAVE_FEATURE_COLUMNS, WIND_FEATURE_COLUMNS
 from scoreboard.sources import SourceError
 from scoreboard.sources.marine import MODEL_COLUMNS
-from scoreboard.sources.wind import MULTI_FORCING_COLUMNS
+from scoreboard.sources.wind import MULTI_FORCING_COLUMNS, WIND_MODEL_COLUMNS
 
 RUN_DATE = date(2026, 7, 30)
 # Deliberately NOT the first wave model: an implementation that grabs
@@ -29,11 +29,16 @@ WAVE = Station(id="wave-a", name="Wave A", kind="wave", lat=48.0, lon=-4.0,
                 source="candhis", source_id="0001", baseline="marine-best")
 TIDE = Station(id="tide-b", name="Tide B", kind="tide", lat=48.4, lon=-4.5,
                 source="shom", source_id="0002", baseline="harmonic")
+# Deliberately NOT the first wind model, same reason as BASELINE_MODEL above.
+WIND_BASELINE_MODEL = "icon_eu"
+WIND = Station(id="wind-c", name="Wind C", kind="wind", lat=48.47, lon=-5.06,
+                source="mfobs", source_id="29155005", baseline="wind-best")
 STATIONS = [WAVE, TIDE]
 GATE = {
     "wave-a": {"pass": True, "weak": False},
     "tide-b": {"pass": True, "weak": False},
 }
+WIND_GATE = {"wind-c": {"pass": True, "weak": False}}
 
 
 class _FakePipe:
@@ -59,6 +64,12 @@ def _artifact(station_id, models_dir=None):
     """
     if station_id == "tide-b":
         return {"model": _FakePipe(), "baseline_model": None, "feature_columns": FEATURE_COLUMNS}
+    if station_id == "wind-c":
+        return {
+            "model": _FakePipe(WIND_FEATURE_COLUMNS),
+            "baseline_model": WIND_BASELINE_MODEL,
+            "feature_columns": WIND_FEATURE_COLUMNS,
+        }
     return {
         "model": _FakePipe(WAVE_FEATURE_COLUMNS),
         "baseline_model": BASELINE_MODEL,
@@ -103,12 +114,35 @@ def _wind_df(station, session=None):
     return pd.DataFrame({"wind_u10": np.full(len(idx), 3.0), "wind_v10": np.full(len(idx), -2.0)}, index=idx)
 
 
-def _wind_models_df(station, session=None):
+def _wind_models_df(station, session=None, forecast_days=3, with_speeds=False, past_days=2):
     idx = pd.date_range("2026-07-25", periods=24 * 10, freq="1h", tz="UTC")
-    return pd.DataFrame(
+    out = pd.DataFrame(
         {col: np.full(len(idx), 3.0 if col.startswith("wind_u10") else -2.0) for col in MULTI_FORCING_COLUMNS},
         index=idx,
     )
+    if with_speeds:
+        # One distinct constant per model, same trick as MODEL_HS: the published
+        # `baseline` value alone tells which column the serve path selected.
+        for i, col in enumerate(WIND_MODEL_COLUMNS):
+            out[col] = 5.0 + i
+    return out
+
+
+def _wind_obs_df(start, periods=24 * 6, value=6.5):
+    idx = pd.date_range(start, periods=periods, freq="1h", tz="UTC")
+    return pd.DataFrame(
+        {"wind_speed": np.full(periods, value), "wind_dir": np.full(periods, 220.0)}, index=idx
+    )
+
+
+@pytest.fixture(autouse=True)
+def _archive_never_writes_into_the_repo(monkeypatch, tmp_path):
+    """`daily.run` retombe sur `archive.DEFAULT_ARCHIVE_DIR` — un chemin **du
+    dépôt** — quand l'appelant ne passe pas `archive_dir`. Sans ce garde-fou,
+    lancer la suite dépose de vrais parquets dans `pipeline/data_forecast_archive/`
+    et salit le prochain commit. Autouse : le défaut est dans la valeur par
+    défaut, pas dans tel ou tel appel, donc la correction doit l'être aussi."""
+    monkeypatch.setattr(daily.archive, "DEFAULT_ARCHIVE_DIR", tmp_path / "_archive")
 
 
 @pytest.fixture
@@ -130,6 +164,10 @@ def patched_sources(monkeypatch):
     )
     monkeypatch.setattr(daily, "fetch_wind_forecast", _wind_df)
     monkeypatch.setattr(daily, "fetch_wind_models_forecast", _wind_models_df)
+    monkeypatch.setattr(
+        daily, "fetch_wind_obs",
+        lambda station, start, date_end=None: _wind_obs_df(start),
+    )
     monkeypatch.setattr(daily.model, "load_artifact", _artifact)
     return monkeypatch
 
@@ -642,3 +680,91 @@ def test_past_hours_do_not_add_leads_to_the_issued_series(tmp_path, patched_sour
     payload = json.loads((tmp_path / "wave-a" / "latest.json").read_text())
     assert len(payload["series"]) == 48
     assert all(p["t"] > payload["issued"] for p in payload["series"])
+
+
+# --- stations de vent (kind="wind", demande produit 3) ------------------------
+# Elles tournent sur leur propre `stations`/`gate` plutôt que dans STATIONS : le
+# chemin vent doit être vérifié sans déplacer d'un pouce ce que les tests houle
+# et marée mesurent déjà.
+
+
+def test_wind_run_publishes_off_the_artefact_baseline_model(tmp_path, patched_sources):
+    """La baseline servie est la colonne `ws_<baseline_model>` de l'artefact —
+    pas le premier modèle venu. Chaque modèle porte une constante distincte, donc
+    la valeur publiée suffit à trancher laquelle a été prise."""
+    daily.run(RUN_DATE, tmp_path, stations=[WIND], gate=WIND_GATE)
+
+    latest = json.loads((tmp_path / "wind-c" / "latest.json").read_text())
+    assert latest["baseline_model"] == WIND_BASELINE_MODEL
+    expected = 5.0 + WIND_MODEL_COLUMNS.index(f"ws_{WIND_BASELINE_MODEL}")
+    assert {p["baseline"] for p in latest["series"]} == {expected}
+    assert latest["series"], "une station vent qui passe le gate doit publier une série"
+
+
+def test_wind_run_fetches_speeds_and_forcing_in_a_single_request(tmp_path, patched_sources):
+    """Vitesses (baseline) et u/v (forçage) sortent du même payload Open-Meteo :
+    le chemin vent doit donc appeler `fetch_wind_models_forecast` **une seule
+    fois**, avec `with_speeds=True`. Deux appels = une requête payée pour rien."""
+    calls = []
+
+    def _spy(station, session=None, forecast_days=3, with_speeds=False, past_days=2):
+        calls.append(with_speeds)
+        return _wind_models_df(station, with_speeds=with_speeds)
+
+    patched_sources.setattr(daily, "fetch_wind_models_forecast", _spy)
+    daily.run(RUN_DATE, tmp_path, stations=[WIND], gate=WIND_GATE)
+
+    assert calls == [True]
+
+
+def test_wind_station_never_touches_the_wave_or_tide_sources(tmp_path, patched_sources):
+    """Une station vent ne doit ni appeler la marine, ni les obs houle/marée."""
+    def _boom(*args, **kwargs):
+        raise AssertionError("source hors du chemin vent appelée")
+
+    for name in ("fetch_wave_models_forecast", "fetch_wave_obs", "fetch_tide_obs",
+                 "fetch_wind_forecast"):
+        patched_sources.setattr(daily, name, _boom)
+
+    summary = daily.run(RUN_DATE, tmp_path, stations=[WIND], gate=WIND_GATE)
+    assert summary["wind-c"]["status"] == "ok"
+
+
+def test_wind_obs_failure_marks_only_that_station_missing(tmp_path, patched_sources):
+    """Même contrat que les autres kinds (résolution 5) : DPObs muet = station
+    manquante du jour, jamais une exception qui remonte."""
+    def _fail(station, start, date_end=None):
+        raise SourceError(station.id, "DPObs n'a servi aucune heure")
+
+    patched_sources.setattr(daily, "fetch_wind_obs", _fail)
+    summary = daily.run(RUN_DATE, tmp_path, stations=[WIND], gate=WIND_GATE)
+
+    assert summary["wind-c"]["status"] == "missing"
+    history = json.loads((tmp_path / "wind-c" / "history.json").read_text())
+    assert history["days"][-1]["status"] == "missing"
+
+
+def test_wind_second_run_scores_the_first_runs_predictions(tmp_path, patched_sources):
+    """Le vent hérite du scoring quotidien sans code dédié : la série émise la
+    veille est relue et confrontée aux obs du jour."""
+    daily.run(RUN_DATE, tmp_path, stations=[WIND], gate=WIND_GATE)
+    daily.run(date(2026, 7, 31), tmp_path, stations=[WIND], gate=WIND_GATE)
+
+    history = json.loads((tmp_path / "wind-c" / "history.json").read_text())
+    scored = [d for d in history["days"] if d["date"] == RUN_DATE.isoformat()]
+    assert scored and scored[0]["status"] == "ok"
+    assert scored[0]["n_points"] > 0
+    assert scored[0]["baseline_model"] == WIND_BASELINE_MODEL
+
+
+def test_unknown_obs_source_raises_instead_of_falling_through_to_shom():
+    """Le dispatch d'obs porte sur `source`, pas sur `kind`.
+
+    Une source sans collecteur — la prochaine sera `mfbuoy`, de la houle qui ne
+    vient pas de Candhis — doit lever, pas atterrir chez le collecteur du kind.
+    Un mauvais aiguillage publierait un jour *faux*, pas un jour manquant.
+    """
+    orphan = Station(id="orphan", name="Orphan", kind="wave", lat=48.0, lon=-4.0,
+                     source="mfbuoy", source_id="0003", baseline="marine-best")
+    with pytest.raises(SourceError, match="mfbuoy"):
+        daily._fetch_obs(orphan, RUN_DATE)

@@ -128,23 +128,19 @@ et infirmée).
 stratégiques (proches côtes, sites EMR) en récupérant les observations des
 stations Météo-France.
 
-### Cadrage à faire avant toute implémentation
+### ✅ Cadrage tranché le 2026-08-04
 
-- **Le rôle du vent d'abord** : variable *scorée* à part entière (prévision
-  ARPEGE vs obs station — nouveau `kind` dans `stations.toml`, nouvelle source
-  obs, nouveau baseline) ou simple vérification des features des modèles
-  existants ? Les deux ne coûtent pas du tout pareil.
-- **La source obs** : l'« API Ciblée Données d'Observation » Météo-France
-  (portail Open Data, doc Confluence `OpenDataMeteoFrance`), qui couvre aussi
-  les **bouées Météo-France** — candidates comme obs supplémentaires. La clé
-  API Météo-France de `~/Documents/DEV/meteodata_hub` est **déjà habilitée**
-  sur ce périmètre (fait par Matthieu le 2026-08-03). Le projet
-  `~/Documents/DEV/OCEANO/API_METEO_FRANCE` a l'outillage ARPEGE ; la partie
-  *observations stations/bouées* reste à sonder — disponibilité réelle par
-  station à vérifier par requêtes effectives, pas sur la page de doc (leçon
-  Open-Meteo du 2026-08-03 : une API peut répondre 200 avec des null partout).
-- **L'angle produit** : la sélection « sites EMR » est un argument de prospection
-  — le choix des points est une décision commerciale autant que technique.
+| Question | Décision |
+|---|---|
+| Rôle du vent | Variable **scorée** à part entière : nouveau `kind = "wind"`, pas une simple vérification de features. |
+| Grandeur notée | **Vitesse `FF` seule** (m/s, moyenne 10 min). Un scalaire, comme Hs — toute la chaîne existante se réutilise. La direction reste feature, jamais cible. |
+| Baseline | **Meilleur des 3 modèles de vent Open-Meteo par station**, choisi à l'entraînement, écrit dans l'artefact — mécanique `marine-best` des stations houle. Valeur TOML : `wind-best`. |
+| Premier lot | **3 stations, une par critère** : un cap/île exposé, la plus proche d'un site EMR, une co-localisée avec une station houle publiée. |
+| Hors périmètre | Rafales (`FXI`), direction comme cible, nowcasting. |
+
+L'angle produit reste ce qu'il était : la sélection « sites EMR » est un argument
+de prospection, donc une décision commerciale autant que technique — d'où le
+lot à 3 points couvrant trois arguments distincts plutôt qu'une façade entière.
 
 ### Sondage effectué le 2026-08-03 (rapport : `.superpowers/sdd/2026-08-03-retrain-multi-modeles/sondage-bouees-mf.md`)
 
@@ -162,15 +158,56 @@ jusqu'en 2029). Verdicts, mesurés en non-null sur requêtes réelles :
   (Gascogne, 327 km d'Anglet, 556 km de Cherbourg) → aucun renfort possible
   pour les stations actuelles. À ressortir si des stations Méditerranée (ou
   un produit EMR flottant Med) entrent au scoreboard.
-- **Limite historique** : temps réel = fenêtre glissante ~3-4 jours ;
+- ~~**Limite historique** : temps réel = fenêtre glissante ~3-4 jours ;
   l'archive longue relève d'une autre API (climatologie, non souscrite). Pour
-  entraîner un jour sur ces vents, commencer à archiver tôt ou souscrire.
+  entraîner un jour sur ces vents, commencer à archiver tôt ou souscrire.~~
+  **Démenti le 2026-08-04, voir ci-dessous.**
+
+### ✅ L'historique d'obs est disponible — le préalable « archiver d'abord » n'existe pas
+
+Contrairement aux bouées (demande 4), le vent **n'a aucun compteur à lancer**.
+Deux routes d'archive mesurées le 2026-08-04, sur requêtes réelles :
+
+- **API DPClim** — souscrite par Matthieu le 2026-08-04, clé
+  `METEOFRANCE_DPCLIM_API_KEY` dans le `.env` racine (elle couvre *aussi* DPObs ;
+  l'ancienne `METEOFRANCE_API_KEY` reste 403 sur DPClim). Mesuré sur
+  Ouessant-Stiff (29155005), année 2025 : **8 758 h de `FF` non-null sur 8 760**.
+- **Fichiers ouverts data.gouv.fr**, *sans aucune clé* (dataset
+  `6569b4473bedf2e7abad3b72`, `BASE/HOR/H_<dep>_*.csv.gz`) : `FF` **100 %**
+  non-null sur les stations RADOME côtières du 29, à jour à **J-1**, historique
+  remontant aux décennies précédentes.
+
+**Les deux sources d'obs sont la même mesure** : croisement DPObs temps réel vs
+archive climato sur 12 h communes à Ouessant, **écart max 0,0 m/s**, directions
+identiques. Il n'y a donc pas de skew train/serve sur l'observation — à ne pas
+confondre avec le skew ERA5/ARPEGE du *forçage*, lui bien réel (§ 2).
+
+Trois pièges DPClim, chacun mesuré et chacun coûteux s'il est ignoré :
+
+- le fichier est livré en **HTTP 201**, pas 200 — une boucle de polling qui
+  n'accepte que 200 jette la charge utile ;
+- il n'est **livré qu'une fois** (`410 production déjà livrée` ensuite) : écrire
+  sur disque dès la réception ;
+- **1 an maximum par commande** (`400` au-delà) → une commande par station et par
+  année ; et CSV à **virgule décimale** (`decimal=','`).
+
+Autres limites de la route temps réel (scoring quotidien) : `station/horaire`
+rend **une seule heure par requête** et le bulk `paquet/horaire` répond **404** —
+donc ~30 requêtes par station et par jour, tenable à 3 stations sous les quotas
+(~50-60 req/min), mais c'est ce qui plaide pour un lot restreint.
+
+Enfin, une honnêteté à tenir dans la prose : un anémomètre côtier à 10 m
+au-dessus du **sol** n'est pas le vent au large. Sur un site EMR offshore, la
+station la plus proche est un **proxy** — à assumer, jamais à vendre comme
+« vent au parc ».
 
 ### Préalable
 
-Comme les demandes 1 et 2 : passe **après** le ré-entraînement sur prévisions
-archivées. Un nouveau type de station hérite de toute la chaîne (gate, pending,
-backfill) — la stabiliser d'abord sur les variables existantes.
+**Aucun.** Le préalable initial (« passe après le ré-entraînement sur prévisions
+archivées ») visait le risque qu'un nouveau `kind` hérite d'une chaîne instable.
+Ce ré-entraînement est fait pour les vagues depuis le 2026-08-03 (§ « Ordre
+suggéré », point 3) et la chaîne — gate, `pending`, backfill — a tourné en cron
+depuis. Le lot vent peut donc partir.
 
 ---
 
@@ -300,6 +337,8 @@ avec la demande 1 (graphiques).
    Reste ouvert pour le **vent** (skew ERA5-train/ARPEGE-serve toujours actif,
    voir § 2 ci-dessus) : auto-hébergement possible pour lever les quotas si le
    volume l'exige.
-4. Alors seulement : les graphiques (1) sur des chiffres opérationnels, la
-   décision d'horizon (2) sur un modèle dont on connaît le skill réel, et les
-   stations de vent (3).
+4. Alors seulement : les graphiques (1) sur des chiffres opérationnels et la
+   décision d'horizon (2) sur un modèle dont on connaît le skill réel.
+5. **Les stations de vent (3) sont sorties de cette file le 2026-08-04** : leur
+   seul préalable supposé était l'absence d'historique d'obs, et il est démenti
+   (mesures en § 3). Elles n'attendent plus rien — lot en cours.

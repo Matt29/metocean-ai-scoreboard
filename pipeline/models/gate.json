@@ -34,6 +34,33 @@
     "pass": false,
     "weak": false
   },
+  "cherbourg-vent": {
+    "baseline_model": "meteofrance_arpege_europe",
+    "gain": 0.2536,
+    "gain_debiased": 0.162,
+    "mae_baseline": 1.4956,
+    "mae_model": 1.1163,
+    "pass": true,
+    "weak": false
+  },
+  "dieppe": {
+    "baseline_model": "meteofrance_arpege_europe",
+    "gain": 0.1812,
+    "gain_debiased": 0.1073,
+    "mae_baseline": 0.9764,
+    "mae_model": 0.7994,
+    "pass": true,
+    "weak": false
+  },
+  "ouessant": {
+    "baseline_model": "meteofrance_arpege_europe",
+    "gain": 0.2385,
+    "gain_debiased": 0.2058,
+    "mae_baseline": 1.2309,
+    "mae_model": 0.9373,
+    "pass": true,
+    "weak": false
+  },
   "pierres-noires": {
     "baseline_model": "ncep_gfswave025",
     "gain": 0.2578,

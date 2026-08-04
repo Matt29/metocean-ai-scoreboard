@@ -74,6 +74,12 @@ def _read(path: Path) -> dict | None:
     return json.loads(path.read_text()) if path.exists() else None
 
 
+# L'unité de la grandeur notée, par `kind`. Elle est publiée plutôt que déduite
+# côté site : `kind` seul ne la donne pas, et une station de vent servie en
+# mètres est une erreur de fait sur une donnée publique.
+UNIT = {"wave": "m", "tide": "m", "wind": "m/s"}
+
+
 def _station_entry(s: Station, gate: dict) -> dict:
     entry = {
         "id": s.id,
@@ -81,7 +87,7 @@ def _station_entry(s: Station, gate: dict) -> dict:
         "kind": s.kind,
         "lat": s.lat,
         "lon": s.lon,
-        "unit": "m",
+        "unit": UNIT[s.kind],
         "published": bool(gate.get("pass", False)),
         "weak": bool(gate.get("weak", False)),
     }

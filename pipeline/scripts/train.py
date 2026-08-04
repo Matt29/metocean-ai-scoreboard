@@ -39,17 +39,20 @@ import pandas as pd
 from scoreboard import model
 from scoreboard.config import Station, load_env, load_stations
 from scoreboard.dataset import assemble
-from scoreboard.features import FEATURE_COLUMNS, WAVE_FEATURE_COLUMNS
+from scoreboard.features import FEATURE_COLUMNS, WAVE_FEATURE_COLUMNS, WIND_FEATURE_COLUMNS
 from scoreboard.sources.marine import MODEL_COLUMNS
-from scoreboard.sources.wind import MULTI_FORCING_COLUMNS
+from scoreboard.sources.wind import MULTI_FORCING_COLUMNS, WIND_MODEL_COLUMNS
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "pipeline" / "data_train"
 REPORT_PATH = ROOT / "docs" / "model-eval.md"
 GATE_PATH = model.MODELS_DIR / "gate.json"
 GATE = 0.05  # the model must beat the baseline, hors biais, by >= 5% to go live
-UNIT = {"wave": "m (Hs)", "tide": "m (water level)"}
-ABLATABLE = sorted(set(FEATURE_COLUMNS) | set(WAVE_FEATURE_COLUMNS))
+UNIT = {"wave": "m (Hs)", "tide": "m (water level)", "wind": "m/s (vent 10 m)"}
+# Multi-model kinds: (candidate baseline columns, observation column). A `tide`
+# station is absent — its baseline is a harmonic fit, not a column to choose.
+KIND_MODELS = {"wave": (MODEL_COLUMNS, "hs"), "wind": (WIND_MODEL_COLUMNS, "wind_speed")}
+ABLATABLE = sorted(set(FEATURE_COLUMNS) | set(WAVE_FEATURE_COLUMNS) | set(WIND_FEATURE_COLUMNS))
 
 
 def issue_days(x: pd.DataFrame) -> pd.DatetimeIndex:
@@ -66,8 +69,13 @@ def split_by_issue_day(
     return np.asarray(day > cutoff)
 
 
-def select_baseline(raw: pd.DataFrame, train_days: pd.DatetimeIndex) -> str:
-    """`hs_<model>` column of lowest MAE vs `raw["hs"]` over `train_days` only.
+def select_baseline(
+    raw: pd.DataFrame,
+    train_days: pd.DatetimeIndex,
+    model_columns: list[str] = MODEL_COLUMNS,
+    obs_column: str = "hs",
+) -> str:
+    """Model column of lowest MAE vs `raw[obs_column]` over `train_days` only.
 
     Restricting to the train days is the whole point: the selected model is the
     yardstick every gain below is measured against, so it must be chosen without
@@ -76,36 +84,43 @@ def select_baseline(raw: pd.DataFrame, train_days: pd.DatetimeIndex) -> str:
     day = pd.DatetimeIndex(raw.index).normalize()
     sub = raw[day.isin(train_days)]
     mae = {
-        col: float((sub[col] - sub["hs"]).abs().mean())
-        for col in MODEL_COLUMNS
+        col: float((sub[col] - sub[obs_column]).abs().mean())
+        for col in model_columns
         if col in sub.columns
     }
     mae = {c: v for c, v in mae.items() if np.isfinite(v)}
     if not mae:
-        raise ValueError("no wave model column overlaps the observations on the train days")
+        raise ValueError("no model column overlaps the observations on the train days")
     return min(mae, key=mae.__getitem__)
 
 
-def _wave_data(station: Station, test_days: int) -> tuple | None:
-    """(x, obs, is_test, baseline_model) assembled from the raw multi-model parquet."""
+def _model_data(station: Station, test_days: int) -> tuple | None:
+    """(x, obs, is_test, baseline_model) assembled from the raw multi-model parquet.
+
+    One function for `wave` and `wind`: the two differ only by which columns
+    carry the candidate baselines and the observation — `KIND_MODELS`. Keeping
+    them on one code path is what keeps training and serving in step, which is
+    the whole anti-skew argument of `features.py`.
+    """
+    model_columns, obs_column = KIND_MODELS[station.kind]
     path = DATA_DIR / f"{station.id}_raw.parquet"
     if not path.exists():
         print(f"  {station.id}: no raw dataset at {path} — skipped")
         return None
 
     raw = pd.read_parquet(path).sort_index()
-    # Days are counted on those that carry an observation: a station whose buoy
+    # Days are counted on those that carry an observation: a station whose sensor
     # stopped early must still get its 30 *usable* test days.
-    obs_days = pd.DatetimeIndex(raw.index[raw["hs"].notna()]).normalize().unique()
+    obs_days = pd.DatetimeIndex(raw.index[raw[obs_column].notna()]).normalize().unique()
     cutoff = obs_days.max() - pd.Timedelta(days=test_days)
-    baseline_col = select_baseline(raw, obs_days[obs_days <= cutoff])
+    baseline_col = select_baseline(raw, obs_days[obs_days <= cutoff], model_columns, obs_column)
 
     x, obs = assemble(
         station,
-        raw[["hs"]],
+        raw[[obs_column]],
         raw[[baseline_col]],
         raw[MULTI_FORCING_COLUMNS],
-        wave_models=raw[MODEL_COLUMNS],
+        models=raw[model_columns],
     )
     if x.empty:
         print(f"  {station.id}: assembled 0 row — skipped")
@@ -113,11 +128,12 @@ def _wave_data(station: Station, test_days: int) -> tuple | None:
     # Same `cutoff` timestamp for the split as for the selection, and a row's
     # issue day is never after its valid day (lead >= 0): every row that fed the
     # baseline choice (valid day <= cutoff) is therefore a train row. No leak.
+    prefix = baseline_col.split("_", 1)[0] + "_"
     return (
         x,
         obs.astype(float),
         split_by_issue_day(x, test_days, cutoff),
-        baseline_col.removeprefix("hs_"),
+        baseline_col.removeprefix(prefix),
     )
 
 
@@ -167,8 +183,10 @@ def evaluate(
     the test set would make the published gain a max over three draws on the same
     ~30 issue days — the same leak `select_baseline` avoids, one level up.
     """
-    loaded = _wave_data(station, test_days) if station.kind == "wave" else _tide_data(
-        station, test_days
+    loaded = (
+        _model_data(station, test_days)
+        if station.kind in KIND_MODELS
+        else _tide_data(station, test_days)
     )
     if loaded is None:
         return None
@@ -401,9 +419,10 @@ def write_report(
         "Le modèle **post-traite** une prévision physique officielle : il la corrige, il",
         "ne la remplace jamais. Cette baseline n'est plus imposée : pour une station",
         "`wave`, c'est le **meilleur modèle physique** parmi les 5 modèles de vagues",
-        "Open-Meteo, choisi station par station comme le plus proche de sa bouée **sur",
-        "les seuls jours d'émission d'entraînement** (colonne « Baseline »). Pour une",
-        "station `tide`, c'est la prédiction harmonique.",
+        "Open-Meteo, et pour une station `wind` le meilleur des 3 modèles de vent",
+        "Open-Meteo — dans les deux cas choisi station par station comme le plus proche",
+        "de son observation **sur les seuls jours d'émission d'entraînement** (colonne",
+        "« Baseline »). Pour une station `tide`, c'est la prédiction harmonique.",
         "",
         "## Résultats par station",
         "",
@@ -430,8 +449,11 @@ def write_report(
         ]
     lines += [
         "",
-        f"MAE en {UNIT['wave']} pour les stations `wave`, en {UNIT['tide']} pour les",
-        "stations `tide`. « MAE baseline débiaisée » = MAE de la baseline après retrait",
+        # Dérivée des `kind` réellement présents : une phrase figée finirait par
+        # annoncer des mètres pour une station servie en m/s.
+        "MAE en "
+        + ", ".join(f"{UNIT[k]} pour les stations `{k}`" for k in dict.fromkeys(r["kind"] for r in rows))
+        + ". « MAE baseline débiaisée » = MAE de la baseline après retrait",
         "de son seul biais moyen sur la fenêtre de test — c'est le garde-fou de la",
         "réserve 4 : un modèle qui ne bat pas cette colonne n'apporte rien de plus",
         "qu'une constante. Gate de mise en ligne : **+5 % de MAE gagnée hors biais**",
@@ -599,6 +621,13 @@ def main() -> int:
         "per station on the gain hors biais)",
     )
     ap.add_argument(
+        "--station",
+        default="",
+        metavar="IDS",
+        help="comma-separated station ids to train (default: all). Les autres gardent "
+        "leur artefact et leur verdict `gate.json` — `merge_gate` les préserve déjà.",
+    )
+    ap.add_argument(
         "--ablate",
         default="",
         metavar="COLS",
@@ -616,7 +645,17 @@ def main() -> int:
     print(f"Training {', '.join(model_names)} (test = last {args.test_days} issue days):")
     if ablate:
         print(f"  ABLATION: {', '.join(ablate)} zeroed — artefacts and report NOT written")
-    stations = load_stations()
+    # Deux listes, jamais une seule : `configured` est ce que le dépôt déclare
+    # (c'est lui qui dit à `merge_gate` quels verdicts restent légitimes), et
+    # `stations` est ce que CE run entraîne. Les confondre ferait supprimer de
+    # `gate.json` le verdict de toute station non entraînée ici — c'est-à-dire
+    # dépublier une station en marge d'un entraînement ciblé.
+    configured = load_stations()
+    stations = configured
+    if only := {s.strip() for s in args.station.split(",") if s.strip()}:
+        if unknown := only - {s.id for s in configured}:
+            ap.error(f"unknown station id(s) {sorted(unknown)}")
+        stations = [s for s in configured if s.id in only]
     rows = [
         r
         for st in stations
@@ -634,10 +673,10 @@ def main() -> int:
 
     # Machine-readable gate: the publisher (Task 8) reads this, not the markdown.
     previous = json.loads(GATE_PATH.read_text()) if GATE_PATH.exists() else {}
-    gate = merge_gate(previous, rows, {s.id for s in stations})
+    gate = merge_gate(previous, rows, {s.id for s in configured})
     GATE_PATH.write_text(json.dumps(gate, indent=2, sort_keys=True) + "\n")
 
-    skipped = [s.id for s in stations if s.id not in {r["station"] for r in rows}]
+    skipped = [s.id for s in configured if s.id not in {r["station"] for r in rows}]
     write_report(rows, args.test_days, gate, skipped)
     failed = [r["station"] for r in rows if not r["pass"]]
 

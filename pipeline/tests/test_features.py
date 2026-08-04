@@ -6,10 +6,19 @@ import pytest
 
 from scoreboard.config import Station
 from scoreboard.dataset import assemble
-from scoreboard.features import FEATURE_COLUMNS, WAVE_FEATURE_COLUMNS, build_features
+from scoreboard.features import (
+    FEATURE_COLUMNS,
+    WAVE_FEATURE_COLUMNS,
+    WIND_FEATURE_COLUMNS,
+    build_features,
+)
 from scoreboard.sources import SourceError
 from scoreboard.sources.marine import MODEL_COLUMNS
-from scoreboard.sources.wind import FORCING_COLUMNS, MULTI_FORCING_COLUMNS
+from scoreboard.sources.wind import (
+    FORCING_COLUMNS,
+    MULTI_FORCING_COLUMNS,
+    WIND_MODEL_COLUMNS,
+)
 
 T0 = pd.Timestamp("2026-07-30 06:00", tz="UTC")
 
@@ -205,7 +214,7 @@ def test_wave_features_columns_and_spread():
         _series(T0 - pd.Timedelta(hours=24), 25, 1.3),
         T0,
         _forcing_multi(),
-        wave_models=_wave_models_frame(baseline.index),
+        models=_wave_models_frame(baseline.index),
     )
     assert list(feats.columns) == WAVE_FEATURE_COLUMNS
     assert WAVE_FEATURE_COLUMNS == (
@@ -234,7 +243,7 @@ def test_short_hs_gap_is_interpolated_not_zero_filled():
         _series(T0 - pd.Timedelta(hours=24), 25, 1.3),
         T0,
         _forcing_multi(),
-        wave_models=wm,
+        models=wm,
     )
     assert np.allclose(feats[col], 4.0)
     assert np.allclose(feats["model_spread"], np.std([0, 1, 2, 3, 4]))
@@ -250,7 +259,7 @@ def test_wave_model_under_coverage_raises():
             _series(T0 - pd.Timedelta(hours=24), 25, 1.3),
             T0,
             _forcing_multi(),
-            wave_models=wm,
+            models=wm,
         )
 
 
@@ -263,7 +272,7 @@ def test_wave_path_requires_multi_model_forcing():
             _series(T0 - pd.Timedelta(hours=24), 25, 1.3),
             T0,
             _forcing(),
-            wave_models=_wave_models_frame(baseline.index),
+            models=_wave_models_frame(baseline.index),
         )
 
 
@@ -345,3 +354,61 @@ def test_assemble_rejects_unknown_kind():
     obs, baseline, forcing = _history()
     with pytest.raises(ValueError):
         assemble(bad, obs, baseline, forcing)
+
+
+# --- chemin vent : la même mécanique, une autre liste de colonnes -------------
+
+
+def _wind_models_frame(index):
+    """3 colonnes modèles constantes et distinctes -> dispersion connue."""
+    return pd.DataFrame({c: 5.0 + i for i, c in enumerate(WIND_MODEL_COLUMNS)}, index=index)
+
+
+def test_wind_features_reuse_the_multi_model_path():
+    """Le vent n'a pas de chemin à lui : `build_features` dérive ses colonnes du
+    frame reçu. C'est ce qui garantit qu'entraînement et service voient la même
+    chose pour un `kind` comme pour l'autre."""
+    baseline = _baseline(value=7.0)
+    feats = build_features(
+        baseline,
+        _series(T0 - pd.Timedelta(hours=24), 25, 7.5),
+        T0,
+        _forcing_multi(),
+        models=_wind_models_frame(baseline.index),
+    )
+    assert list(feats.columns) == WIND_FEATURE_COLUMNS
+    assert WIND_FEATURE_COLUMNS == (
+        ["baseline", "lead_h", "last_err", "mean_err_24h", "hour_sin", "hour_cos"]
+        + WIND_MODEL_COLUMNS
+        + ["model_spread"]
+        + MULTI_FORCING_COLUMNS
+    )
+    # 5.0 / 6.0 / 7.0 -> écart-type de population = sqrt(2/3)
+    assert feats["model_spread"].round(6).eq(round(float(np.std([5.0, 6.0, 7.0])), 6)).all()
+    assert feats.notna().all().all(), "contrat : une feature n'est jamais NaN"
+
+
+def test_wave_and_wind_columns_differ_only_by_their_model_block():
+    """Garde-fou de la généralisation : si un jour les deux listes divergeaient
+    ailleurs que sur le bloc modèles, c'est que le chemin unique a été dupliqué."""
+    lead = ["baseline", "lead_h", "last_err", "mean_err_24h", "hour_sin", "hour_cos"]
+    assert WAVE_FEATURE_COLUMNS[: len(lead)] == WIND_FEATURE_COLUMNS[: len(lead)] == lead
+    assert WAVE_FEATURE_COLUMNS[-len(MULTI_FORCING_COLUMNS) - 1 :] == (
+        WIND_FEATURE_COLUMNS[-len(MULTI_FORCING_COLUMNS) - 1 :]
+    )
+
+
+def test_a_dead_wind_model_raises_instead_of_being_served_as_calm():
+    """Un modèle 100 % nul doit faire échouer la station, pas passer pour un
+    calme plat — même garde que sur les vagues."""
+    baseline = _baseline(value=7.0)
+    models = _wind_models_frame(baseline.index)
+    models[WIND_MODEL_COLUMNS[1]] = np.nan
+    with pytest.raises(SourceError):
+        build_features(
+            baseline,
+            _series(T0 - pd.Timedelta(hours=24), 25, 7.5),
+            T0,
+            _forcing_multi(),
+            models=models,
+        )

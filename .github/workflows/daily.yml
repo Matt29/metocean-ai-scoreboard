@@ -54,6 +54,14 @@ jobs:
         working-directory: pipeline
         env:
           CANDHIS_API_KEY: ${{ secrets.CANDHIS_API_KEY }}
+          # Les deux clés vent, parce que les deux branches ci-dessous n'appellent
+          # pas la même API (cf. `sources/mfobs.py`) : `daily` lit l'obs du jour
+          # sur DPObs (METEOFRANCE_API_KEY), `backfill` relit l'archive sur
+          # DPClim (METEOFRANCE_DPCLIM_API_KEY, qui ouvre aussi DPObs). Sans
+          # elles, les 3 stations de vent passent en "missing" sans faire rougir
+          # le job — une panne silencieuse, exactement ce qu'on veut éviter ici.
+          METEOFRANCE_API_KEY: ${{ secrets.METEOFRANCE_API_KEY }}
+          METEOFRANCE_DPCLIM_API_KEY: ${{ secrets.METEOFRANCE_DPCLIM_API_KEY }}
           # Never interpolate inputs.backfill_since directly into `run:` —
           # it comes from a workflow_dispatch form field and would otherwise
           # be a script-injection vector. Passed via env instead, and

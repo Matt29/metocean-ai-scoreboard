@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -49,25 +50,66 @@ from scoreboard.config import Station, load_env, load_stations
 from scoreboard.dataset import HORIZON_H, assemble
 from scoreboard.sources.candhis import fetch_wave_obs
 from scoreboard.sources.marine import fetch_wave_models_history
+from scoreboard.sources.mfobs import fetch_wind_obs_archive
 from scoreboard.sources.waterlevel import fetch_tide_obs
 from scoreboard.sources.wind import fetch_wind_history, fetch_wind_models_history
 
 OUT_DIR = Path(__file__).resolve().parents[1] / "data_train"
+# Mesuré le 2026-08-04 sur l'Historical Forecast API : les 3 modèles de vent ne
+# sont servis **simultanément et sans trou** qu'à partir de cette date. Avant,
+# `ecmwf_ifs025` est absent (0 % jusqu'en janvier 2024, 93 % en février), et rien
+# du tout avant 2022. Démarrer plus tôt ne rallonge pas l'entraînement : cela
+# fabrique des émissions que le plancher de couverture de `features.py` rejette.
+WIND_MODELS_START = date(2024, 2, 3)
+
+
+def _build_raw(
+    stations: list[Station],
+    obs_column: str,
+    fetch: Callable[[Station], pd.DataFrame],
+) -> dict[str, pd.DataFrame]:
+    """Write one `<id>_raw.parquet` per station and report its obs coverage.
+
+    Seul chemin d'écriture de `data_train/` pour les kinds à modèles : un kind de
+    plus fournit son `fetch` et sa colonne d'obs, pas une deuxième boucle à garder
+    en phase. `train._model_data` relit les deux de la même façon — la convention
+    de nommage et le comptage de couverture doivent donc être écrits une fois.
+    """
+    out = {}
+    for st in stations:
+        raw = fetch(st)
+        raw.to_parquet(OUT_DIR / f"{st.id}_raw.parquet")
+        out[st.id] = raw
+        print(f"  {st.id}: {len(raw)}h, obs {raw[obs_column].notna().mean():.0%} couverts")
+    return out
 
 
 def build_wave(stations: list[Station], start: date, end: date) -> dict[str, pd.DataFrame]:
     """One raw parquet per station: obs + 5 wave models + 6 multi-model wind
     columns, hourly UTC. No feature assembly here (Task 5/train.py)."""
-    out = {}
-    for st in stations:
+
+    def fetch(st: Station) -> pd.DataFrame:
         obs = fetch_wave_obs(st, start)[["hs"]].resample("1h").mean()  # single deep request
         waves = fetch_wave_models_history(st, start, end)  # single request
         winds = fetch_wind_models_history(st, start, end)  # single request
-        raw = obs.join(waves, how="outer").join(winds, how="outer")
-        raw.to_parquet(OUT_DIR / f"{st.id}_raw.parquet")
-        out[st.id] = raw
-        print(f"  {st.id}: {len(raw)}h, obs {raw['hs'].notna().mean():.0%} couverts")
-    return out
+        return obs.join(waves, how="outer").join(winds, how="outer")
+
+    return _build_raw(stations, "hs", fetch)
+
+
+def build_wind(stations: list[Station], start: date, end: date) -> dict[str, pd.DataFrame]:
+    """One raw parquet per station: obs FF + 3 model wind speeds + their u/v, hourly UTC.
+
+    Deux sources seulement, et **une seule** requête Open-Meteo
+    (`with_speeds=True` : baseline et forçage sortent du même payload).
+    """
+
+    def fetch(st: Station) -> pd.DataFrame:
+        obs = fetch_wind_obs_archive(st, start, end)[["wind_speed"]]
+        models = fetch_wind_models_history(st, start, end, with_speeds=True)
+        return obs.join(models, how="outer")
+
+    return _build_raw(stations, "wind_speed", fetch)
 
 
 def build_tide(
@@ -106,7 +148,9 @@ def main() -> int:
         "--refit-days", type=int, default=30, help="harmonic refit cadence (tide stations)"
     )
     # Candhis has a daily quota: `--kind tide` reruns the tide half without re-fetching waves.
-    ap.add_argument("--kind", choices=["wave", "tide"], help="build only this station kind")
+    ap.add_argument(
+        "--kind", choices=["wave", "tide", "wind"], help="build only this station kind"
+    )
     args = ap.parse_args()
     load_env()
 
@@ -118,10 +162,17 @@ def main() -> int:
     print(f"Window {start} -> {end}")
     datasets: dict[str, tuple] = {}
     waves = [s for s in stations if s.kind == "wave"]
+    winds = [s for s in stations if s.kind == "wind"]
     tides = [s for s in stations if s.kind == "tide"]
     if waves:
         print("Waves (Candhis + Open-Meteo multi-model), raw parquet per station:")
         build_wave(waves, start, end)  # writes its own <station>_raw.parquet
+    if winds:
+        # Départ borné par la dispo réelle des 3 modèles, pas par `--days` : voir
+        # `WIND_MODELS_START`. `--days` peut raccourcir la fenêtre, jamais l'étendre.
+        wind_start = max(start, WIND_MODELS_START)
+        print(f"Wind (Météo-France DPClim + Open-Meteo multi-model) from {wind_start}:")
+        build_wind(winds, wind_start, end)  # writes its own <station>_raw.parquet
     if tides:
         print("Tide (REFMAR + harmonic):")
         datasets |= build_tide(tides, start, end, args.fit_frac, args.refit_days)

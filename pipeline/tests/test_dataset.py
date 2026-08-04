@@ -32,7 +32,7 @@ def test_assemble_wave_models_columns():
     forcing = _hourly(MULTI_FORCING_COLUMNS, start, periods, 2.0)
     waves = _hourly(MODEL_COLUMNS, start, periods, 1.5)
 
-    x, y = assemble(STATION, obs, baseline, forcing, wave_models=waves)
+    x, y = assemble(STATION, obs, baseline, forcing, models=waves)
 
     assert list(x.columns) == WAVE_FEATURE_COLUMNS
     assert not x.empty
@@ -51,7 +51,7 @@ def test_assemble_skips_issue_under_coverage_via_source_error():
     waves = _hourly(MODEL_COLUMNS, start, periods, 1.5)
     waves[MODEL_COLUMNS[0]] = float("nan")  # one model 100% missing
 
-    x, y = assemble(STATION, obs, baseline, forcing, wave_models=waves)
+    x, y = assemble(STATION, obs, baseline, forcing, models=waves)
 
     assert list(x.columns) == WAVE_FEATURE_COLUMNS
     assert x.empty
@@ -69,7 +69,7 @@ def test_assemble_empty_result_typed_on_wave_columns():
     forcing = _hourly(MULTI_FORCING_COLUMNS, start, 24, 2.0)
     waves = _hourly(MODEL_COLUMNS, start, 24, 1.5)
 
-    x, y = assemble(STATION, obs, baseline, forcing, wave_models=waves)
+    x, y = assemble(STATION, obs, baseline, forcing, models=waves)
 
     assert list(x.columns) == WAVE_FEATURE_COLUMNS
     assert x.empty

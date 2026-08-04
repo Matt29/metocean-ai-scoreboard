@@ -62,3 +62,44 @@ lon = -2.0281030
 source = "shom"
 source_id = "410"
 baseline = "harmonic"
+
+# Stations de vent (demande produit 3, 2026-08-04). `source_id` = NUM_POSTE
+# Météo-France : la même clé ouvre le temps réel (DPObs) et l'archive (DPClim).
+# Une station par critère de sélection, chacune justifiée par une mesure (voir
+# docs/demandes-produit.md § 3) — pas par réputation.
+
+# Critère « cap ou île exposé » : le vent marin le moins contaminé par le relief.
+# FF non-null 99,8 % sur 2020-2026, moyenne 7,75 m/s (la plus ventée des trois).
+[[station]]
+id = "ouessant"
+name = "Ouessant (Le Stiff)"
+kind = "wind"
+lat = 48.4733330
+lon = -5.0570000
+source = "mfobs"
+source_id = "29155005"
+baseline = "wind-best"
+
+# Critère « site EMR » : 8,6 km du parc de Dieppe-Le Tréport, la plus courte
+# distance mesurée entre un poste ouvert et un parc éolien en mer français.
+[[station]]
+id = "dieppe"
+name = "Dieppe"
+kind = "wind"
+lat = 49.9328330
+lon = 1.0900000
+source = "mfobs"
+source_id = "76217001"
+baseline = "wind-best"
+
+# Critère « co-localisée » : 3,9 km de la bouée houle `cherbourg` déjà publiée —
+# le même point noté sur deux variables. Maille Open-Meteo à 0 m d'élévation.
+[[station]]
+id = "cherbourg-vent"
+name = "Cherbourg (Homet)"
+kind = "wind"
+lat = 49.6600000
+lon = -1.6333330
+source = "mfobs"
+source_id = "50129001"
+baseline = "wind-best"
