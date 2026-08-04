@@ -183,15 +183,16 @@ affirmations du post (le réseau publié, et ce que le modèle prédit vraiment)
 1. **`figure-brest-surcote.png`** (dans ce dossier, généré depuis les données du
    dépôt) — **l'image de tête**. Une seule émission, celle du 22 janvier 2026 à
    06 UTC, et ses 48 h : niveau observé, prédiction harmonique, modèle IA ; en
-   dessous, la surcote seule. Sur ces 48 h, 44 cm d'erreur pour l'harmonique,
-   11 cm pour le modèle. ⚠️ Ces deux chiffres datent du modèle d'avant le
-   2026-08-04 : régénérer la figure avant publication, ou les revérifier. C'est le visuel qui montre en une seconde ce qu'aucune
+   dessous, la surcote seule. Sur ces 48 h, **44 cm d'erreur pour la physique
+   seule, 10 cm pour le modèle**. Régénérée le 2026-08-04 sur le modèle publié
+   par `pipeline/scripts/figure_surge.py` — **la relancer après chaque retrain**,
+   la figure porte des chiffres et ce sont des affirmations comme les autres. C'est le visuel qui montre en une seconde ce qu'aucune
    phrase ne fait passer : l'harmonique est *décalée vers le bas pendant deux
    jours*, et c'est cet écart-là que le modèle prédit.
 
    Deux honnêtetés à assumer si on en parle en commentaire : le modèle
-   sous-estime le pic (58 cm prédits contre 85 observés), et cette émission est
-   la plus forte surcote de l'année de test — c'est un cas de tempête, pas une
+   sous-estime le pic (**60 cm prédits contre 83 observés**), et cette émission
+   est la plus forte surcote de l'année de test — c'est un cas de tempête, pas une
    journée moyenne. Choisie sur l'observation, jamais sur la performance du
    modèle. Le dire vaut mieux que se le faire dire.
 
