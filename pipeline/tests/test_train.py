@@ -150,6 +150,18 @@ def test_merge_gate_keeps_skipped_stations_and_drops_retired_ones():
     }
 
 
+def test_movement_reads_the_delta_against_the_previous_gate():
+    row = {"station": "brest", "gain_debiased": 0.52, "pass": True, "weak": False}
+
+    improved = train._movement(row, {"brest": {"gain_debiased": 0.50}})
+    fresh = train._movement(row, {})
+    regressed = train._movement(row, {"brest": {"gain_debiased": 0.55}})
+
+    assert "+52.0%" in improved and "+2.0%" in improved and improved.endswith("PASS")
+    assert "nouveau" in fresh
+    assert "-3.0%" in regressed  # un changement qui dégrade doit se voir au signe
+
+
 def test_evaluate_writes_an_artefact_carrying_baseline_model_and_feature_columns(
     tmp_path, monkeypatch
 ):

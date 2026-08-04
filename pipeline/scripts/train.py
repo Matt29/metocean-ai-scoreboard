@@ -360,6 +360,17 @@ def _verdict(r: dict) -> str:
     return "PASS*" if r["weak"] else "PASS"
 
 
+def _movement(r: dict, previous: dict) -> str:
+    """Une ligne par station : où on en est, et ce que CE run a bougé.
+
+    Le delta se lit contre `gate.json` d'AVANT l'écriture — c'est la seule
+    lecture qui répond à « mon changement a-t-il servi à quelque chose ».
+    """
+    before = previous.get(r["station"], {}).get("gain_debiased")
+    delta = "    nouveau" if before is None else f"{r['gain_debiased'] - before:+9.1%}"
+    return f"  {r['station']:16} {r['gain_debiased']:+7.1%} hors biais {delta}  {_verdict(r)}"
+
+
 def _failure_notes(rows: list[dict], gate_failed: list[str]) -> list[str]:
     """Réserve 5, entièrement dérivée des chiffres — aucune station codée en dur."""
     failing = [r for r in rows if not r["pass"]]
@@ -830,6 +841,10 @@ def main() -> int:
     skipped = [s.id for s in configured if s.id not in {r["station"] for r in rows}]
     write_report(rows, gate, skipped)
     failed = [r["station"] for r in rows if not r["pass"]]
+
+    print("\nverdict (gain hors biais, delta vs run précédent):")
+    for r in rows:
+        print(_movement(r, previous))
 
     print(f"\nreport -> {REPORT_PATH}")
     print(f"gate: {len(rows) - len(failed)}/{len(rows)} PASS" + (f", FAIL: {failed}" if failed else ""))
