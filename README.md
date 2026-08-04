@@ -3,7 +3,7 @@
 Un modèle IA **post-traite** la prévision physique officielle (le meilleur des
 5 modèles de vagues Open-Meteo Marine pour la houle et le meilleur des 3
 modèles de vent — `baseline_model`, choisi par station à l'entraînement — un
-modèle harmonique pour le niveau d'eau) sur des stations françaises de
+modèle harmonique ajusté sur 2 ans glissants pour le niveau d'eau) sur des stations françaises de
 référence, et publie chaque jour son écart mesuré face à cette baseline
 officielle. Ce n'est pas un modèle qui remplace la physique — c'est une
 correction statistique dessus, notée publiquement, jour après jour.
@@ -13,11 +13,37 @@ Justification de chaque source de données : [`docs/data-sources.md`](docs/data-
 
 ## Stations
 
-9 stations retenues, **7 publiées** — les deux restantes sont mesurées comme
+9 stations retenues, **8 publiées** — la dernière est mesurée comme
 les autres tous les jours, mais un *gate* qualité (`pipeline/models/gate.json`)
 retient toute station où l'IA ne bat pas sa propre baseline sur les données
 d'entraînement. Ce n'est pas une faiblesse cachée : c'est l'argument du
 produit — ce scoreboard ne publie que ce qu'il peut démontrer.
+
+Sur les stations de niveau d'eau, la baseline harmonique est ajustée sur
+**2 ans glissants** (`harmonic.FIT_LOOKBACK_DAYS`), et cette profondeur n'est
+pas un réglage : 90 jours ne séparent ni S2/K2 ni K1/P1 (182,6 j requis), et
+365 jours tombent *exactement* sur le seuil de Rayleigh de la constituante
+annuelle Sa — estimée au bord de sa séparabilité, donc bruitée et mal
+extrapolée. Mesuré le 2026-08-04, en causal : passer de 365 à 730 jours réduit
+la MAE du résidu de 29 % à Brest (16,8 → 11,9 cm).
+
+Cette profondeur décide du verdict, et pas dans le sens attendu. Améliorer la
+baseline physique n'a pas réduit la marge du modèle : ça a supprimé l'avantage
+injuste du concurrent. Tant que la baseline dérivait, la « baseline débiaisée »
+à laquelle le gate la compare pouvait retirer gratuitement plusieurs
+centimètres de biais — un adversaire artificiellement fort, contre lequel le
+modèle faisait match nul. Baseline conditionnée, ce biais s'effondre et le
+skill réel apparaît. Brest et Saint-Malo passent toutes deux le gate.
+
+> ⚠️ **Les gains des stations `tide` sont mesurés avec un forçage
+> quasi-analyse.** L'API Historical Forecast d'Open-Meteo concatène les runs les
+> plus frais : une « prévision » passée est émise quelques heures — pas 24 à
+> 48 h — avant son heure de validité (corrélation 0,9997 avec ERA5, mesurée à
+> Brest le 2026-08-04). Ces chiffres surestiment donc ce qu'une vraie prévision
+> à +48 h délivre, et l'effet est plus fort sur la marée que sur la houle : la
+> baseline astronomique ne se dégrade pas avec l'échéance, donc toute la
+> dégradation du forçage tombe du côté du modèle. Détail et pistes :
+> [`docs/plan-dev-modele.md`](docs/plan-dev-modele.md).
 
 `pipeline/models/gate.json` fait foi : le tableau ci-dessous le recopie, il ne
 le décide pas. En cas de désaccord, c'est le tableau qui a vieilli.
@@ -36,8 +62,8 @@ que le gate et le serve utilisent ensuite.
 | Belle-Île | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | oui |
 | Anglet | houle (Hs) | Candhis | Open-Meteo Marine (`meteofrance_wave`) | oui |
 | Cherbourg | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | non (sous le gate) |
-| Brest | niveau d'eau | SHOM REFMAR | harmonique (utide) | oui (signalée `weak`) |
-| Saint-Malo | niveau d'eau | SHOM REFMAR | harmonique (utide) | non (sous le gate) |
+| Brest | niveau d'eau | SHOM REFMAR | harmonique (utide, 2 ans) | oui |
+| Saint-Malo | niveau d'eau | SHOM REFMAR | harmonique (utide, 2 ans) | oui |
 | Ouessant (Le Stiff) | vent 10 m | Météo-France DPObs | Open-Meteo (`meteofrance_arpege_europe`) | oui |
 | Dieppe | vent 10 m | Météo-France DPObs | Open-Meteo (`meteofrance_arpege_europe`) | oui |
 | Cherbourg (Homet) | vent 10 m | Météo-France DPObs | Open-Meteo (`meteofrance_arpege_europe`) | oui |
