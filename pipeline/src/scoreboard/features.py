@@ -61,12 +61,35 @@ BASE_COLUMNS = [
     "hour_cos",
 ]
 
-# Tide stations: atmospheric forcing at the lead's valid time (see
-# `sources.wind`). 10 m wind components, m/s, eastward / northward — u/v rather
-# than speed+direction, because direction is circular and u/v handle it
-# natively — plus the MSL pressure anomaly, whose inverse barometer drives the
-# surge these stations actually predict.
-FEATURE_COLUMNS = BASE_COLUMNS + _TIDE_FORCING_COLUMNS
+# Shorter memory of the residual, tide only, on top of `mean_err_24h`. Taken
+# first out of the feature backlog for a practical reason — no new source, no
+# request, the same function that already computes the 24 h window.
+#
+# Measured 2026-08-04 (`--ablate mean_err_3h,mean_err_6h`, then a bootstrap
+# resampling issue days): saint-malo **+3.5 %** off-bias, 95 % CI [+2.7, +4.4],
+# P(delta<=0) = 0 %; brest **-0.4 %**, indistinguishable from zero, 95 % CI
+# [-1.2, +0.4]. At saint-malo the gain decays with lead exactly as a short
+# memory should: +1.15 cm of MAE at 1-12 h down to +0.04 cm at 37-48 h.
+#
+# Both stations get the columns, one station uses them — kept that way rather
+# than configured per station, because the two residuals differ in *kind*, not
+# in magnitude, and a per-station feature list would be a knob to tune by hand.
+# At brest the residual is low-frequency (autocorrelation 0.86 at 6 h, 87 % of
+# its variance survives a 25 h rolling mean): `mean_err_24h` already spans it
+# and a 3-6 h window is redundant. At saint-malo it is a non-stationary
+# semi-diurnal component (autocorrelation collapses to 0.17 at 6 h, back up to
+# 0.84 at 12 h) that neither `mean_err_24h` nor the solar-24 h
+# `hour_sin`/`hour_cos` can see. See « Plafond propre à saint-malo » in
+# `docs/plan-dev-modele.md` § Réserves ouvertes.
+TIDE_ERR_WINDOWS_H = (3, 6)
+TIDE_ERR_COLUMNS = [f"mean_err_{h}h" for h in TIDE_ERR_WINDOWS_H]
+
+# Tide stations: the residual-memory windows above, then atmospheric forcing at
+# the lead's valid time (see `sources.wind`). 10 m wind components, m/s,
+# eastward / northward — u/v rather than speed+direction, because direction is
+# circular and u/v handle it natively — plus the MSL pressure anomaly, whose
+# inverse barometer drives the surge these stations actually predict.
+FEATURE_COLUMNS = BASE_COLUMNS + TIDE_ERR_COLUMNS + _TIDE_FORCING_COLUMNS
 
 
 def model_feature_columns(model_columns: list[str]) -> list[str]:
@@ -125,6 +148,15 @@ def _add_aligned(feats: pd.DataFrame, frame: pd.DataFrame, cols: list[str]) -> N
         feats[col] = _aligned_forcing(frame, col, feats.index)
 
 
+def _mean_err(past_obs: pd.Series, baseline: pd.Series, t0: pd.Timestamp, hours: int) -> float:
+    """Mean `obs - baseline` over the `hours` before `t0`. 0.0 on an empty window."""
+    window = past_obs[past_obs.index > t0 - pd.Timedelta(hours=hours)]
+    if window.empty:
+        return 0.0
+    errs = window - _aligned_baseline(baseline, window.index)
+    return _finite(errs.mean())
+
+
 def _finite(value: float) -> float:
     """0.0 rather than NaN — features are never NaN (documented contract)."""
     return 0.0 if value is None or not np.isfinite(value) else float(value)
@@ -148,15 +180,10 @@ def build_features(
 
     if past_obs.empty:
         last_err = 0.0
-        mean_err_24h = 0.0
     else:
         t_last = past_obs.index[-1]
         b_last = _aligned_baseline(baseline, pd.DatetimeIndex([t_last])).iloc[0]
         last_err = _finite(past_obs.iloc[-1] - b_last)
-
-        window = past_obs[past_obs.index > t0 - pd.Timedelta(hours=24)]
-        errs = window - _aligned_baseline(baseline, window.index)
-        mean_err_24h = _finite(errs.mean()) if len(errs) else 0.0
 
     future = baseline[baseline.index > t0]
     feats = pd.DataFrame(index=future.index)
@@ -164,9 +191,12 @@ def build_features(
     feats["baseline"] = future.astype(float).values
     feats["lead_h"] = ((future.index - t0) / pd.Timedelta(hours=1)).to_numpy().round().astype(int)
     feats["last_err"] = last_err
-    feats["mean_err_24h"] = mean_err_24h
     feats["hour_sin"] = np.sin(2 * np.pi * future.index.hour / 24)
     feats["hour_cos"] = np.cos(2 * np.pi * future.index.hour / 24)
+    # 24 h for every kind (it is in BASE_COLUMNS); the shorter windows on the
+    # tide path only. Final column order comes from the reindex below.
+    for hours in (24, *TIDE_ERR_WINDOWS_H) if models is None else (24,):
+        feats[f"mean_err_{hours}h"] = _mean_err(past_obs, baseline, t0, hours)
     if models is None:
         # Narrowed here and nowhere else. A tide frame may be *run-stratified*
         # (one block per lead day, see `sources.wind.forcing_at_issue`), and

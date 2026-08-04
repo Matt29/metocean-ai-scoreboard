@@ -18,10 +18,10 @@
     "weak": false
   },
   "brest": {
-    "gain": 0.5314,
-    "gain_debiased": 0.5329,
+    "gain": 0.5275,
+    "gain_debiased": 0.529,
     "mae_baseline": 0.1187,
-    "mae_model": 0.0556,
+    "mae_model": 0.0561,
     "pass": true,
     "weak": false
   },
@@ -71,10 +71,10 @@
     "weak": false
   },
   "saint-malo": {
-    "gain": 0.2786,
-    "gain_debiased": 0.2798,
+    "gain": 0.3138,
+    "gain_debiased": 0.3149,
     "mae_baseline": 0.1548,
-    "mae_model": 0.1116,
+    "mae_model": 0.1062,
     "pass": true,
     "weak": false
   }

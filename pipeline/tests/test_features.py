@@ -58,6 +58,8 @@ def test_columns_exactly_as_specified():
         "mean_err_24h",
         "hour_sin",
         "hour_cos",
+        "mean_err_3h",
+        "mean_err_6h",
         "wind_u10",
         "wind_v10",
         "pressure_anom",
@@ -190,10 +192,28 @@ def test_anti_leak_last_err_uses_last_obs_at_or_before_t0():
 
 
 def test_obs_strictly_before_window_still_yields_zero_mean_err():
-    old = _series(T0 - pd.Timedelta(days=10), 5, 1.3)  # far outside the 24h window
+    old = _series(T0 - pd.Timedelta(days=10), 5, 1.3)  # far outside every window
     feats = build_features(_baseline(), old, T0, _forcing())
-    assert (feats["mean_err_24h"] == 0.0).all()
+    for col in ("mean_err_3h", "mean_err_6h", "mean_err_24h"):
+        assert (feats[col] == 0.0).all()
     assert not feats.isna().any().any()
+
+
+def test_mean_err_windows_read_their_own_horizon():
+    """Three distinct error bands, one per window. Every other test in this file
+    uses a constant history, where the three means coincide — so swapping 3 h
+    and 6 h, or hard-coding 24, would pass all of them unnoticed."""
+    idx = pd.date_range(T0 - pd.Timedelta(hours=24), periods=25, freq="1h", tz="UTC")
+    obs = pd.Series(1.1, index=idx)  # baseline is 1.0 flat: err 0.1 over [-24h, -6h]
+    obs[idx > T0 - pd.Timedelta(hours=6)] = 1.4  # err 0.4 over ]-6h, -3h]
+    obs[idx > T0 - pd.Timedelta(hours=3)] = 2.0  # err 1.0 over ]-3h, t0]
+
+    feats = build_features(_baseline(), obs, T0, _forcing())
+
+    assert np.allclose(feats["mean_err_3h"], 1.0)
+    assert np.allclose(feats["mean_err_6h"], 0.7)  # 3 h at 0.4, then 3 h at 1.0
+    # 24 hourly points, not 25: the window is strictly open at t0 - 24 h.
+    assert np.allclose(feats["mean_err_24h"], (18 * 0.1 + 3 * 0.4 + 3 * 1.0) / 24)
 
 
 # --- wave multi-model block ---------------------------------------------
