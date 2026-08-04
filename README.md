@@ -133,7 +133,7 @@ gh workflow run daily.yml
 
 ## Cron
 
-Le run quotidien est planifié à **08:30 UTC** (`.github/workflows/daily.yml`).
+Le run quotidien est planifié à **07:30 UTC** (`.github/workflows/daily.yml`).
 
 **Historique de cette heure.** Le brief prévoyait 06:00 UTC. Elle a été recalée
 à 09:30 après avoir listé directement le bucket S3 source de Copernicus Marine
@@ -151,20 +151,35 @@ puisque le run note la prévision de la veille contre l'obs réelle — n'en est
 pas une : Candhis et REFMAR sont à 0,1 h du temps réel, DPObs à 1,1 h, et la
 veille est complète (24/24 h) chez les trois.
 
-**Pourquoi 08:30 et non 07:00.** Parce que c'est *un* matin, pas douze. La
-valeur qui décide d'une heure de cron est le pire cas, et une seule mesure ne
-le donne pas. 08:30 gagne une heure sur 09:30 tout en gardant ~1,5 h de marge
-sur le point effectivement mesuré. Descendre à la limite d'un échantillon
-unique s'achèterait au prix de `missing` intermittents, longs à diagnostiquer
-parce qu'ils ne font pas rougir le job.
+**Pourquoi 07:30, et pourquoi pas une marge plus large.** Un premier réflexe a
+été de garder ~1,5 h de marge sur le point mesuré, au nom du pire cas. C'est
+le mauvais arbitrage, parce que les deux modes de panne ne sont pas
+symétriques :
+
+- *Trop tôt, source pas encore servie* → `missing`. Visible, et rattrapable :
+  `_missing_dates` ne considère jamais un `missing` comme fait, un
+  `backfill --since` le rejoue depuis les archives.
+- *Run de la veille servi à la place de celui du jour* → aucune trace.
+  Open-Meteo sert le dernier run disponible, celui de la veille couvre encore
+  tout l'horizon et ressort `ok` à l'identique.
+
+Une marge horaire protège du premier et **pas du second** : elle achète une
+assurance contre la panne récupérable et zéro contre la panne silencieuse.
+07:30 laisse 30 min sur le point mesuré, ce qui couvre le glissement de
+planification d'Actions, et n'achète rien de plus.
+
+**Ce qu'il faut surveiller.** Un `missing` n'est pas gratuit pour autant : le
+jour rejoué porte `backfilled: true` et ne compte pas comme jour noté en
+direct. Or c'est le stock de jours réels qui manque aujourd'hui, et qui
+conditionne les graphiques et l'arbitrage nowcasting. Un cron trop bas se
+paierait en jours reconstitués, pas en données perdues. Si le taux de
+`missing` monte, remonter l'heure — c'est une ligne.
 
 **Réserve à ne pas perdre.** Le dry-run prouve qu'une prévision *utilisable*
-est servie à 07:00 — il ne prouve pas que c'est le run du jour. Open-Meteo sert
-le dernier run disponible ; celui de la veille couvre encore tout l'horizon et
-ressortirait `ok` de la même façon. Avancer davantage risquerait donc de
-dégrader silencieusement la fraîcheur du forçage sans produire un seul
-`missing`. Trancher demande de comparer, sur plusieurs jours, la prévision
-servie tôt à celle servie plus tard pour les mêmes heures cibles —
+est servie à 07:00, pas que c'est le run du jour ; la panne silencieuse
+ci-dessus n'est donc pas exclue à 07:30, ni ne l'était à 09:30. La trancher
+demande de comparer, sur plusieurs jours, la prévision servie tôt à celle
+servie plus tard pour les mêmes heures cibles —
 `pipeline/data_forecast_archive/` est le corpus qui le permettra.
 
 Une station en `"missing"` (503 transitoire, station sous le gate, source
