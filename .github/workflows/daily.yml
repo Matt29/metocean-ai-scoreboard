@@ -8,7 +8,7 @@ name: daily
 # 09:30 UTC leaves ~40min margin over the worst observed case.
 "on":
   schedule:
-    - cron: "30 9 * * *"
+    - cron: "30 8 * * *"
   workflow_dispatch:
     inputs:
       backfill_since:

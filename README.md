@@ -133,17 +133,39 @@ gh workflow run daily.yml
 
 ## Cron
 
-Le run quotidien est planifié à **09:30 UTC** (`.github/workflows/daily.yml`).
-Cette heure n'est pas celle du brief d'origine (06:00 UTC) : elle a été
-recalée après avoir constaté, en listant directement le bucket S3 source de
-Copernicus Marine sur 12 jours, que le fichier MFWAM du jour n'était publié
-qu'entre 08:10 et 08:50 UTC selon les jours. 09:30 UTC laisse ~40 min de
-marge sur le pire cas observé. Détail de la méthode et des données dans
-`.superpowers/sdd/2026-07-30-scoreboard-metocean-ia/task-10-report.md`.
-Ce constraint CMEMS a disparu avec le retrait de Copernicus (Task 7,
-`docs/data-sources.md` § 4ter) ; l'heure n'a pas été rouverte depuis faute de
-nouvelle mesure sur la disponibilité Open-Meteo — 09:30 UTC reste la valeur en
-place.
+Le run quotidien est planifié à **08:30 UTC** (`.github/workflows/daily.yml`).
+
+**Historique de cette heure.** Le brief prévoyait 06:00 UTC. Elle a été recalée
+à 09:30 après avoir listé directement le bucket S3 source de Copernicus Marine
+sur 12 jours : le fichier MFWAM du jour n'était publié qu'entre 08:10 et
+08:50 UTC selon les jours, et 09:30 laissait ~40 min de marge sur le pire cas
+observé (méthode et données :
+`.superpowers/sdd/2026-07-30-scoreboard-metocean-ia/task-10-report.md`). Cette
+contrainte a disparu avec le retrait de CMEMS (`docs/data-sources.md` § 4ter),
+mais 09:30 est resté en place faute de nouvelle mesure.
+
+**Ce qui a été mesuré le 2026-08-04, à 07:00 UTC.** Un `scoreboard daily
+--dry-run` complet passe : les 7 stations publiées ressortent `ok`. Et la
+fraîcheur des observations — la contrainte qu'on soupçonnait la plus basse,
+puisque le run note la prévision de la veille contre l'obs réelle — n'en est
+pas une : Candhis et REFMAR sont à 0,1 h du temps réel, DPObs à 1,1 h, et la
+veille est complète (24/24 h) chez les trois.
+
+**Pourquoi 08:30 et non 07:00.** Parce que c'est *un* matin, pas douze. La
+valeur qui décide d'une heure de cron est le pire cas, et une seule mesure ne
+le donne pas. 08:30 gagne une heure sur 09:30 tout en gardant ~1,5 h de marge
+sur le point effectivement mesuré. Descendre à la limite d'un échantillon
+unique s'achèterait au prix de `missing` intermittents, longs à diagnostiquer
+parce qu'ils ne font pas rougir le job.
+
+**Réserve à ne pas perdre.** Le dry-run prouve qu'une prévision *utilisable*
+est servie à 07:00 — il ne prouve pas que c'est le run du jour. Open-Meteo sert
+le dernier run disponible ; celui de la veille couvre encore tout l'horizon et
+ressortirait `ok` de la même façon. Avancer davantage risquerait donc de
+dégrader silencieusement la fraîcheur du forçage sans produire un seul
+`missing`. Trancher demande de comparer, sur plusieurs jours, la prévision
+servie tôt à celle servie plus tard pour les mêmes heures cibles —
+`pipeline/data_forecast_archive/` est le corpus qui le permettra.
 
 Une station en `"missing"` (503 transitoire, station sous le gate, source
 indisponible) est un résultat normal du run — le job ne devient rouge que sur
