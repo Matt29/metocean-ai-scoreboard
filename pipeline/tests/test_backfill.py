@@ -77,6 +77,17 @@ def _tide_obs_df(start, date_end, value=2.0):
     return pd.DataFrame({"level": np.full(len(idx), value)}, index=idx)
 
 
+class _FakeHarmonic:
+    """Les constantes persistées, sans utide : `daily` n'en lit que `fitted_at`
+    (péremption) et `predict` (la baseline servie)."""
+
+    def __init__(self, fitted_at):
+        self.fitted_at = fitted_at
+
+    def predict(self, times):
+        return pd.Series(2.0, index=times)
+
+
 def _marine_df(date_start, date_end):
     """One Hs column per wave model over the requested (inclusive) window —
     same date semantics as the real Open-Meteo marine archive."""
@@ -159,6 +170,13 @@ def patched_sources(monkeypatch, calls):
     monkeypatch.setattr(backfill, "fetch_wind_forecast_history", _wind)
     monkeypatch.setattr(backfill, "fetch_wind_models_history", _wind_models)
     monkeypatch.setattr(daily.model, "load_artifact", _artifact)
+    # Les constantes harmoniques persistées, sans utide ni fichier : un jour
+    # rejoué les lit comme le run du jour (`daily._baseline_window`).
+    monkeypatch.setattr(
+        daily.harmonic.HarmonicModel,
+        "load",
+        lambda path: _FakeHarmonic(pd.Timestamp(TODAY, tz="UTC")),
+    )
     return monkeypatch
 
 

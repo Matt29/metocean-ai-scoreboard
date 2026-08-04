@@ -90,7 +90,8 @@ GitHub Actions (cron, voir .github/workflows/daily.yml)
         ├─ 1. score les prédictions publiées hier (obs Candhis/SHOM d'aujourd'hui)
         ├─ 2. baseline du jour : meilleur modèle vague Open-Meteo Marine
         │      (`baseline_model`, choisi par station à l'entraînement) ou
-        │      refit harmonique (utide)
+        │      constantes harmoniques persistées (`models/<station>-harmonic.joblib`,
+        │      ré-ajustées tous les 180 j par `scripts/fit_harmonic.py`)
         ├─ 3. prévision vent ARPEGE (Open-Meteo) → inférence du modèle IA (par station)
         ├─ 4. publie data/<station>/latest.json + history.json + data/scores.json
         └─ 5. archive le vent + les modèles vague servis → pipeline/data_forecast_archive/YYYY-MM-DD.parquet

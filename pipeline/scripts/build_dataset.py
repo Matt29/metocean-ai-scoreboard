@@ -33,8 +33,10 @@ Sources and documented compromises
   station's own observations, then refitted every `--refit-days` on a *sliding*
   `harmonic.FIT_LOOKBACK_DAYS` window (two years). The model serving a given valid
   time is always fitted on observations strictly anterior to the simulated issue
-  — no leak — and on the same span the daily run fetches
-  (`daily.TIDE_FIT_LOOKBACK_DAYS`), which is what makes the backtest honest.
+  — no leak — on the same span *and à la même cadence* que ce que la production
+  sert (`harmonic.FIT_LOOKBACK_DAYS`, `harmonic.REFIT_DAYS`), ce qui est ce qui
+  rend le backtest honnête. Ne surtout pas raccourcir `--refit-days` pour
+  « améliorer » la baseline : personne ne sert celle-là.
   Hence the default `--days 1825`: `FIT_LOOKBACK_DAYS` (two years) to fit before
   the first evaluated day, then three years to evaluate — enough for `train.py`
   to hold out a **full year** of test and still keep two years of training, so a
@@ -42,9 +44,10 @@ Sources and documented compromises
   Shorten it and the first fits fall back to less history than production serves;
   the backtest then scores a baseline worse than the real one, which is the same
   skew in the other direction.
-  A single frozen fit made the baseline dishonestly bad: utide extrapolates its
-  secular trend, so a 6-month-old fit carried a ~-0.3 m offset that the model was
-  rewarded for merely removing.
+  Un fit figé avait autrefois rendu la baseline malhonnêtement mauvaise (offset
+  de ~-0,3 m à 6 mois) : c'était utide extrapolant sa tendance séculaire, ce que
+  `harmonic.fit` ne fait plus (`trend=False`). Ce qui reste vrai, c'est qu'un
+  fit *jamais* rafraîchi dérive — d'où une cadence, mesurée, plutôt qu'un gel.
 """
 
 from __future__ import annotations
@@ -167,7 +170,10 @@ def main() -> int:
         help="history depth to request (tide needs FIT_LOOKBACK_DAYS to fit + a year to eval)",
     )
     ap.add_argument(
-        "--refit-days", type=int, default=30, help="harmonic refit cadence (tide stations)"
+        "--refit-days",
+        type=int,
+        default=harmonic.REFIT_DAYS,
+        help="harmonic refit cadence (tide stations) — doit rester celle servie",
     )
     # Candhis has a daily quota: `--kind tide` reruns the tide half without re-fetching waves.
     ap.add_argument(

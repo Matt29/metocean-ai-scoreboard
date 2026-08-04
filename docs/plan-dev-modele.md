@@ -237,11 +237,26 @@ Trois conditions :
    d'une péremption. Sans ça, un cron cassé sert silencieusement un fit vieux
    de deux ans.
 
-**À mesurer avant de fixer la cadence** : le coût réel d'un fit vieux de 6 mois,
-par `causal_predict` à `refit_days=30` contre `refit_days=180`, même fenêtre
-d'évaluation. Quelques millimètres → prendre 6 mois. Un centimètre → cadence
-mensuelle, qui garde déjà ~30× du gain. Choisir sur le chiffre, pas sur
-l'intuition.
+**Mesuré le 2026-08-04, cadence retenue : 180 jours.** `causal_predict` sur la
+même fenêtre d'évaluation (2025-07-12 → 2026-08-04, 9313 h, `trend=False`), MAE
+de la baseline harmonique seule :
+
+| refit | Brest | Saint-Malo |
+|---|---|---|
+| 30 j | 11,65 cm | 14,99 cm |
+| 180 j | 11,72 cm | 15,63 cm |
+| 365 j | 11,85 cm | 16,11 cm |
+
+Six mois de péremption coûtent **0,7 mm à Brest et 6,4 mm à Saint-Malo** — sous
+le centimètre, donc le cas « quelques millimètres → prendre 6 mois ». La cadence
+annuelle, elle, se paie (+1,1 cm à Saint-Malo) : 180 est le palier avant le
+décrochage, pas un maximum arbitraire.
+
+Implémenté : `harmonic.REFIT_DAYS` (constante partagée backtest/production),
+`HarmonicModel.fitted_at` persisté, `scripts/fit_harmonic.py` pour ré-ajuster,
+et `daily` qui marque la station `missing` au-delà de la péremption. Le fetch
+REFMAR quotidien passe de ~50 requêtes / ~160 Mo à une seule requête de 4 jours,
+et le `daily --dry-run` complet tombe de ~50 s à 2,4 s.
 
 ---
 
