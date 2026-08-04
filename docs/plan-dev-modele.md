@@ -351,15 +351,64 @@ fonction déjà écrite. À faire passer en premier si le temps manque.
 
 ## Réserves ouvertes
 
-- **Divergence validation/test sur saint-malo.** Avec la pression, sa validation
-  double (+4,2 % → +8,8 % hors biais) mais son test s'effondre (−0,3 % →
-  −11,7 %). Brest a le même mois de test et y gagne : ce n'est donc pas
-  saisonnier, c'est spécifique à la station. **Non expliqué.** À reprendre avant
-  de conclure quoi que ce soit sur saint-malo.
-- **Dette brest « régression sous la feature vent ».** Reformulée, pas résolue :
-  les ablations qui l'avaient mesurée l'ont été contre la baseline 90 j, dont le
-  biais mensuel balayait ±20 cm. Elles mesuraient du bruit autour d'un biais.
-  À rejouer entièrement sur la baseline actuelle avant d'y voir une anomalie.
+- ~~**Divergence validation/test sur saint-malo.**~~ **Fermée le 2026-08-04 —
+  c'était le protocole, pas la station.** Les chiffres de la réserve
+  (validation +8,8 % / test −11,7 %) avaient été pris contre la baseline
+  harmonique 90 j et sur un test de 30 jours : les deux sont morts. Sur la
+  baseline actuelle l'écart s'inverse et devient énorme aux **deux** stations —
+  brest +9,4 % val → +53,3 % test (×5,7), saint-malo +5,2 % → +28,0 % (×5,4).
+  Il n'est donc pas spécifique à saint-malo. Trois causes mécaniques cumulées :
+
+  1. `VAL_DAYS_CAP = 120` place toujours la validation sur avril-août, le creux
+     annuel de surcote. Le modèle final, restreint aux mêmes mois du test, ne
+     fait que +26,3 % (brest) et +19,1 % (saint-malo), contre +61,6 % et
+     +31,0 % le reste de l'année.
+  2. Le modèle de sélection est ajusté sur 2024-02 → 2025-04, donc sur **un
+     seul** printemps-été. Sur les mois avril-juillet du test il ne rend que
+     +6,7 % (brest) et +11,7 % (saint-malo).
+  3. C'est un tirage unique de 4 mois : les gains mensuels de validation de
+     brest sont +26,2 / +20,3 / −27,5 / −9,3 %.
+
+  **Conséquence pratique : le gain de validation est une borne basse
+  structurelle, pas un pronostic du test.** Il ne sert qu'à classer trois
+  candidats, et il remplit ce rôle (`hgb-per-lead` gagne aux deux stations sur
+  la validation comme sur le test). Ne jamais le lire comme une estimation de
+  skill, et ne pas s'alarmer d'un écart val/test de facteur 5 : c'est la valeur
+  attendue de ce protocole.
+
+- **Plafond propre à saint-malo** (MAE modèle 0,112 m contre 0,056 à brest) —
+  *ouverte, mais pour la première fois avec une piste mesurée*. Éliminés le
+  2026-08-04 : la vitesse de marée `|dh/dt|` (gain plat sur les quintiles,
+  corr +0,04), le marnage vives-eaux/mortes-eaux (corr +0,04, gain plat de 4,4
+  à 10,9 m), et toute raie harmonique stationnaire résiduelle (M2/S2/M4/M6/K1 :
+  < 0,1 % de la variance du résidu, amplitudes < 1 cm — la baseline 730 j ne
+  laisse pas de constituante mal ajustée). Ce qui reste : à brest le résidu est
+  basse fréquence (87 % de sa variance survit à une moyenne glissante de 25 h,
+  autocorrélation 0,86 à 6 h), à saint-malo non — 48 %, et une autocorrélation
+  qui **s'effondre à 0,17 à 6 h puis remonte à 0,84 à 12 h**. C'est une
+  composante semi-diurne à phase non stationnaire, qu'aucune feature actuelle ne
+  peut capter puisque `hour_sin`/`hour_cos` sont solaires 24 h, et l'erreur du
+  modèle en garde la signature (−0,26 à 6 h, +0,60 à 12 h). C'est l'appui mesuré
+  de l'item « 3. Interaction marée-surcote » ci-dessus.
+- ~~**Dette brest « régression sous la feature vent ».**~~ **Close le 2026-08-04,
+  ablation rejouée : le vent aide, il ne dégrade plus.** Sur la baseline 90 j
+  (Task 7B), le vent coûtait −7,7 pts à brest (+2,3 % sans vent → −5,4 % avec
+  vent) — la mesure qui avait ouvert cette réserve. Rejouée sur la baseline
+  actuelle (`fb35db7`, harmonique 730 j + forçage stratifié) : le vent apporte
+  **+3,4 pts hors biais** (+49,9 % → +53,3 %, MAE 0,0596 → 0,0556), écart
+  confirmé par bootstrap par jour d'émission (IC95 % [+1,7 %, +4,9 %], jamais
+  sous zéro sur 2000 tirages) et par un contrôle à modèle ML figé — le gain
+  tient qu'on force `hgb-per-lead` ou `ridge`, ce n'est donc pas un artefact de
+  sélection de candidat. Saint-malo confirme la même direction en plus faible
+  (+1,6 pt, IC95 % [+0,5 %, +2,6 %]). L'hypothèse retenue le 2026-07-30
+  (« station abritée, dataset court ») n'avait pas besoin d'être vraie : le
+  signal était noyé dans la dérive saisonnière de la baseline 90 j, pas dans le
+  vent lui-même.
+
+  Détail à garder pour la tension de vent (§ Features n°1) : sur brest,
+  `wind_v10` porte l'essentiel de l'effet (−3,2 pts à l'ablation) et `wind_u10`
+  presque rien (−0,6 pt). L'effet absolu reste petit — 0,4 cm de MAE — la dette
+  portait sur le *signe*, et c'est le signe qui s'est inversé.
 - ~~**Skew ERA5 restant dans `backfill.py`.**~~ **Résolu le 2026-08-04** :
   `backfill.py` passe par le même forçage stratifié, et `build_features` narrow
   par émission — un jour rejoué est donc forcé par le run qu'il aurait vraiment

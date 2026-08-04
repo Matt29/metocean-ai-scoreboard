@@ -4,33 +4,34 @@ Scindé en deux posts le 2026-08-04 : le brouillon initial mettait en avant un
 gain (−26 % aux Pierres Noires) mesuré sur des jours rejoués depuis les
 archives, pas notés en direct. Le compteur en direct vient de repartir de
 zéro — houle retombée à 1 jour scoré, vent à 0 jour. Annoncer l'outil et
-montrer un premier résultat réel sont maintenant deux posts, pas un.
+montrer un premier résultat **en production** sont deux posts, pas un.
 
-Mis à jour deux fois le 2026-08-04, et la seconde a inversé la première —
-gardé ici parce que c'est instructif. Baseline harmonique portée de 90 j à
-365 j : Brest et Saint-Malo tombent sous le gate, plus aucune station de niveau
-d'eau publiée. Puis portée à 730 j (365 j tombe pile sur le seuil de Rayleigh
-de Sa) : **Brest repasse, sur son mérite**. Le post final raconte l'arc entier,
-qui vaut mieux que chacune de ses moitiés.
+Réécrit une troisième fois le 2026-08-04, en fin de journée. Les deux premières
+versions s'interdisaient tout pourcentage sur la marée, parce que les chiffres
+étaient mesurés avec un forçage atmosphérique quasi-analyse. **Cette réserve est
+levée** : le forçage d'entraînement des stations de marée est passé à des runs
+ECMWF stratifiés par âge — une ligne à +48 h est forcée par une prévision
+réellement émise deux jours plus tôt — et les gains n'ont quasiment pas bougé
+(brest +53,1 → +53,3 %, saint-malo +30,0 → +28,0 %). Le post peut donc citer
+des chiffres. Détail et méthode : `docs/plan-dev-modele.md`.
 
-État final au 2026-08-04, recopié de `gate.json` : **8 stations notées**, une
+État au 2026-08-04, recopié de `gate.json` : **8 stations notées sur 9**, une
 seule sous le gate (cherbourg, houle). Brest ET Saint-Malo passent, sur le gain
 hors biais.
 
-⚠️ **Les chiffres `tide` de `gate.json` ne vont pas dans un post.** Ils sont
-mesurés avec un forçage atmosphérique quasi-analyse (l'API Historical Forecast
-concatène les runs les plus frais ; corrélation 0,9997 avec ERA5). Ils
-surestiment ce qu'une vraie échéance à +48 h délivre, d'autant plus que la
-baseline astronomique, elle, ne se dégrade pas avec le lead. Le post décrit donc
-le *mécanisme* et le *critère*, jamais le pourcentage. Voir
-`docs/plan-dev-modele.md`.
+⚠️ **La distinction qui reste, et qui ne doit jamais sauter** : les chiffres
+ci-dessous sont des chiffres de **backtest**, mesurés sur une année de test
+tenue à l'écart de l'entraînement. Ce ne sont pas des jours notés en direct — il
+n'y en a encore quasiment aucun. Le post doit le dire, en une phrase, sans s'en
+excuser.
 
 ---
 
 ## Post 1 — l'annonce (à publier maintenant)
 
 J'ai mis en ligne un scoreboard qui note en public une IA de prévision
-météo-océanique. Tous les jours, y compris les jours où elle perd.
+météo-océanique. Surcote, houle et vent, sur 9 stations des côtes françaises.
+Tous les jours, y compris les jours où elle perd.
 
 **Le principe.** Le modèle ne remplace pas la prévision physique : il la
 post-traite. Il apprend l'erreur résiduelle du modèle officiel à une station
@@ -46,54 +47,56 @@ modèles de vagues — ou des 3 modèles de vent — disponibles à sa position.
 Pierres Noires sont comparées à NCEP GFS-Wave, Belle-Île à EWAM, Ouessant à
 ARPEGE. Battre le meilleur concurrent disponible, pas un épouvantail.
 
-**Ce qui est publié.** 9 stations sur les côtes françaises — houle, niveau
-d'eau, et depuis aujourd'hui le vent. **8 sont notées.** La dernière est
-mesurée chaque jour comme les autres, mais retenue : un gate qualité bloque
-toute station où le modèle ne bat pas sa propre baseline autrement qu'en lui
-retirant un biais moyen. Elle reste dans le tableau, avec son verdict
-écrit — plutôt que retirée de la liste.
+**Sur les marégraphes, ce que l'IA prédit, c'est la surcote.** La baseline y
+est une analyse harmonique de la marée : l'astre seul, sans météo. Une
+harmonique ne se trompe jamais sur la lune et ne voit jamais une dépression.
+Tout ce qui reste entre elle et le marégraphe — la surcote — est précisément ce
+que le vent et la pression ajoutent. C'est ça que le modèle apprend.
 
-**Aujourd'hui j'ai passé la journée à rendre mon concurrent meilleur.** Sur les
-marégraphes, la baseline est une analyse harmonique de la marée — l'astre seul,
-sans météo. Ce que l'IA doit prévoir, c'est donc exactement la surcote : ce que
-le vent et la pression ajoutent à la marée.
+Sur l'année de test tenue à l'écart, à Brest : **11,9 cm d'erreur moyenne pour
+l'harmonique, 5,6 cm pour le modèle.** L'erreur est divisée par deux. À
+Saint-Malo, 15,5 → 11,2 cm.
 
-Cette analyse était calée sur 90 jours. Beaucoup trop court : certaines
-composantes de la marée ne se séparent qu'au-delà de six mois, et la composante
-annuelle demande une année pleine. Je suis passé à un an. Puis, en mesurant, à
-deux ans — un an tombe *pile* sur le seuil théorique de séparabilité, ce qui est
-la définition d'une marge nulle. Résultat : l'erreur de la baseline physique
-chute de 29 %.
+Trois choses rendent ce chiffre défendable, et c'est le vrai sujet du post :
 
-Entre les deux, le verdict de mon propre modèle s'est inversé. À un an, il
-faisait match nul avec sa baseline — tout son gain apparent n'était que le
-retrait d'un biais. À deux ans, il la bat pour de bon, sur le critère dur :
-celui qui compare à une baseline **déjà débiaisée**, pour qu'un simple recalage
-de moyenne ne puisse jamais passer pour de la prévision.
+**1. Il tient à l'échéance.** +63 % à 1-6 h, encore **+50 % à 37-48 h**. Un
+modèle qui ne gagnerait qu'à très courte échéance ferait du nowcasting déguisé :
+il lirait l'erreur d'hier et la prolongerait. Ici la marge survit à deux jours.
 
-Je ne donne pas le chiffre ici, et c'est délibéré. Il est mesuré sur des
-prévisions atmosphériques passées d'une qualité que la vraie échéance à 48 h
-n'atteint pas — un détail d'API que j'ai découvert en le vérifiant. Le nombre
-existe, il est dans le dépôt, avec la réserve écrite à côté. Il ira dans un post
-quand des jours notés en direct l'auront confirmé.
+**2. C'est bien de la physique, pas un recalage.** Si je coupe le vent et la
+pression et que je ne laisse que la mémoire de l'erreur passée, le gain tombe de
+53 à 39 %. Ces 14 points sont la part que seule la météo peut expliquer.
 
-Le mécanisme mérite d'être dit, parce qu'il est contre-intuitif : améliorer le
-concurrent n'a pas réduit ma marge, ça a supprimé son avantage injuste. Tant
-que la baseline dérivait, la version « débiaisée » à laquelle on la compare
-avait le droit de corriger gratuitement 8 cm d'erreur. Baseline propre, cet
-avantage disparaît, et le vrai savoir-faire du modèle devient visible.
+**3. Il est mesuré contre une baseline déjà débiaisée.** Le gate d'entrée du
+scoreboard ne compare pas à l'harmonique brute, mais à l'harmonique dont on a
+retiré son biais moyen — pour qu'un simple recalage de moyenne ne puisse jamais
+passer pour de la prévision.
 
-J'ai passé la journée à muscler l'adversaire de mon produit. C'est ce qui a
-fini par prouver que le produit valait quelque chose.
+Et c'est là où ça devient contre-intuitif : **j'ai passé une partie de la
+journée à rendre mon concurrent meilleur.** L'analyse harmonique était calée sur
+90 jours. Beaucoup trop court : certaines composantes de la marée ne se séparent
+qu'au-delà de six mois, et la composante annuelle demande une année pleine. Un
+an tombe *pile* sur le seuil théorique de séparabilité, ce qui est la définition
+d'une marge nulle. Je suis passé à deux ans. L'erreur de la baseline physique a
+chuté de 29 %.
+
+Améliorer le concurrent n'a pas réduit ma marge — ça a supprimé son avantage
+injuste. Tant que la baseline dérivait, la version « débiaisée » à laquelle on
+la compare avait le droit de corriger gratuitement plusieurs centimètres. Contre
+une baseline propre, cet avantage disparaît, et ce qui reste est du savoir-faire
+ou rien. Brest et Saint-Malo, qui échouaient au critère dur, le passent
+maintenant.
+
+**Une réserve, écrite plutôt que cachée.** Ces chiffres sont du backtest, sur
+une année tenue à l'écart de l'entraînement. Ce ne sont pas encore des jours
+notés en direct — le compteur public vient de repartir de zéro, et c'est voulu :
+les stations de vent viennent d'émettre leur première prévision, les stations de
+houle repartent de 1 jour noté. Rien n'est maquillé derrière un historique
+reconstitué. Les jours seront publiés au fur et à mesure, y compris les mauvais.
 
 Une station de houle, Cherbourg, reste sous le gate. Elle reste au tableau avec
-son verdict écrit, plutôt que retirée de la liste.
-
-**Le compteur repart de zéro, et c'est voulu.** Les stations de vent viennent
-d'émettre leur première prévision : elles affichent « en attente de jours
-scorés ». Les stations de houle perdent leur historique rejoué et repartent
-de 1 jour noté en direct. Rien n'est caché derrière un historique reconstitué
-— on publie les jours notés au fur et à mesure, y compris les mauvais.
+son verdict écrit, plutôt que retirée de la liste. C'est le genre de ligne qu'on
+ne trouve jamais dans une annonce, et c'est précisément pour ça qu'elle y est.
 
 Code, données quotidiennes et verdicts des stations qui échouent : tout est
 ouvert.
@@ -123,6 +126,11 @@ biais ({erreur baseline} → {erreur modèle}).
 généraliser, mais le signe va dans le sens attendu / la station X reste sous
 le gate, voir son verdict.}
 
+{Si les jours en direct confirment le backtest annoncé dans le post 1, le dire
+explicitement — c'est la seule façon de rendre le post 1 vérifiable après coup.
+S'ils le contredisent, le dire aussi : c'est tout l'intérêt d'avoir annoncé le
+chiffre avant.}
+
 Le hors-biais reste le chiffre qui compte : un simple recalage de moyenne
 suffit à gonfler un gain brut, ce serait de la décoration, pas de la
 prévision.
@@ -136,33 +144,36 @@ ouvert.
 
 ## Figure associée
 
-**Post 1 — carrousel de 2 images, capture du site.** Une seule image ne peut
-pas porter les deux affirmations du post (l'étendue du réseau, et la baseline
-nommée station par station).
+**Post 1 — carrousel de 2 images.** Une seule ne peut pas porter les deux
+affirmations du post (le réseau publié, et ce que le modèle prédit vraiment).
 
-1. **La carte du réseau** (`ScoreboardMap`) — l'accroche. C'est le seul
-   visuel du site qui reste lisible en vignette de fil LinkedIn, et il prouve
-   la chose la plus difficile à inventer : 9 points sur de vraies côtes.
-   Recadrer sur la façade Manche-Atlantique, sans le header de page.
-2. **Le tableau, recadré sur 4-5 lignes** (`ScoreboardTable`) — la preuve.
-   C'est la seule image qui montre que chaque station est comparée à un
-   modèle *différent* et nommé (NCEP GFS-Wave, EWAM, ARPEGE), et qui affiche
-   le verdict du gate sur Cherbourg. C'est ce que personne
-   d'autre ne publie.
+1. **`figure-brest-surcote.png`** (dans ce dossier, généré depuis les données du
+   dépôt) — **l'image de tête**. Une seule émission, celle du 22 janvier 2026 à
+   06 UTC, et ses 48 h : niveau observé, prédiction harmonique, modèle IA ; en
+   dessous, la surcote seule. Sur ces 48 h, 46 cm d'erreur pour l'harmonique,
+   11 cm pour le modèle. C'est le visuel qui montre en une seconde ce qu'aucune
+   phrase ne fait passer : l'harmonique est *décalée vers le bas pendant deux
+   jours*, et c'est cet écart-là que le modèle prédit.
 
-Si tu n'en veux qu'une : **le tableau**, pas la carte. Une carte de France
-avec des points ressemble à toutes les cartes de France avec des points ; le
-tableau est le seul contenu réellement distinctif. Il faut alors le recadrer
-serré — 4 lignes maximum, lisibles sur mobile. Aujourd'hui le tableau affiche
-surtout « en attente de jours scorés » : c'est cohérent avec le texte du
-post, pas un problème à cacher.
+   Deux honnêtetés à assumer si on en parle en commentaire : le modèle
+   sous-estime le pic (58 cm prédits contre 85 observés), et cette émission est
+   la plus forte surcote de l'année de test — c'est un cas de tempête, pas une
+   journée moyenne. Choisie sur l'observation, jamais sur la performance du
+   modèle. Le dire vaut mieux que se le faire dire.
+
+2. **Le tableau du site, recadré sur 4-5 lignes** (`ScoreboardTable`) — la
+   preuve. C'est la seule image qui montre que chaque station est comparée à un
+   modèle *différent* et nommé (NCEP GFS-Wave, EWAM, ARPEGE), et qui affiche le
+   verdict du gate sur Cherbourg. C'est ce que personne d'autre ne publie.
+
+La carte du réseau (`ScoreboardMap`) passe en troisième si tu fais trois images.
+Une carte de France avec des points ressemble à toutes les cartes de France avec
+des points ; la figure de surcote et le tableau sont les deux seuls contenus
+réellement distinctifs.
 
 **Post 2 — graphique de la station citée** (`StationChart` ou équivalent),
 recadré sur la fenêtre de jours réellement scorés en direct — ne pas laisser
-apparaître de jours rejoués depuis les archives dans le cadrage. C'est la
-première fois que ce type de visuel est publiable : le post 1 l'interdisait
-explicitement parce que les courbes disponibles au 04/08 ne portaient que de
-l'historique rejoué.
+apparaître de jours rejoués depuis les archives dans le cadrage.
 
 **Trois contraintes avant de capturer (valables pour les deux posts) :**
 
@@ -179,30 +190,30 @@ l'historique rejoué.
 
 - **Chiffre de tête = gain hors biais**, jamais le gain affiché brut. Vrai
   pour les deux posts.
+- **Backtest ≠ production, et la phrase qui le dit ne se coupe pas.** Le post 1
+  cite maintenant des pourcentages — il ne l'a pas toujours fait, voir l'en-tête
+  de ce fichier. Ce qui a rendu ça publiable, c'est que le forçage
+  d'entraînement est devenu une vraie prévision vieillie ; ce qui reste vrai,
+  c'est que ce sont des chiffres de backtest sur une année tenue à l'écart. Si
+  un jour on raccourcit le post, c'est le paragraphe « une réserve, écrite
+  plutôt que cachée » qui doit survivre en dernier, pas les pourcentages.
 - **Ne jamais écrire « vent au parc ».** Ce sont des anémomètres côtiers à
   10 m au-dessus du sol, un proxy du vent au large. Dieppe est à 8,6 km du
   parc EMR mais à 40 m d'altitude et bien plus abritée (4,61 m/s de moyenne
   contre 7,75 à Ouessant). À surveiller particulièrement si Dieppe est la
   station citée dans le post 2.
-- **Le post 1 n'affiche aucun chiffre de performance en production** : au
-  2026-08-04 il n'y a pas de jour scoré en direct à montrer. Ne pas céder à la
-  tentation de citer un gain d'entraînement comme s'il valait pour la
-  production — c'était l'erreur du brouillon initial. **Le +8 % de Brest et les
-  −29 % de la baseline sont des chiffres d'entraînement** : ne jamais les
-  présenter comme un résultat en conditions réelles. La formulation actuelle
-  parle de la *baseline* et du *critère*, pas d'une performance opérationnelle
-  vérifiée — c'est ce qui la rend publiable aujourd'hui.
 - **Ne jamais écrire que la pression « n'a pas marché ».** Elle a fait gagner
   17 points sur Brest. Ce qui a échoué à un moment, c'est le modèle face à une
   baseline encore mal conditionnée — deux choses différentes.
-- **Ne pas arrondir Saint-Malo.** Elle échoue à 0,05 point du seuil. La mention
-  « à 0,05 point » est volontaire : elle montre qu'on ne bouge pas la barre pour
-  faire entrer une station. C'est le même argument que le reste du post.
+- **Saint-Malo passe désormais le gate.** L'ancienne note « ne pas arrondir, elle
+  échoue à 0,05 point » est périmée : c'était vrai à la fenêtre harmonique de
+  365 j. Vérifier `gate.json` avant de publier, jamais ce fichier.
 - **Résister à la tentation de raconter l'inversion comme une prouesse.** Le
   fait intéressant n'est pas « j'ai réussi », c'est le mécanisme : améliorer le
   concurrent a supprimé son avantage injuste. Si ce paragraphe devient un
   humblebrag, il perd exactement ce qui le distingue.
 - **Le post 2 ne doit inventer aucun chiffre.** Les accolades `{...}` sont à
   remplir depuis les données réelles au moment de la publication, pas avant.
-- Angle restant pour un post ultérieur : le détail de la méthode du gate
-  qualité.
+- Angles restants pour des posts ultérieurs : le détail de la méthode du gate
+  qualité ; et le fait que vieillir le forçage de 48 h n'a quasiment rien coûté
+  au modèle de surcote, ce qui est un résultat en soi.
