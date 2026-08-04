@@ -138,6 +138,54 @@ qui échouent sont ouverts. Regardez la station la plus proche de chez vous.
 
 🔗 [lien scoreboard] · [lien GitHub]
 
+---
+
+## Post 1 — version courte
+
+Même angle et même hiérarchie que le format long, sans les démonstrations. À
+utiliser si le format long ne passe pas, ou en premier jet à faire suivre du long
+en commentaire. **Ce qui saute** : les trois garde-fous détaillés, l'inversion
+« rendre le concurrent meilleur », l'écart saisonnier avec les chiffres du site —
+tous dans le post long, et tous utilisables en réponse à un commentaire.
+**Ce qui ne se coupe pas, quelle que soit la longueur** : la réserve backtest et
+la station sous le gate. Un post court qui les perdrait ne serait pas une version
+courte, ce serait un autre post.
+
+---
+
+**À Saint-Malo, la marée monte de 13 mètres. Ce qui décide d'une fenêtre d'accès,
+ce sont les 40 centimètres que personne n'avait prévus.**
+
+La marée astronomique, on la connaît des années à l'avance. Ce qui reste
+imprévisible, c'est la surcote — l'eau que le vent empile et que la dépression
+aspire. C'est elle qui fait qu'un navire passe ou attend une marée, qu'un
+chantier maritime tient sa journée, qu'une intervention offshore part ou reste à
+quai.
+
+Sur l'année de test, à Brest : **11,8 cm d'erreur pour la prévision physique,
+5,4 cm pour le modèle.** Et la marge tient à l'échéance — encore **+48 % à
+48 heures**. C'est ce qui la fait entrer dans un plan de charge, au lieu d'un
+tableau de bord temps réel.
+
+Mais un chiffre d'IA ne vaut rien sans son juge. Tout le monde annonce une IA qui
+bat « la physique ». Presque personne ne dit **quelle** physique, ni ce que ça
+donne les jours où elle perd. Un exploitant qui doit décider s'il fait confiance
+à une prévision augmentée n'a, aujourd'hui, aucun moyen de trancher.
+
+Alors j'ai publié le juge en même temps que le modèle : un scoreboard qui note
+l'IA en public, tous les jours, sur 9 stations des côtes françaises. Chaque
+station est comparée au **meilleur modèle physique disponible à sa position**, et
+il est nommé. Une station reste sous le critère d'entrée : elle reste au tableau
+avec son verdict écrit, plutôt que retirée de la liste.
+
+Ces chiffres sont du backtest, sur une année tenue à l'écart de l'entraînement.
+Le compteur en direct vient de repartir de zéro, et chaque jour noté s'y ajoutera
+— y compris les mauvais.
+
+🔗 [lien scoreboard] · [lien GitHub]
+
+---
+
 ## Post 2 — les premiers résultats en direct (~1 semaine plus tard)
 
 Il y a une semaine, j'ai mis en ligne un scoreboard qui note en public une IA
