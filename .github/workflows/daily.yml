@@ -1,11 +1,16 @@
 name: daily
 
-# Cron time: see docs/data-sources.md §4 for the original spike, and
-# task-10-report.md for the empirical check that pins this specific hour.
-# Summary: the MFWAM run's own-day file (`R<run_date>_00H`) was observed
-# published between 08:10 and 08:50 UTC over 12 sampled days (2026-07-20 to
-# 2026-08-03, via the CMEMS native-files S3 bucket's LastModified timestamps).
-# 09:30 UTC leaves ~40min margin over the worst observed case.
+# Cron time: full rationale in README.md § Cron. Short version — 09:30 UTC was
+# pinned to the MFWAM own-day file (observed published 08:10-08:50 UTC over 12
+# sampled days), a constraint that died with the CMEMS retirement. Re-measured
+# 2026-08-04 at 07:00 UTC: `daily --dry-run` returns ok on all 7 published
+# stations, and the three obs producers are 0.1-1.1h behind real time with the
+# previous day complete. Hence 07:30.
+#
+# The 30min margin only buys protection from a `missing` — which is visible and
+# replayable by `backfill`. It buys nothing against the silent failure (Open-Meteo
+# serving yesterday's run, which covers the horizon and returns ok all the same);
+# that one is unaffected by the hour. Do not widen the margin expecting otherwise.
 "on":
   schedule:
     - cron: "30 7 * * *"
