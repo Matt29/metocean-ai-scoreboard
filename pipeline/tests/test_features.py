@@ -17,6 +17,7 @@ from scoreboard.sources.marine import MODEL_COLUMNS
 from scoreboard.sources.wind import (
     FORCING_COLUMNS,
     MULTI_FORCING_COLUMNS,
+    TIDE_FORCING_COLUMNS,
     WIND_MODEL_COLUMNS,
 )
 
@@ -33,14 +34,18 @@ def _baseline(hours_before=24, hours_after=48, value=1.0):
     return _series(start, hours_before + hours_after + 1, value)
 
 
-def _forcing(u=3.0, v=-4.0, hours_before=24, hours_after=48, start=None):
+def _forcing(u=3.0, v=-4.0, p=5.0, hours_before=24, hours_after=48, start=None):
     start = T0 - pd.Timedelta(hours=hours_before) if start is None else start
     idx = pd.date_range(start, periods=hours_before + hours_after + 1, freq="1h", tz="UTC")
-    return pd.DataFrame({"wind_u10": float(u), "wind_v10": float(v)}, index=idx)
+    return pd.DataFrame(
+        {"wind_u10": float(u), "wind_v10": float(v), "pressure_anom": float(p)}, index=idx
+    )
 
 
 def _empty_forcing():
-    return pd.DataFrame(columns=FORCING_COLUMNS, index=pd.DatetimeIndex([], tz="UTC"), dtype=float)
+    return pd.DataFrame(
+        columns=TIDE_FORCING_COLUMNS, index=pd.DatetimeIndex([], tz="UTC"), dtype=float
+    )
 
 
 def test_columns_exactly_as_specified():
@@ -55,13 +60,15 @@ def test_columns_exactly_as_specified():
         "hour_cos",
         "wind_u10",
         "wind_v10",
+        "pressure_anom",
     ]
 
 
 def test_forcing_is_sampled_at_each_lead_valid_time():
     idx = pd.date_range(T0 - pd.Timedelta(hours=24), periods=73, freq="1h", tz="UTC")
     forcing = pd.DataFrame(
-        {"wind_u10": np.arange(73.0), "wind_v10": -np.arange(73.0)}, index=idx
+        {"wind_u10": np.arange(73.0), "wind_v10": -np.arange(73.0), "pressure_anom": np.arange(73.0)},
+        index=idx,
     )
     feats = build_features(_baseline(), _series(T0 - pd.Timedelta(hours=24), 25, 1.3), T0, forcing)
 
@@ -304,6 +311,7 @@ def _history(days=5):
         {
             "wind_u10": np.full(len(idx), 3.0),
             "wind_v10": np.full(len(idx), -4.0),
+            "pressure_anom": np.full(len(idx), 5.0),
         },
         index=idx,
     )

@@ -65,7 +65,7 @@ from scoreboard.sources.waterlevel import fetch_tide_obs
 from scoreboard.sources.wind import (
     MULTI_FORCING_COLUMNS,
     WIND_MODEL_COLUMNS,
-    fetch_wind_history,
+    fetch_wind_forecast_history,
     fetch_wind_models_history,
 )
 
@@ -151,7 +151,7 @@ def _deep_inputs(
         # payload — même économie que `daily._fetch_inputs`.
         frame = fetch_wind_models_history(station, start, date_end, with_speeds=True)
         return frame[WIND_MODEL_COLUMNS], frame[MULTI_FORCING_COLUMNS]
-    return None, fetch_wind_history(station, start, date_end)
+    return None, fetch_wind_forecast_history(station, start, date_end)
 
 
 def _backfill_station(

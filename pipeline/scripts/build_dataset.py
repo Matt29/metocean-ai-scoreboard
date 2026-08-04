@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Build the per-station training datasets -> pipeline/data_train/<station>.parquet.
 
-Run:  cd pipeline && uv run python scripts/build_dataset.py [--days 365]
+Run:  cd pipeline && uv run python scripts/build_dataset.py [--days 1825]
 
 Sources and documented compromises
 ----------------------------------
@@ -15,24 +15,36 @@ Sources and documented compromises
   happen after the per-station baseline pick. `--kind wave` therefore writes
   one raw parquet per station (`<station>_raw.parquet`: obs + 5 wave models +
   6 multi-model wind columns) instead of an assembled (X, y) dataset.
-* Atmospheric forcing (Open-Meteo / ERA5): ONE archive request per station over
-  the whole window, hourly 10 m wind converted to u/v. **Documented train/serve
-  skew**: training uses the ERA5 *reanalysis*, while the daily run will use ARPEGE
-  *forecast* (`sources.wind.fetch_wind_forecast`, `fetch_wind_models_forecast`) —
-  a mean-bias-type skew, not an equivalence — resorbed over time by
-  `archive.write_day` accumulating real served forecast runs (see
-  `docs/data-sources.md` §4bis; already resolved for waves by the 2026-08 retrain,
-  which moved the wave path off the CMEMS analysis-as-forecast proxy entirely).
+* Atmospheric forcing (Open-Meteo, Historical Forecast API): ONE request per
+  station over the whole window, hourly 10 m wind converted to u/v (+ the MSL
+  pressure anomaly on `tide`). Every kind now trains on **past forecasts of the
+  model it will be served**, never on a reanalysis — `fetch_wind_models_history`
+  for wave/wind, `fetch_wind_forecast_history` for tide. The tide leg was the
+  last one on ERA5 and moved off it on 2026-08-04, when pressure became a
+  dominant feature and turned a tolerable mean-bias skew into a measurement of
+  hindcast skill (see that function's docstring for the figures). The ERA5 leg
+  was deleted outright rather than kept for `backfill.py`: a replayed day is
+  flagged `backfilled`, but it is still displayed and scored, so leaving it on a
+  different forcing would have put the skew back on the serve side.
 * Tide (REFMAR): raw high-frequency observations, chunked in 30-day requests
   (API caps a request at 31 days). Real archive depth is discovered at runtime.
 * Tide baseline (harmonic): **causal rolling fit** (`harmonic.causal_predict`).
-  A first model is fitted on the oldest `--fit-frac` of the station's own
-  observations, then refitted every `--refit-days` on the expanding history.
-  The model serving a given valid time is always fitted on observations strictly
-  anterior to the simulated issue — no leak, and it is what production will do
-  (Task 8 refits periodically on the whole archive). A single frozen fit made the
-  baseline dishonestly bad: utide extrapolates its secular trend, so a 6-month-old
-  fit carried a ~-0.3 m offset that the model was rewarded for merely removing.
+  A first model is fitted on the first `harmonic.FIT_LOOKBACK_DAYS` of the
+  station's own observations, then refitted every `--refit-days` on a *sliding*
+  `harmonic.FIT_LOOKBACK_DAYS` window (two years). The model serving a given valid
+  time is always fitted on observations strictly anterior to the simulated issue
+  — no leak — and on the same span the daily run fetches
+  (`daily.TIDE_FIT_LOOKBACK_DAYS`), which is what makes the backtest honest.
+  Hence the default `--days 1825`: `FIT_LOOKBACK_DAYS` (two years) to fit before
+  the first evaluated day, then three years to evaluate — enough for `train.py`
+  to hold out a **full year** of test and still keep two years of training, so a
+  tide station's verdict stops depending on the season it was retrained in.
+  Shorten it and the first fits fall back to less history than production serves;
+  the backtest then scores a baseline worse than the real one, which is the same
+  skew in the other direction.
+  A single frozen fit made the baseline dishonestly bad: utide extrapolates its
+  secular trend, so a 6-month-old fit carried a ~-0.3 m offset that the model was
+  rewarded for merely removing.
 """
 
 from __future__ import annotations
@@ -52,7 +64,7 @@ from scoreboard.sources.candhis import fetch_wave_obs
 from scoreboard.sources.marine import fetch_wave_models_history
 from scoreboard.sources.mfobs import fetch_wind_obs_archive
 from scoreboard.sources.waterlevel import fetch_tide_obs
-from scoreboard.sources.wind import fetch_wind_history, fetch_wind_models_history
+from scoreboard.sources.wind import fetch_wind_forecast_history, fetch_wind_models_history
 
 OUT_DIR = Path(__file__).resolve().parents[1] / "data_train"
 # Mesuré le 2026-08-04 sur l'Historical Forecast API : les 3 modèles de vent ne
@@ -113,24 +125,30 @@ def build_wind(stations: list[Station], start: date, end: date) -> dict[str, pd.
 
 
 def build_tide(
-    stations: list[Station], start: date, end: date, fit_frac: float, refit_days: int
+    stations: list[Station], start: date, end: date, refit_days: int
 ) -> dict[str, tuple]:
     out = {}
     for st in stations:
         obs = fetch_tide_obs(st, start, date_end=end)
         level = obs["level"].dropna()
-        if len(level) < 24 * 30:
+        if len(level) < 24 * harmonic.FIT_LOOKBACK_DAYS:
             print(f"  {st.id}: only {len(level)}h of obs — too short to fit a tide", file=sys.stderr)
             out[st.id] = (pd.DataFrame(), pd.Series(dtype=float))
             continue
 
-        split = level.index[int(len(level) * fit_frac)]
+        # The first cutoff is exactly one full fit window in, never a fraction of
+        # the record: the fit depth is a fixed constant now, so a `--fit-frac`
+        # knob could only make the first fits shallower than production's — and
+        # every day between `FIT_LOOKBACK_DAYS` and that fraction would be
+        # evaluable data thrown away for nothing.
+        split = level.index[0] + pd.Timedelta(days=harmonic.FIT_LOOKBACK_DAYS)
         baseline_s = harmonic.causal_predict(
             level, st.lat, obs.index, first_cutoff=split, refit_days=refit_days,
             horizon_hours=HORIZON_H,
         )
         eval_obs = obs.loc[baseline_s.index]
-        forcing = fetch_wind_history(st, start, end)  # single ERA5 request
+        # Past ARPEGE *forecasts*, not ERA5: same leg as production serves.
+        forcing = fetch_wind_forecast_history(st, start, end)  # single request
         out[st.id] = assemble(st, eval_obs, pd.DataFrame({"level_baseline": baseline_s}), forcing)
         print(
             f"  {st.id}: forcing {len(forcing)}h, obs {len(level)}h "
@@ -142,8 +160,12 @@ def build_tide(
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--days", type=int, default=365, help="history depth to request")
-    ap.add_argument("--fit-frac", type=float, default=0.5, help="share of tide obs used to fit")
+    ap.add_argument(
+        "--days",
+        type=int,
+        default=1825,
+        help="history depth to request (tide needs FIT_LOOKBACK_DAYS to fit + a year to eval)",
+    )
     ap.add_argument(
         "--refit-days", type=int, default=30, help="harmonic refit cadence (tide stations)"
     )
@@ -175,7 +197,7 @@ def main() -> int:
         build_wind(winds, wind_start, end)  # writes its own <station>_raw.parquet
     if tides:
         print("Tide (REFMAR + harmonic):")
-        datasets |= build_tide(tides, start, end, args.fit_frac, args.refit_days)
+        datasets |= build_tide(tides, start, end, args.refit_days)
 
     print("\nrows written:")
     for station_id, (x, y) in datasets.items():

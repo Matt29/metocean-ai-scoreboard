@@ -1,18 +1,26 @@
-"""Open-Meteo atmospheric forcing fetcher — ERA5 for training, ARPEGE for inference.
+"""Open-Meteo atmospheric forcing fetcher — past ARPEGE runs for training, live
+ARPEGE for inference.
 
 One request per station. Both legs share one JSON contract and one parser, so
-the conventions seen at training are byte-for-byte those seen at inference. The
-*data* differs (ERA5 reanalysis vs ARPEGE forecast) — that skew is documented in
-`docs/data-sources.md`; the *code path* does not.
+the conventions seen at training are byte-for-byte those seen at inference, and
+since 2026-08-04 so is the *model*: the ERA5 reanalysis leg was deleted rather
+than kept, because a reanalysis is the atmosphere as it turned out.
+
+Residual optimism to keep in mind, and it is NOT fixed here: the Historical
+Forecast API concatenates the freshest runs, so a past "forecast" is issued
+hours — not 24 to 48 h — before its valid time. Measured 2026-08-04 at Brest,
+its pressure correlates 0.9997 with ERA5. Training figures therefore still
+overstate what a real +48 h forecast delivers; see `docs/plan-dev-modele.md`.
 
 Open-Meteo returns wind in the meteorological convention (the direction the wind
 comes FROM). We convert to eastward/northward components once, here, because a
 direction in degrees is circular and unusable as a raw model feature.
 
 `FORCING_COLUMNS` is deliberately generic (not `WIND_COLUMNS`): mean sea level
-pressure rode here in Task 7C, was measured non-contributive and removed — see
-`docs/model-eval.md`. Adding a forcing variable is one entry in `_HOURLY`, one
-column, and one entry in `FEATURE_COLUMNS`.
+pressure rides alongside the wind on the single-model (tide) legs, as
+`TIDE_FORCING_COLUMNS` — see that constant for why it is served there and only
+there. Adding a forcing variable is one entry in the relevant `_HOURLY*`, one
+column, and one entry in the relevant feature column list.
 """
 
 from __future__ import annotations
@@ -29,6 +37,21 @@ from scoreboard.sources import SourceError, make_session
 
 FORCING_COLUMNS = ["wind_u10", "wind_v10"]
 
+# Mean sea level pressure, as an anomaly to the standard atmosphere. Served on
+# the single-model legs only — i.e. the `tide` path. The inverse barometer
+# (~1 cm of water per hPa) is the first-order driver of the surge, which *is*
+# the residual a tide station's model predicts; on a `wave` station it has no
+# direct effect and Task 7C measured it costing 1 to 5 points there.
+#
+# It rode in `FORCING_COLUMNS` during Task 7C and was removed on 2026-08-03.
+# Reinstated here for `tide` only, on new evidence: that measurement compared
+# against the 90-day harmonic baseline, whose unresolved annual constituent left
+# a seasonal drift in the residual. Pressure and that drift are both
+# low-frequency, so the ablation could not separate them — the verdict was taken
+# in the one regime where it was uninterpretable. See `docs/model-eval.md`.
+STANDARD_PRESSURE_HPA = 1013.25
+TIDE_FORCING_COLUMNS = [*FORCING_COLUMNS, "pressure_anom"]
+
 # Task 0: the 3 wind models kept from the probe (>=90% coverage from 2025-06-01).
 WIND_MODELS = ["meteofrance_arpege_europe", "ecmwf_ifs025", "icon_eu"]
 MULTI_FORCING_COLUMNS = [f"{c}_{m}" for m in WIND_MODELS for c in ("wind_u10", "wind_v10")]
@@ -40,13 +63,15 @@ MULTI_FORCING_COLUMNS = [f"{c}_{m}" for m in WIND_MODELS for c in ("wind_u10", "
 # was already computing and discarding.
 WIND_MODEL_COLUMNS = [f"ws_{m}" for m in WIND_MODELS]
 
-_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 _HISTORICAL_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
 # Public (not `_MODEL`): `archive.py` records this as the served forecast's
 # `source` column — it must name exactly the model `fetch_wind_forecast` calls.
 FORECAST_MODEL = "meteofrance_arpege_europe"
 _HOURLY = "wind_speed_10m,wind_direction_10m"
+# The single-model legs (tide) ask for pressure too; the multi-model legs
+# (wave/wind) do not, so no station pays for a variable its features exclude.
+_HOURLY_TIDE = f"{_HOURLY},pressure_msl"
 _TIMEOUT = 30
 
 log = logging.getLogger(__name__)
@@ -117,12 +142,21 @@ def _fetch(url: str, params: dict, station: Station, session) -> pd.DataFrame:
         if key not in hourly:
             raise SourceError(station.id, f"open-meteo payload missing {key!r}")
     out = _parse_uv(hourly, "wind_speed_10m", "wind_direction_10m")
+    # Anomaly, not the raw hPa: the inverse barometer acts on the departure from
+    # the standard atmosphere, and a column centred near zero shares the neutral
+    # 0.0 fallback the other forcing columns already use for a gap.
+    if "pressure_msl" not in hourly:
+        raise SourceError(station.id, "open-meteo payload missing 'pressure_msl'")
+    out["pressure_anom"] = (
+        pd.to_numeric(pd.Series(hourly["pressure_msl"], index=out.index), errors="coerce")
+        - STANDARD_PRESSURE_HPA
+    )
     out = out.dropna().sort_index()
     # Same guard as candhis.py: a duplicated index makes the nearest-reindex in
     # features.py raise instead of returning features.
     out = out[~out.index.duplicated(keep="first")]
     _log_resolved_cell(payload, station)
-    return out[FORCING_COLUMNS]
+    return out[TIDE_FORCING_COLUMNS]
 
 
 def _fetch_models(
@@ -148,18 +182,38 @@ def _fetch_models(
     return out[columns]
 
 
-def fetch_wind_history(
+def fetch_wind_forecast_history(
     station: Station, date_start: date, date_end: date, session: requests.Session | None = None
 ) -> pd.DataFrame:
-    """Hourly ERA5 10 m wind over [date_start, date_end] — one request per station."""
+    """Past ARPEGE *forecasts* over [date_start, date_end] — the training twin of
+    `fetch_wind_forecast`.
+
+    Same model, same variables, same parser as the serve leg: what a `tide`
+    station is trained on is what it will be served. The ERA5 *reanalysis* leg
+    that used to live here was deleted on 2026-08-04: it is the atmosphere as it
+    turned out, not as it was forecast, and training a surge model on it measures
+    the ability to *reconstruct* a storm knowing what it did, which is not the
+    job. `backfill.py` replays past days through this function too, so a
+    backfilled day and a live day now share one forcing source.
+    That skew was harmless while wind was a marginal feature; it stopped being
+    harmless the moment pressure — the surge's first-order driver — became a
+    dominant input. Measured 2026-08-04: on ERA5 forcing the model held 5.6 cm
+    MAE straight through winter storms reaching 40 cm, a skill no forecast can
+    deliver.
+
+    Archive depth: ARPEGE forecasts are served from early 2023 (probed
+    2026-08-04; 2022-09 returns all-null). Not the binding constraint for tide,
+    whose rows already start `FIT_LOOKBACK_DAYS` after the first observation.
+    """
     return _fetch(
-        _ARCHIVE_URL,
+        _HISTORICAL_URL,
         {
             "latitude": station.lat,
             "longitude": station.lon,
             "start_date": date_start.isoformat(),
             "end_date": date_end.isoformat(),
-            "hourly": _HOURLY,
+            "hourly": _HOURLY_TIDE,
+            "models": FORECAST_MODEL,
             "wind_speed_unit": "ms",
             "timezone": "UTC",
         },
@@ -177,7 +231,7 @@ def fetch_wind_forecast(
         {
             "latitude": station.lat,
             "longitude": station.lon,
-            "hourly": _HOURLY,
+            "hourly": _HOURLY_TIDE,
             "models": FORECAST_MODEL,
             "forecast_days": forecast_days,
             "wind_speed_unit": "ms",

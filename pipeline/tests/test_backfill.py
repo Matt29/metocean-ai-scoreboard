@@ -86,7 +86,14 @@ def _marine_df(date_start, date_end):
 
 def _wind_df(date_start, date_end, value=3.0):
     idx = _date_end_inclusive_index(date_start, date_end)
-    return pd.DataFrame({"wind_u10": np.full(len(idx), value), "wind_v10": np.full(len(idx), -2.0)}, index=idx)
+    return pd.DataFrame(
+        {
+            "wind_u10": np.full(len(idx), value),
+            "wind_v10": np.full(len(idx), -2.0),
+            "pressure_anom": np.full(len(idx), 5.0),
+        },
+        index=idx,
+    )
 
 
 def _wind_models_df(date_start, date_end):
@@ -149,7 +156,7 @@ def patched_sources(monkeypatch, calls):
     monkeypatch.setattr(backfill, "fetch_wave_obs", _candhis)
     monkeypatch.setattr(backfill, "fetch_tide_obs", _tide)
     monkeypatch.setattr(backfill, "fetch_wave_models_history", _marine)
-    monkeypatch.setattr(backfill, "fetch_wind_history", _wind)
+    monkeypatch.setattr(backfill, "fetch_wind_forecast_history", _wind)
     monkeypatch.setattr(backfill, "fetch_wind_models_history", _wind_models)
     monkeypatch.setattr(daily.model, "load_artifact", _artifact)
     return monkeypatch
@@ -309,7 +316,7 @@ def test_deep_fetch_failure_marks_every_missing_day_missing_and_backfilled(tmp_p
     def _wind_boom(station, date_start, date_end, session=None):
         raise SourceError(station.id, "open-meteo 503")
 
-    monkeypatch.setattr(backfill, "fetch_wind_history", _wind_boom)
+    monkeypatch.setattr(backfill, "fetch_wind_forecast_history", _wind_boom)
     monkeypatch.setattr(backfill, "fetch_wind_models_history", _wind_boom)
     summary = backfill.run(since, tmp_path, today=TODAY, stations=STATIONS, gate=GATE)
 

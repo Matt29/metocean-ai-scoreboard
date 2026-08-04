@@ -41,35 +41,37 @@ import pandas as pd
 
 from scoreboard.sources import SourceError
 from scoreboard.sources.marine import MODEL_COLUMNS
-from scoreboard.sources.wind import FORCING_COLUMNS as _FORCING_COLUMNS
 from scoreboard.sources.wind import MULTI_FORCING_COLUMNS, WIND_MODEL_COLUMNS
+from scoreboard.sources.wind import TIDE_FORCING_COLUMNS as _TIDE_FORCING_COLUMNS
 
-FEATURE_COLUMNS = [
+# The 6 columns every station shares, whatever its kind. Named rather than
+# sliced off the end of FEATURE_COLUMNS: that negative slice silently leaked any
+# forcing column added to the tide list into the wave/wind lists.
+BASE_COLUMNS = [
     "baseline",
     "lead_h",
     "last_err",
     "mean_err_24h",
     "hour_sin",
     "hour_cos",
-    # Atmospheric forcing at the lead's valid time (see `sources.wind`).
-    # 10 m wind components, m/s, eastward / northward. u/v rather than
-    # speed+direction: direction is circular and u/v handle it natively.
-    # MSL pressure was tried here in Task 7C and measured non-contributive
-    # (see `docs/model-eval.md`) — do not re-add it without new evidence.
-    "wind_u10",
-    "wind_v10",
 ]
+
+# Tide stations: atmospheric forcing at the lead's valid time (see
+# `sources.wind`). 10 m wind components, m/s, eastward / northward — u/v rather
+# than speed+direction, because direction is circular and u/v handle it
+# natively — plus the MSL pressure anomaly, whose inverse barometer drives the
+# surge these stations actually predict.
+FEATURE_COLUMNS = BASE_COLUMNS + _TIDE_FORCING_COLUMNS
+
 
 def model_feature_columns(model_columns: list[str]) -> list[str]:
     """Multi-model stations: the same 6 leading columns, then one column per
     physical model, their row-wise dispersion (a cheap uncertainty proxy), then
-    the wind of each candidate atmospheric model instead of the single one."""
-    return (
-        FEATURE_COLUMNS[: -len(_FORCING_COLUMNS)]
-        + list(model_columns)
-        + ["model_spread"]
-        + MULTI_FORCING_COLUMNS
-    )
+    the wind of each candidate atmospheric model instead of the single one.
+
+    No pressure here: Task 7C measured it costing 1 to 5 points on every `wave`
+    station, and a wave height has no inverse-barometer response to begin with."""
+    return BASE_COLUMNS + list(model_columns) + ["model_spread"] + MULTI_FORCING_COLUMNS
 
 
 WAVE_FEATURE_COLUMNS = model_feature_columns(MODEL_COLUMNS)
@@ -161,7 +163,7 @@ def build_features(
     feats["hour_sin"] = np.sin(2 * np.pi * future.index.hour / 24)
     feats["hour_cos"] = np.cos(2 * np.pi * future.index.hour / 24)
     if models is None:
-        _add_aligned(feats, forcing, _FORCING_COLUMNS)
+        _add_aligned(feats, forcing, _TIDE_FORCING_COLUMNS)
         return feats[FEATURE_COLUMNS]
 
     # Each model gets the forcing treatment: nearest-hour alignment and the same

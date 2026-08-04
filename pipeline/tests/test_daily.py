@@ -89,8 +89,8 @@ def _wave_obs_df(start, periods, value=1.3):
 
 def _tide_obs_df(start, date_end, value=2.0):
     """Hourly obs spanning the whole requested window — the harmonic fit floor
-    (MIN_TIDE_FIT_DAYS = 30, real lookback = TIDE_FIT_LOOKBACK_DAYS = 90) needs
-    the mock to actually reflect the window daily.py asks for, not a fixed
+    and the lookback both track `harmonic.FIT_LOOKBACK_DAYS` (one year), so the
+    mock has to actually reflect the window daily.py asks for, not a fixed
     handful of days."""
     idx = pd.date_range(start, date_end, freq="1h", tz="UTC", inclusive="left")
     return pd.DataFrame({"level": np.full(len(idx), value)}, index=idx)
@@ -111,7 +111,14 @@ def _marine_df(run_date=RUN_DATE, forecast_days=3, past_days=2):
 
 def _wind_df(station, session=None):
     idx = pd.date_range("2026-07-25", periods=24 * 10, freq="1h", tz="UTC")
-    return pd.DataFrame({"wind_u10": np.full(len(idx), 3.0), "wind_v10": np.full(len(idx), -2.0)}, index=idx)
+    return pd.DataFrame(
+        {
+            "wind_u10": np.full(len(idx), 3.0),
+            "wind_v10": np.full(len(idx), -2.0),
+            "pressure_anom": np.full(len(idx), 5.0),
+        },
+        index=idx,
+    )
 
 
 def _wind_models_df(station, session=None, forecast_days=3, with_speeds=False, past_days=2):
@@ -317,15 +324,16 @@ def test_daily_run_archives_the_served_wind_forecast_for_every_published_station
     # path still the mono ARPEGE wind one (no wave frame at all).
     assert set(df.columns) == {
         "station_id", "issued", "valid_time", "lead_h", "source",
-        "wind_u10", "wind_v10", *MULTI_FORCING_COLUMNS, *MODEL_COLUMNS,
+        "wind_u10", "wind_v10", "pressure_anom", *MULTI_FORCING_COLUMNS, *MODEL_COLUMNS,
     }
     wave, tide = df[df["station_id"] == "wave-a"], df[df["station_id"] == "tide-b"]
     assert (wave["source"] == "openmeteo:multi").all()
     assert wave[MULTI_FORCING_COLUMNS].notna().all().all()
     assert wave[MODEL_COLUMNS].notna().all().all()
-    assert wave[["wind_u10", "wind_v10"]].isna().all().all()
+    # The mono ARPEGE forcing (and its pressure anomaly) is the tide-only leg.
+    assert wave[["wind_u10", "wind_v10", "pressure_anom"]].isna().all().all()
     assert (tide["source"] == "meteofrance_arpege_europe").all()
-    assert tide[["wind_u10", "wind_v10"]].notna().all().all()
+    assert tide[["wind_u10", "wind_v10", "pressure_anom"]].notna().all().all()
     assert tide[MODEL_COLUMNS].isna().all().all()
     assert df["lead_h"].min() >= 1
 
