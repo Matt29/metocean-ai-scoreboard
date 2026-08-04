@@ -139,6 +139,8 @@ def _wind_df(station, session=None):
             "wind_u10": np.full(len(idx), 3.0),
             "wind_v10": np.full(len(idx), -2.0),
             "pressure_anom": np.full(len(idx), 5.0),
+            "dp_dt_3h": np.full(len(idx), 0.1),
+            "dp_dt_6h": np.full(len(idx), 0.2),
         },
         index=idx,
     )
@@ -348,7 +350,8 @@ def test_daily_run_archives_the_served_wind_forecast_for_every_published_station
     # path still the mono ARPEGE wind one (no wave frame at all).
     assert set(df.columns) == {
         "station_id", "issued", "valid_time", "lead_h", "source",
-        "wind_u10", "wind_v10", "pressure_anom", *MULTI_FORCING_COLUMNS, *MODEL_COLUMNS,
+        "wind_u10", "wind_v10", "pressure_anom", "dp_dt_3h", "dp_dt_6h",
+        *MULTI_FORCING_COLUMNS, *MODEL_COLUMNS,
     }
     wave, tide = df[df["station_id"] == "wave-a"], df[df["station_id"] == "tide-b"]
     assert (wave["source"] == "openmeteo:multi").all()

@@ -76,14 +76,20 @@ PER_DAY = {day: ([10.0 + day] * 4, DIRS, PRESSURES) for day in LEAD_DAYS}
 def test_forecast_parses_and_converts_to_uv():
     df = fetch_wind_forecast(ST, session=make_session(payload(TIMES, SPEEDS, DIRS, PRESSURES)))
 
-    assert list(df.columns) == TIDE_FORCING_COLUMNS == ["wind_u10", "wind_v10", "pressure_anom"]
+    assert list(df.columns) == TIDE_FORCING_COLUMNS == [
+        "wind_u10", "wind_v10", "pressure_anom", "dp_dt_3h", "dp_dt_6h",
+    ]
     assert df.index.name == "time"
     assert str(df.index.tz) == "UTC"
     assert len(df) == 4
     assert np.allclose(df["wind_u10"], EXPECTED_U, atol=1e-9)
     assert np.allclose(df["wind_v10"], EXPECTED_V, atol=1e-9)
     assert np.allclose(df["pressure_anom"], EXPECTED_PRESSURE_ANOM, atol=1e-9)
-    assert not df.isna().any().any()
+    assert not df[["wind_u10", "wind_v10", "pressure_anom"]].isna().any().any()
+    # 3 h tendency: only the last of these 4 hours has a 3 h-old neighbour.
+    assert np.allclose(df["dp_dt_3h"], [np.nan, np.nan, np.nan, (1019.1 - 1008.3) / 3],
+                       atol=1e-9, equal_nan=True)
+    assert df["dp_dt_6h"].isna().all()  # no hour is 6 h into a 4 h payload
 
 
 def test_one_request_per_station_with_every_lead_and_variable():
@@ -173,7 +179,9 @@ def test_forecast_uses_ecmwf_model():
 def test_missing_hourly_values_are_dropped_not_nan():
     body = payload(TIMES, [10.0, None, 10.0, 10.0], [0, 90, None, 270], PRESSURES)
     df = fetch_wind_forecast(ST, session=make_session(body))
-    assert not df.isna().any().any()
+    # The tendency columns are excluded: this payload is 4 h long, shorter than
+    # the 6 h window, so they are NaN throughout by construction.
+    assert not df[["wind_u10", "wind_v10", "pressure_anom"]].isna().any().any()
     assert len(df) == 2
 
 
@@ -289,3 +297,59 @@ def test_models_one_model_all_null_stays_nan_not_zero():
     assert df[f"wind_u10_{null_model}"].isna().all()
     assert df[f"wind_v10_{null_model}"].isna().all()
     assert not (df[f"wind_u10_{null_model}"] == 0).any()
+
+
+def test_pressure_tendency_is_taken_inside_a_run_block_never_across_two():
+    """The trap this column exists to avoid.
+
+    A tide forcing frame is stratified by run age, and `forcing_at_issue` hands a
+    row from a *different* run on either side of a lead-day boundary. Runs differ
+    by ~0.44 hPa at `_d1` and ~1.40 at `_d2` — the same order as a real 3 h
+    tendency. A `.diff()` taken after the narrowing would therefore read the
+    run-to-run departure as weather, twice per issue, at exactly the hours a
+    depression is most likely to be moving. So the tendency is computed in the
+    parser, inside each block, before any narrowing can mix two runs.
+
+    The fixture makes the difference impossible to miss: every block rises by a
+    clean 1 hPa/h, and each older run sits 20 hPa above the fresher one.
+    """
+    hours = pd.date_range("2026-06-01", periods=72, freq="1h", tz="UTC")
+    times = [t.strftime("%Y-%m-%dT%H:%M") for t in hours]
+    rising = np.arange(72.0)  # +1 hPa per hour, within every block
+    per_day = {
+        day: ([10.0] * 72, [270] * 72, list(1013.25 + rising + 20.0 * day)) for day in LEAD_DAYS
+    }
+    df = fetch_tide_forcing_history(
+        ST, date(2026, 6, 1), date(2026, 6, 3), session=make_session(prev_payload(times, per_day))
+    )
+    narrowed = forcing_at_issue(df, pd.Timestamp("2026-06-01T06:00", tz="UTC"))
+
+    # The block offset really is there: crossing into 2026-06-02 switches from
+    # the freshest run to the one a day older, so the level jumps by 20 hPa on
+    # top of the +1 hPa the hour itself brought. Without this the test below
+    # would pass on a frame where the trap cannot even be sprung.
+    boundary = narrowed.index.get_loc(pd.Timestamp("2026-06-02T00:00", tz="UTC"))
+    step = narrowed["pressure_anom"].iloc[boundary] - narrowed["pressure_anom"].iloc[boundary - 1]
+    assert np.isclose(step, 21.0)
+
+    # And yet the tendency is 1 hPa/h everywhere, boundary hours included: it was
+    # differenced inside its own block. A post-narrowing diff would read 21/3 = 7
+    # here (and 21/6 = 3.5 on the 6 h column).
+    tendency = narrowed.iloc[6:]  # the first 6 h have no 6 h-old neighbour
+    assert np.allclose(tendency["dp_dt_3h"], 1.0, atol=1e-9)
+    assert np.allclose(tendency["dp_dt_6h"], 1.0, atol=1e-9)
+
+
+def test_pressure_tendency_spans_elapsed_hours_not_rows():
+    """`.diff(3)` would mean three rows — three hours only while the leg is hourly."""
+    times = ["2026-06-01T00:00", "2026-06-01T03:00", "2026-06-01T06:00", "2026-06-01T09:00"]
+    df = fetch_wind_forecast(
+        ST, session=make_session(payload(times, SPEEDS, DIRS, [1013.25, 1016.25, 1019.25, 1022.25]))
+    )
+    # 3 hPa every 3 h. Row-wise, the "3 h" column would span 9 h and read 1 hPa/h
+    # against a true 1 hPa/h — indistinguishable here — but the "6 h" column has
+    # no 6 h-old neighbour on this grid at all, and must stay NaN rather than
+    # silently report the row six positions back.
+    assert np.allclose(df["dp_dt_3h"].iloc[1:], 1.0, atol=1e-9)
+    assert df["dp_dt_6h"].notna().sum() == 2  # 06:00 and 09:00 only
+    assert np.allclose(df["dp_dt_6h"].iloc[2:], 1.0, atol=1e-9)

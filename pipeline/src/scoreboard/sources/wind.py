@@ -57,7 +57,22 @@ FORCING_COLUMNS = ["wind_u10", "wind_v10"]
 # low-frequency, so the ablation could not separate them — the verdict was taken
 # in the one regime where it was uninterpretable. See `docs/model-eval.md`.
 STANDARD_PRESSURE_HPA = 1013.25
-TIDE_FORCING_COLUMNS = [*FORCING_COLUMNS, "pressure_anom"]
+
+# Pressure tendency, tide only. The surge does not answer to the local pressure
+# alone but to the *movement* of the depression: dP/dt is also a proxy for the
+# offshore wind field the station never sees.
+#
+# It is computed HERE, in the parser, and not in `features.py` — the one place
+# where it is safe. On the training leg the forcing frame is stratified by run
+# age (`fetch_tide_forcing_history`), and `forcing_at_issue` hands a row from a
+# different run block on either side of a lead-day boundary. A `.diff()` taken
+# after that narrowing would straddle two runs at each boundary and measure the
+# run-to-run departure (0.44 hPa at `_d1`, 1.40 at `_d2` — see that fetcher)
+# instead of the weather. Taken here, each block is differenced within itself
+# and the narrowing carries the result along like any other forcing column.
+PRESSURE_TENDENCY_H = (3, 6)
+PRESSURE_TENDENCY_COLUMNS = [f"dp_dt_{h}h" for h in PRESSURE_TENDENCY_H]
+TIDE_FORCING_COLUMNS = [*FORCING_COLUMNS, "pressure_anom", *PRESSURE_TENDENCY_COLUMNS]
 
 # Task 0: the 3 wind models kept from the probe (>=90% coverage from 2025-06-01).
 WIND_MODELS = ["meteofrance_arpege_europe", "ecmwf_ifs025", "icon_eu"]
@@ -86,6 +101,10 @@ _TIDE_VARIABLES = ("wind_speed_10m", "wind_direction_10m", "pressure_msl")
 # (wave/wind) do not, so no station pays for a variable its features exclude.
 _HOURLY_TIDE = ",".join(_TIDE_VARIABLES)
 _TIMEOUT = 30
+# Half an hour: the tendency lookup must land on the intended hour or on nothing.
+# A wider window would quietly return the adjacent hour and label a 2 h departure
+# as a 3 h one.
+_TENDENCY_TOLERANCE = pd.Timedelta("30min")
 
 # Lead days a `HORIZON_H = 48` issue can reach: the issue's own day, and the two
 # after it. Deeper `previous_day` columns exist (up to 7) and are deliberately
@@ -187,6 +206,22 @@ def _tide_frame(hourly: dict, station: Station, suffix: str = "") -> pd.DataFram
         pd.to_numeric(pd.Series(hourly[f"pressure_msl{suffix}"], index=out.index), errors="coerce")
         - STANDARD_PRESSURE_HPA
     )
+    # Backward tendency, hPa/h, over an *elapsed* window rather than a row count:
+    # `.diff(3)` would silently mean three rows, which is three hours only as long
+    # as every leg stays hourly. Left NaN on the leading hours — no tendency is
+    # knowable there, and inventing a 0.0 would read as a settled barometer. The
+    # live leg carries a day of past hours so the served horizon never lands on
+    # them (see `fetch_wind_forecast`), and the training frame loses its first six
+    # hours out of two years.
+    # Sorted and deduplicated for the lookup only: `_finalize` does it for the
+    # frame, but it runs after this and `reindex` raises on a duplicate label.
+    p = out["pressure_anom"]
+    p = p[~p.index.duplicated(keep="first")].sort_index()
+    for hours in PRESSURE_TENDENCY_H:
+        shifted = p.reindex(
+            out.index - pd.Timedelta(hours=hours), method="nearest", tolerance=_TENDENCY_TOLERANCE
+        )
+        out[f"dp_dt_{hours}h"] = (out["pressure_anom"].to_numpy() - shifted.to_numpy()) / hours
     return out[TIDE_FORCING_COLUMNS]
 
 
@@ -204,7 +239,16 @@ def _finalize(out: pd.DataFrame, payload: dict, station: Station) -> pd.DataFram
 
 def _fetch(url: str, params: dict, station: Station, session) -> pd.DataFrame:
     payload, hourly = _get_payload(url, params, station, session)
-    return _finalize(_tide_frame(hourly, station).dropna(), payload, station)
+    # Dropped on the measured columns only. The tendency is NaN on the leading
+    # hours by construction, and those hours carry a perfectly good wind and
+    # pressure — deleting the row would throw away three good columns to hide one
+    # unknowable. A tendency hole inside the served horizon is caught where every
+    # other forcing hole is: the per-column coverage floor in `features.py`.
+    return _finalize(
+        _tide_frame(hourly, station).dropna(subset=[*FORCING_COLUMNS, "pressure_anom"]),
+        payload,
+        station,
+    )
 
 
 def _fetch_models(
@@ -318,9 +362,18 @@ def forcing_at_issue(forcing: pd.DataFrame, t0: pd.Timestamp) -> pd.DataFrame:
 
 
 def fetch_wind_forecast(
-    station: Station, session: requests.Session | None = None, forecast_days: int = 3
+    station: Station, session: requests.Session | None = None, forecast_days: int = 3,
+    past_days: int = 1,
 ) -> pd.DataFrame:
-    """Hourly ECMWF IFS 10 m wind + MSL pressure forecast — covers the +48 h horizon."""
+    """Hourly ECMWF IFS 10 m wind + MSL pressure forecast — covers the +48 h horizon.
+
+    `past_days` is here for the same reason as in `fetch_wind_models_forecast`, one
+    variable further along: `pressure_anom` now carries a 3 h and a 6 h tendency,
+    and the first hours of any frame have none. Without a day of past hours a run
+    issued shortly after 00:00 UTC would serve NaN tendencies over the start of its
+    own horizon — while the training frame, spanning two years, never does. The
+    training leg needs no equivalent: it loses six hours out of two years.
+    """
     return _fetch(
         _FORECAST_URL,
         {
@@ -329,6 +382,7 @@ def fetch_wind_forecast(
             "hourly": _HOURLY_TIDE,
             "models": TIDE_FORECAST_MODEL,
             "forecast_days": forecast_days,
+            "past_days": past_days,
             "wind_speed_unit": "ms",
             "timezone": "UTC",
         },

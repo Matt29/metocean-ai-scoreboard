@@ -84,12 +84,39 @@ BASE_COLUMNS = [
 TIDE_ERR_WINDOWS_H = (3, 6)
 TIDE_ERR_COLUMNS = [f"mean_err_{h}h" for h in TIDE_ERR_WINDOWS_H]
 
+# Rate of change of the harmonic prediction, m/h — the tide *phase*, and to a
+# first approximation the tidal current. A surge does not add to the tide, it
+# depends on the water height it rides on, so the same wind does not push the
+# same water on a flood and on an ebb. Determining at saint-malo (macrotidal,
+# up to ~13 m of range), and the measured lead on the station's ceiling: its
+# residual carries a semi-diurnal component whose phase `hour_sin`/`hour_cos`
+# cannot see, being solar-24 h (see `docs/plan-dev-modele.md` § Réserves).
+#
+# Centred over +/-1 h and read through `_aligned_baseline` rather than
+# `.diff()`. Both legs are hourly today (`waterlevel.fetch_tide_obs` resamples
+# REFMAR's 10 min grid to 1 h before the baseline is fitted), so `.diff()` would
+# work — but it would mean "one row", and a row is an hour only for as long as
+# that resample stays where it is. A slope read at a fixed +/-1 h is the same
+# quantity whatever the sampling, and centred it is a better phase estimate than
+# a backward one (no half-step lag on a semi-diurnal signal).
+TIDE_RATE_COLUMN = "tide_rate"
+_TIDE_RATE_DT = pd.Timedelta("1h")
+# The centred span in hours, i.e. the divisor that puts the slope in m/h. Derived
+# from the step rather than written as `2.0`, so the two cannot drift apart.
+_TIDE_RATE_SPAN_H = 2 * _TIDE_RATE_DT / pd.Timedelta("1h")
+
+
 # Tide stations: the residual-memory windows above, then atmospheric forcing at
 # the lead's valid time (see `sources.wind`). 10 m wind components, m/s,
 # eastward / northward — u/v rather than speed+direction, because direction is
 # circular and u/v handle it natively — plus the MSL pressure anomaly, whose
 # inverse barometer drives the surge these stations actually predict.
-FEATURE_COLUMNS = BASE_COLUMNS + TIDE_ERR_COLUMNS + _TIDE_FORCING_COLUMNS
+FEATURE_COLUMNS = (
+    BASE_COLUMNS
+    + TIDE_ERR_COLUMNS
+    + [TIDE_RATE_COLUMN]
+    + _TIDE_FORCING_COLUMNS
+)
 
 
 def model_feature_columns(model_columns: list[str]) -> list[str]:
@@ -121,11 +148,13 @@ _MAX_MODEL_GAP = 3
 _ALIGN_TOLERANCE = pd.Timedelta("1h")
 
 
-def _aligned_baseline(baseline: pd.Series, times: pd.DatetimeIndex) -> pd.Series:
-    """Baseline sampled at `times`, nearest hour within 1h (NaN beyond)."""
+def _aligned_baseline(
+    baseline: pd.Series, times: pd.DatetimeIndex, tolerance: pd.Timedelta = _ALIGN_TOLERANCE
+) -> pd.Series:
+    """Baseline sampled at `times`, nearest sample within `tolerance` (NaN beyond)."""
     if baseline.empty or len(times) == 0:
         return pd.Series(np.nan, index=times, dtype=float)
-    return baseline.reindex(times, method="nearest", tolerance=_ALIGN_TOLERANCE)
+    return baseline.reindex(times, method="nearest", tolerance=tolerance)
 
 
 def _aligned_forcing(forcing: pd.DataFrame, col: str, times: pd.DatetimeIndex) -> np.ndarray:
@@ -155,6 +184,29 @@ def _mean_err(past_obs: pd.Series, baseline: pd.Series, t0: pd.Timestamp, hours:
         return 0.0
     errs = window - _aligned_baseline(baseline, window.index)
     return _finite(errs.mean())
+
+
+def _tide_rate(baseline: pd.Series, times: pd.DatetimeIndex) -> np.ndarray:
+    """Centred slope of the harmonic prediction at `times`, m/h.
+
+    Sampling-independent by construction (see `TIDE_RATE_COLUMN`): both ends are
+    read at a fixed +/-1 h through the same nearest-hour alignment every other
+    baseline read uses. The horizon's last hour has no `+1 h` inside the window,
+    so it inherits the previous hour's slope rather than a halved one — one row
+    in 48, and the same row at train and at serve.
+    """
+    # Half the step, not the usual 1 h: at 1 h, the nearest sample to the horizon's
+    # last hour + 1 h is that same last hour, and the difference would come back as
+    # a silently halved slope instead of the absent value `ffill` is there to
+    # replace. A one-sided estimate wearing the units of a centred one.
+    ahead = _aligned_baseline(baseline, times + _TIDE_RATE_DT, _TIDE_RATE_DT / 2)
+    behind = _aligned_baseline(baseline, times - _TIDE_RATE_DT, _TIDE_RATE_DT / 2)
+    rate = (ahead.to_numpy() - behind.to_numpy()) / _TIDE_RATE_SPAN_H
+    # Three fallbacks, one rule: take the nearest slope that exists, then never
+    # return NaN. `ffill` covers the horizon's last hour (the documented case);
+    # `bfill` the mirror one, a baseline gap sitting on `t0` itself; `fillna` is
+    # the same never-NaN floor `_finite` applies to every other feature.
+    return pd.Series(rate, index=times).ffill().bfill().fillna(0.0).to_numpy()
 
 
 def _finite(value: float) -> float:
@@ -204,6 +256,7 @@ def build_features(
         # I read forcing at t0" — this function's job, not its callers'. Doing it
         # at the call sites would make the one-code-path guarantee a convention
         # two callers have to remember instead of a property of the code.
+        feats[TIDE_RATE_COLUMN] = _tide_rate(baseline, feats.index)
         _add_aligned(feats, forcing_at_issue(forcing, t0), _TIDE_FORCING_COLUMNS)
         return feats[FEATURE_COLUMNS]
 

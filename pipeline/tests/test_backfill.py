@@ -105,7 +105,13 @@ def _wind_df(date_start, date_end, value=3.0):
         {
             f"{col}_d{day}": np.full(len(idx), base + day)
             for day in wind_source.LEAD_DAYS
-            for col, base in (("wind_u10", value), ("wind_v10", -2.0), ("pressure_anom", 5.0))
+            for col, base in (
+                ("wind_u10", value),
+                ("wind_v10", -2.0),
+                ("pressure_anom", 5.0),
+                ("dp_dt_3h", 0.1),
+                ("dp_dt_6h", 0.2),
+            )
         },
         index=idx,
     )

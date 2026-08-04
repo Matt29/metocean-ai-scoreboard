@@ -34,11 +34,20 @@ def _baseline(hours_before=24, hours_after=48, value=1.0):
     return _series(start, hours_before + hours_after + 1, value)
 
 
-def _forcing(u=3.0, v=-4.0, p=5.0, hours_before=24, hours_after=48, start=None):
+def _forcing(u=3.0, v=-4.0, p=5.0, hours_before=24, hours_after=48, start=None, dp=0.0):
     start = T0 - pd.Timedelta(hours=hours_before) if start is None else start
     idx = pd.date_range(start, periods=hours_before + hours_after + 1, freq="1h", tz="UTC")
+    # The tendency columns arrive already computed (`sources.wind._tide_frame`);
+    # `build_features` only reads them, so a constant is enough here.
     return pd.DataFrame(
-        {"wind_u10": float(u), "wind_v10": float(v), "pressure_anom": float(p)}, index=idx
+        {
+            "wind_u10": float(u),
+            "wind_v10": float(v),
+            "pressure_anom": float(p),
+            "dp_dt_3h": float(dp),
+            "dp_dt_6h": float(dp),
+        },
+        index=idx,
     )
 
 
@@ -60,16 +69,25 @@ def test_columns_exactly_as_specified():
         "hour_cos",
         "mean_err_3h",
         "mean_err_6h",
+        "tide_rate",
         "wind_u10",
         "wind_v10",
         "pressure_anom",
+        "dp_dt_3h",
+        "dp_dt_6h",
     ]
 
 
 def test_forcing_is_sampled_at_each_lead_valid_time():
     idx = pd.date_range(T0 - pd.Timedelta(hours=24), periods=73, freq="1h", tz="UTC")
     forcing = pd.DataFrame(
-        {"wind_u10": np.arange(73.0), "wind_v10": -np.arange(73.0), "pressure_anom": np.arange(73.0)},
+        {
+            "wind_u10": np.arange(73.0),
+            "wind_v10": -np.arange(73.0),
+            "pressure_anom": np.arange(73.0),
+            "dp_dt_3h": np.zeros(73),
+            "dp_dt_6h": np.zeros(73),
+        },
         index=idx,
     )
     feats = build_features(_baseline(), _series(T0 - pd.Timedelta(hours=24), 25, 1.3), T0, forcing)
@@ -332,6 +350,8 @@ def _history(days=5):
             "wind_u10": np.full(len(idx), 3.0),
             "wind_v10": np.full(len(idx), -4.0),
             "pressure_anom": np.full(len(idx), 5.0),
+            "dp_dt_3h": np.full(len(idx), 0.0),
+            "dp_dt_6h": np.full(len(idx), 0.0),
         },
         index=idx,
     )
@@ -440,3 +460,61 @@ def test_a_dead_wind_model_raises_instead_of_being_served_as_calm():
             _forcing_multi(),
             models=models,
         )
+
+
+def test_tide_rate_is_the_centred_slope_of_the_harmonic_prediction():
+    """A sine baseline: the column must track its analytic derivative, sign included."""
+    period_h = 12.42  # M2
+    idx = pd.date_range(T0 - pd.Timedelta(hours=24), periods=73, freq="1h", tz="UTC")
+    phase = (idx - idx[0]) / pd.Timedelta(hours=period_h) * 2 * np.pi
+    baseline = pd.Series(3.0 * np.sin(phase), index=idx)
+
+    feats = build_features(baseline, _series(T0 - pd.Timedelta(hours=24), 25, 0.0), T0, _forcing())
+
+    omega = 2 * np.pi / period_h
+    expected = 3.0 * omega * np.cos(phase[25:])  # dh/dt at each lead
+    # A centred difference over +/-1h attenuates by sin(omega*dt)/(omega*dt) —
+    # 4.2 % on M2, and a constant factor on the whole column, so it is a change of
+    # unit and not of shape. Pinned rather than tolerated: it is what tells this
+    # column apart from a backward difference, which would also lag by half an hour.
+    attenuation = np.sin(omega) / omega
+    assert np.isclose(attenuation, 0.9579, atol=1e-4)
+    rate = feats["tide_rate"].to_numpy()
+    # The last hour has no +1h neighbour and inherits the previous slope, so it is
+    # compared apart.
+    assert np.allclose(rate[:-1], expected[:-1] * attenuation, rtol=1e-3, atol=1e-3)
+    assert rate[-1] == rate[-2]
+    assert (rate > 0).any() and (rate < 0).any()  # flood and ebb both present
+
+
+def test_tide_rate_does_not_depend_on_the_baseline_sampling():
+    """The anti-skew property: a slope read at +/-1h, never "one row".
+
+    `waterlevel.fetch_tide_obs` resamples REFMAR to 1 h today, so both legs are
+    hourly — but a row-wise `.diff()` would silently become a 10 min slope the day
+    that resample moves, and the model would be trained on a quantity production
+    no longer serves.
+    """
+    period_h = 12.42
+    def sine(freq):
+        idx = pd.date_range(T0 - pd.Timedelta(hours=24), T0 + pd.Timedelta(hours=48), freq=freq,
+                            tz="UTC")
+        return pd.Series(
+            3.0 * np.sin((idx - idx[0]) / pd.Timedelta(hours=period_h) * 2 * np.pi), index=idx
+        )
+
+    obs = _series(T0 - pd.Timedelta(hours=24), 25, 0.0)
+    hourly = build_features(sine("1h"), obs, T0, _forcing())
+    fine = build_features(sine("10min"), obs, T0, _forcing())
+
+    common = hourly.index.intersection(fine.index)
+    assert len(common) == 48
+    # Every hour but the horizon's last is identical to nine digits. That last one
+    # has no +1h neighbour on either grid and inherits the previous slope, which is
+    # one hour back at 1h sampling and ten minutes back at 10min — the one place
+    # the column can see its own grid, and it is the row no lead reads past.
+    assert np.allclose(
+        hourly.loc[common[:-1], "tide_rate"], fine.loc[common[:-1], "tide_rate"],
+        rtol=1e-9, atol=1e-9,
+    )
+    assert common[-1] == T0 + pd.Timedelta(hours=48)
