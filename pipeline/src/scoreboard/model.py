@@ -83,14 +83,48 @@ def _estimator(name: str):
     raise ValueError(f"unknown model {name!r} — pick from {MODEL_NAMES}")
 
 
+def _signature(est) -> str:
+    """A structural fingerprint: Pipeline step names, or the bare type name."""
+    if isinstance(est, Pipeline):
+        return "pipeline:" + ",".join(step for step, _ in est.steps)
+    return type(est).__name__
+
+
+# Built from `MODEL_NAMES`/`_estimator` themselves (each candidate's *unfitted*
+# signature), not a hand-copied list — a new candidate added to `_estimator`
+# is picked up here for free. This is a dict, though: two candidates sharing a
+# structural signature (e.g. two `Pipeline([("gbr", ...)])` variants) would
+# silently collapse into one entry, and every artefact of the lost one would
+# then be mis-inferred as the survivor. The assert below fails the import
+# instead, the moment such a collision is introduced.
+_SIGNATURE_TO_NAME = {_signature(_estimator(name)): name for name in MODEL_NAMES}
+assert len(_SIGNATURE_TO_NAME) == len(MODEL_NAMES), (
+    "two MODEL_NAMES candidates share a structural signature — "
+    "infer_model_name can no longer tell them apart"
+)
+
+
+def infer_model_name(est) -> str | None:
+    """The `MODEL_NAMES` candidate `est` structurally matches, or `None`.
+
+    `None` — never a guess — for anything that isn't the exact fitted shape of
+    one of the three candidates, e.g. an artefact from a future/removed model.
+    """
+    return _SIGNATURE_TO_NAME.get(_signature(est))
+
+
 def train(x: pd.DataFrame, y: pd.Series, name: str = "hgb"):
     """Fit `name` on the columns of `x`, in that order.
 
     The fitted column list is then the estimator's own (`feature_names_in_`) —
     single source of truth, read back by `predict` and stored by `save`.
+
+    `name` is stamped onto the estimator (`_model_name`) so `_dump` serializes
+    the caller's own choice instead of re-inferring it from structure.
     """
     est = _estimator(name)
     est.fit(x, y)
+    est._model_name = name
     return est
 
 
@@ -130,11 +164,17 @@ def stage(
 
 
 def _dump(est, path: Path, baseline_model: str | None) -> None:
+    # `_model_name` is what `train()` was actually called with — the ground
+    # truth. `infer_model_name` is only the fallback for an estimator that
+    # reached here some other way (e.g. an artefact reloaded from disk before
+    # this field existed and re-dumped as-is).
+    model_name = getattr(est, "_model_name", None) or infer_model_name(est)
     joblib.dump(
         {
             "model": est,
             "baseline_model": baseline_model,
             "feature_columns": _fitted_columns(est),
+            "model_name": model_name,
         },
         path,
     )
@@ -181,15 +221,24 @@ def load(station_id: str, models_dir: Path | None = None):
 
 
 def load_artifact(station_id: str, models_dir: Path | None = None) -> dict:
-    """`{model, baseline_model, feature_columns}`.
+    """`{model, baseline_model, feature_columns, model_name}`.
 
     Artefacts written before Task 5 are a bare estimator; they are read back
-    into the same shape rather than being invalidated.
+    into the same shape rather than being invalidated. Likewise `model_name`:
+    artefacts written before this field existed get it filled in by structural
+    inference (`infer_model_name`) rather than staying silently absent — the
+    same joblib on disk, no retraining needed.
     """
     obj = joblib.load((models_dir or MODELS_DIR) / f"{station_id}.joblib")
     if isinstance(obj, dict):
+        obj.setdefault("model_name", infer_model_name(obj["model"]))
         return obj
-    return {"model": obj, "baseline_model": None, "feature_columns": _fitted_columns(obj)}
+    return {
+        "model": obj,
+        "baseline_model": None,
+        "feature_columns": _fitted_columns(obj),
+        "model_name": infer_model_name(obj),
+    }
 
 
 def _fitted_columns(est) -> list[str]:

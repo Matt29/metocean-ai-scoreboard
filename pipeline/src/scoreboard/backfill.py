@@ -124,7 +124,7 @@ def _deep_obs(station: Station, since: date, until: date, today: date) -> pd.Ser
     """
     if station.source == "candhis":
         start = since - timedelta(days=daily.OBS_LOOKBACK_DAYS)
-        df = fetch_wave_obs(station, start)  # candhis has no end param: serves up to "now"
+        df = fetch_wave_obs(station, start)  # date_end defaults to today — see candhis._MAX_SPAN
         return df["hs"].astype(float).dropna().sort_index()
     if station.source == "mfobs":
         # DPClim, pas DPObs : le temps réel ne garde qu'une fenêtre glissante de
@@ -243,7 +243,7 @@ def run(
 
     # Same as daily.run: stations.json must exist even if backfill is the very
     # first thing ever run against an empty data/ dir (cold start, minor #1).
-    publish.write_stations(out_dir, stations, gate)
+    publish.write_stations(out_dir, stations, gate, models_dir=models_dir)
 
     published = [s for s in stations if gate.get(s.id, {}).get("pass", False)]
 

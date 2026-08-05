@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from scoreboard import publish
@@ -126,6 +127,26 @@ def test_atomic_write_leaves_no_tmp_file(tmp_path):
     publish.write_stations(tmp_path, STATIONS, GATE)
     leftovers = list(tmp_path.glob("*.tmp"))
     assert leftovers == []
+
+
+def test_stations_carry_the_model_name_read_from_their_artifact(tmp_path):
+    """`model_name` comes from the station's own `models/<id>.joblib`, not from
+    `gate` — present the moment an artefact exists, without any retraining."""
+    from scoreboard import model
+
+    x = pd.DataFrame(
+        {"baseline": [1.0, 2.0], "lead_h": [1, 2], "last_err": [0.1, 0.2]}
+    )
+    y = pd.Series([1.1, 2.1])
+    models_dir = tmp_path / "models"
+    model.save(model.train(x, y, name="ridge"), "a", models_dir=models_dir)
+    # Pas d'artefact pour "b" : la clé doit rester absente, jamais devinée.
+
+    payload = publish.write_stations(tmp_path, STATIONS, GATE, models_dir=models_dir)
+
+    by_id = {s["id"]: s for s in payload["stations"]}
+    assert by_id["a"]["model_name"] == "ridge"
+    assert "model_name" not in by_id["b"]
 
 
 # --- (d) failed station -> "missing" day, scores unaffected --------------
@@ -375,6 +396,14 @@ def test_backfilled_count_follows_the_same_window():
 # --- by_lead: point-by-point MAE decomposition by lead time ------------
 
 
+# Retombée d'une tranche sans aucun point : MAE *et* quantiles à None.
+_EMPTY_BUCKET = {
+    "mae_ia": None, "p50_ia": None, "p90_ia": None,
+    "mae_baseline": None, "p50_baseline": None, "p90_baseline": None,
+    "n_points": 0,
+}
+
+
 def _series_point(hour_offset, obs=1.0, ia=1.1, baseline=1.2):
     """A point at lead `hour_offset` after a 2026-07-30 06:00 UTC emission."""
     from datetime import datetime, timedelta, timezone
@@ -398,10 +427,19 @@ def test_by_lead_buckets_points_by_known_leads():
         ],
     }
     by_lead = publish.compute_lead_breakdown([day])
-    assert by_lead["h06"] == {"mae_ia": 0.1, "mae_baseline": 0.3, "n_points": 1}
-    assert by_lead["h12"] == {"mae_ia": 0.2, "mae_baseline": 0.5, "n_points": 1}
-    assert by_lead["h24"] == {"mae_ia": pytest.approx(0.4), "mae_baseline": pytest.approx(0.9), "n_points": 1}
-    assert by_lead["h48"] == {"mae_ia": pytest.approx(0.8), "mae_baseline": pytest.approx(1.9), "n_points": 1}
+    for label, err_ia, err_baseline in [
+        ("h06", 0.1, 0.3), ("h12", 0.2, 0.5), ("h24", 0.4, 0.9), ("h48", 0.8, 1.9)
+    ]:
+        # Une tranche à un seul point : MAE, p50 et p90 valent tous ce point.
+        assert by_lead[label] == {
+            "mae_ia": pytest.approx(err_ia),
+            "p50_ia": pytest.approx(err_ia),
+            "p90_ia": pytest.approx(err_ia),
+            "mae_baseline": pytest.approx(err_baseline),
+            "p50_baseline": pytest.approx(err_baseline),
+            "p90_baseline": pytest.approx(err_baseline),
+            "n_points": 1,
+        }
 
 
 def test_by_lead_excludes_a_day_scored_against_an_old_baseline():
@@ -425,7 +463,7 @@ def test_by_lead_ignores_legacy_days_without_series():
     days = [_ok_day("2026-07-30", 0.1, 0.2)]  # `_ok_day` has an empty `series`
     by_lead = publish.compute_lead_breakdown(days)
     for label in publish.LEAD_BUCKETS:
-        assert by_lead[label] == {"mae_ia": None, "mae_baseline": None, "n_points": 0}
+        assert by_lead[label] == _EMPTY_BUCKET
 
 
 def test_by_lead_respects_the_30d_window():
@@ -464,7 +502,104 @@ def test_compute_scores_carries_by_lead(tmp_path):
     }
     row = publish.compute_scores([day])
     assert row["by_lead"]["h06"]["n_points"] == 1
-    assert row["by_lead"]["h12"] == {"mae_ia": None, "mae_baseline": None, "n_points": 0}
+    assert row["by_lead"]["h12"] == _EMPTY_BUCKET
+
+
+# --- by_lead: quantiles p50/p90 de l'erreur absolue -------------------------
+
+
+def test_by_lead_quantiles_use_numpy_linear_interpolation():
+    """10 points dans h48, erreurs IA 0.1..1.0 : p50 = 0.55 (interpolation
+    linéaire entre 0.5 et 0.6), p90 = 0.91. Le chiffre change si l'estimateur
+    change — c'est exactement ce que ce test verrouille."""
+    day = {
+        "date": "2026-07-30",
+        "status": "ok",
+        "mae_ia": 0.55,
+        "mae_baseline": 0.55,
+        "n_points": 10,
+        "series": [
+            _series_point(30 + i, obs=1.0, ia=1.0 + (i + 1) / 10, baseline=1.0)
+            for i in range(10)
+        ],
+    }
+    h48 = publish.compute_lead_breakdown([day])["h48"]
+    assert h48["n_points"] == 10
+    assert h48["mae_ia"] == pytest.approx(0.55)
+    assert h48["p50_ia"] == pytest.approx(0.55)
+    assert h48["p90_ia"] == pytest.approx(0.91)
+
+
+def test_by_lead_p90_shows_the_tail_the_mae_hides():
+    """Le cas pour lequel le champ existe : MAE quasi identiques, mais la
+    baseline se plante beaucoup plus fort sur ses pires points. Sans p90 le
+    site publierait « match nul » là où l'IA gagne sur le risque."""
+    # IA : erreur constante 0.5. Baseline : 0.1 partout sauf deux gros ratés.
+    ia_errs = [0.5] * 10
+    baseline_errs = [0.1] * 8 + [2.5, 2.6]
+    day = {
+        "date": "2026-07-30",
+        "status": "ok",
+        "mae_ia": 0.5,
+        "mae_baseline": 0.59,
+        "n_points": 10,
+        "series": [
+            _series_point(30 + i, obs=1.0, ia=1.0 + ia_errs[i], baseline=1.0 + baseline_errs[i])
+            for i in range(10)
+        ],
+    }
+    h48 = publish.compute_lead_breakdown([day])["h48"]
+    assert h48["mae_ia"] == pytest.approx(0.5)
+    assert h48["mae_baseline"] == pytest.approx(0.59)  # MAE : match nul apparent
+    assert abs(h48["mae_ia"] - h48["mae_baseline"]) < 0.1
+    assert h48["p90_ia"] < h48["p90_baseline"]  # la queue, elle, tranche
+    assert h48["p90_ia"] == pytest.approx(0.5)
+    assert h48["p90_baseline"] == pytest.approx(2.51)
+
+
+def test_by_lead_quantiles_survive_a_json_round_trip():
+    """Aucun NaN/inf ne peut sortir d'ici : `json.dumps` sans `allow_nan`
+    lèverait plutôt que de produire un JSON illisible par le site."""
+    day = {
+        "date": "2026-07-30",
+        "status": "ok",
+        "mae_ia": 0.1,
+        "mae_baseline": 0.2,
+        "n_points": 1,
+        "series": [_series_point(6, obs=1.0, ia=1.1, baseline=1.2)],
+    }
+    text = json.dumps(publish.compute_lead_breakdown([day]), allow_nan=False)
+    assert json.loads(text)["h48"] == _EMPTY_BUCKET
+
+
+# --- daily_30d: le détail jour par jour de la fenêtre 30d -------------------
+
+
+def test_daily_30d_lists_the_30d_window_sorted_by_date():
+    days = [_day("2026-07-30", 0.123456, 0.2), _day("2026-07-28", 0.3, 0.4)]
+    row = publish.compute_scores(days)
+    assert row["daily_30d"] == [
+        {"date": "2026-07-28", "mae_ia": 0.3, "mae_baseline": 0.4},
+        {"date": "2026-07-30", "mae_ia": 0.1235, "mae_baseline": 0.2},  # 4 décimales
+    ]
+
+
+def test_daily_30d_covers_exactly_the_mae_ia_30d_window():
+    """Même fenêtre que `mae_ia_30d` : un jour hors 30d, un jour `missing` et
+    un jour d'une autre baseline en sont absents, comme du score agrégé."""
+    days = [
+        _ok_day("2026-06-20", 5.0, 6.0, "ewam"),   # 40 j avant l'ancre : hors 30d
+        _ok_day("2026-07-29", 0.9, 1.0, "mfwam"),  # baseline périmée
+        _ok_day("2026-07-30", 0.1, 0.2, "ewam"),
+        {"date": "2026-07-31", "status": "missing"},
+    ]
+    row = publish.compute_scores(days)
+    assert [d["date"] for d in row["daily_30d"]] == ["2026-07-30"]
+    assert row["mae_ia_30d"] == pytest.approx(row["daily_30d"][0]["mae_ia"])
+
+
+def test_daily_30d_is_an_empty_list_when_the_window_is_empty():
+    assert publish.compute_scores([])["daily_30d"] == []
 
 
 # --- metrics_30d: RMSE / biais / R² point à point ---------------------------
@@ -637,7 +772,7 @@ def test_90d_fields_are_present_even_with_an_empty_history():
     assert row["mae_baseline_90d"] is None
     assert row["metrics_90d"]["n_points"] == 0
     for label in publish.LEAD_BUCKETS:
-        assert row["by_lead_90d"][label] == {"mae_ia": None, "mae_baseline": None, "n_points": 0}
+        assert row["by_lead_90d"][label] == _EMPTY_BUCKET
 
 
 def test_station_entry_publishes_the_unit_of_its_kind(tmp_path):

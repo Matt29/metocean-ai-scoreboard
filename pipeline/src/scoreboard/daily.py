@@ -611,7 +611,7 @@ def run(
     # `issued` here doubles as `stations.json`'s freshness marker — same
     # determinism reasoning as `write_scores`'s call below (see the comment
     # there): a re-run of the same `run_date` must write byte-identical output.
-    publish.write_stations(out_dir, stations, gate, updated=issued)
+    publish.write_stations(out_dir, stations, gate, updated=issued, models_dir=models_dir)
 
     published = [s for s in stations if gate.get(s.id, {}).get("pass", False)]
     # No shared pre-fetch any more: every source is one request per station

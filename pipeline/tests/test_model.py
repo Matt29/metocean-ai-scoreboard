@@ -89,3 +89,65 @@ def test_predict_is_order_insensitive():
     m = model.train(x, y)
     shuffled = x[list(reversed(FEATURE_COLUMNS))]
     np.testing.assert_array_equal(model.predict(m, x), model.predict(m, shuffled))
+
+
+@pytest.mark.parametrize("name", model.MODEL_NAMES)
+def test_infer_model_name_is_exact_on_each_candidate(name):
+    x, y = _synthetic(n=200)
+    m = model.train(x, y, name=name)
+    assert model.infer_model_name(m) == name
+
+
+def test_infer_model_name_is_none_on_an_unknown_structure():
+    assert model.infer_model_name(object()) is None
+
+
+def test_save_writes_model_name_and_load_artifact_reads_it_back(tmp_path):
+    x, y = _synthetic(n=200)
+    m = model.train(x, y, name="ridge")
+    model.save(m, "test-station", models_dir=tmp_path)
+
+    artifact = model.load_artifact("test-station", models_dir=tmp_path)
+    assert artifact["model_name"] == "ridge"
+
+
+def test_load_artifact_falls_back_to_inference_on_a_legacy_dict(tmp_path):
+    """An artefact dict written before `model_name` existed still gets it, by
+    structural inference — no retraining needed."""
+    import joblib
+
+    x, y = _synthetic(n=200)
+    m = model.train(x, y, name="hgb-per-lead")
+    path = tmp_path / "legacy.joblib"
+    joblib.dump({"model": m, "baseline_model": None, "feature_columns": list(x.columns)}, path)
+
+    artifact = model.load_artifact("legacy", models_dir=tmp_path)
+    assert artifact["model_name"] == "hgb-per-lead"
+
+
+def test_save_serializes_the_caller_name_not_a_structural_reinference(tmp_path):
+    """`train(..., name=...)` is the source of truth for `_dump`: even if the
+    fitted estimator's structure would infer a *different* candidate, the
+    name the caller actually asked for is what gets serialized."""
+    x, y = _synthetic(n=200)
+    m = model.train(x, y, name="hgb")
+    assert model.infer_model_name(m) == "hgb"  # structure alone says "hgb"
+    m._model_name = "ridge"  # simulate a caller-declared name diverging from structure
+
+    model.save(m, "test-station", models_dir=tmp_path)
+    artifact = model.load_artifact("test-station", models_dir=tmp_path)
+    assert artifact["model_name"] == "ridge"
+
+
+def test_load_artifact_falls_back_to_inference_on_a_bare_estimator(tmp_path):
+    """Pre-Task-5 artefacts are a bare estimator, not a dict; `model_name`
+    still comes back via structural inference."""
+    import joblib
+
+    x, y = _synthetic(n=200)
+    m = model.train(x, y, name="hgb")
+    path = tmp_path / "bare.joblib"
+    joblib.dump(m, path)
+
+    artifact = model.load_artifact("bare", models_dir=tmp_path)
+    assert artifact["model_name"] == "hgb"

@@ -4,7 +4,7 @@ Four files per run, all wrapped in `{"schema_version": 1, ...}` so an external
 consumer (the website, a separate repo) can detect a breaking change:
 
     data/stations.json          {"updated","stations": [{"id","name","kind","lat","lon",
-                                 "unit","published","weak","baseline_model"?}]}
+                                 "unit","published","weak","baseline_model"?,"model_name"?}]}
     data/<id>/latest.json       {"station","issued","series":[{"t","ia","baseline"}]}
     data/<id>/history.json      {"station","days":[{"date","status",
                                  "series"?,"mae_ia"?,"mae_baseline"?,
@@ -15,10 +15,12 @@ consumer (the website, a separate repo) can detect a breaking change:
                                  "mae_baseline_30d","mae_ia_90d","mae_baseline_90d",
                                  "mae_ia_all","mae_baseline_all",
                                  "by_lead"|"by_lead_90d":{"h06"|"h12"|"h24"|"h48":
-                                 {"mae_ia","mae_baseline","n_points"}},
+                                 {"mae_ia","mae_baseline","n_points",
+                                 "p50_ia","p90_ia","p50_baseline","p90_baseline"}},
                                  "metrics_30d"|"metrics_90d":{"rmse_ia","rmse_baseline",
                                  "bias_ia","bias_baseline","r2_ia","r2_baseline",
-                                 "n_points"}}]}
+                                 "n_points"},
+                                 "daily_30d":[{"date","mae_ia","mae_baseline"}]}]}
 
 Les champs `*_90d` (`mae_ia_90d`, `mae_baseline_90d`, `by_lead_90d`,
 `metrics_90d`) sont *additifs* : même forme et mêmes règles de dégradation que
@@ -26,6 +28,11 @@ leurs homologues 30d, `schema_version` inchangé (voir `write_latest`). Tant que
 l'historique est plus court que 90 jours, la fenêtre 90d contient simplement
 tous les jours disponibles — `n_points` dit alors la vérité, et une fenêtre
 vide vaut `None`, jamais NaN.
+
+Mêmes garanties d'additivité pour les quantiles `p50_*`/`p90_*` de `by_lead`
+(voir `compute_lead_breakdown`) et pour `daily_30d` (voir `compute_scores`) :
+clés ajoutées, aucune clé existante déplacée ni renommée, `schema_version`
+inchangé — un consommateur qui les ignore lit exactement ce qu'il lisait.
 
 Plus un cinquième fichier, écrit par une autre commande (`archive-obs`, pas
 `daily`) et volontairement hors du contrat des stations :
@@ -72,6 +79,7 @@ from pathlib import Path
 
 import numpy as np
 
+from scoreboard import model
 from scoreboard.config import Station
 
 log = logging.getLogger(__name__)
@@ -128,7 +136,23 @@ def _read(path: Path) -> dict | None:
 UNIT = {"wave": "m", "tide": "m", "wind": "m/s"}
 
 
-def _station_entry(s: Station, gate: dict) -> dict:
+def _station_model_name(station_id: str, models_dir: Path | None) -> str | None:
+    """The ML candidate (`model.MODEL_NAMES`) this station's artefact runs, or
+    `None` if there is no artefact yet, or its shape matches none of them —
+    silence, never a guessed name (see `model.infer_model_name`).
+
+    Every failure is swallowed, not just a missing file: `write_stations` runs
+    *before* `daily.run`'s per-station loop, so it sits outside the `try` that
+    downgrades a broken station to `"missing"`. An unreadable artefact (a
+    truncated `.joblib`, an sklearn bump) must degrade this cosmetic label to
+    `None` — never abort the whole run before a single station is scored."""
+    try:
+        return model.load_artifact(station_id, models_dir=models_dir).get("model_name")
+    except Exception:  # noqa: BLE001 - a label is never worth failing a run for
+        return None
+
+
+def _station_entry(s: Station, gate: dict, models_dir: Path | None = None) -> dict:
     entry = {
         "id": s.id,
         "name": s.name,
@@ -142,11 +166,18 @@ def _station_entry(s: Station, gate: dict) -> dict:
     # Omis plutôt que `null` — même forme optionnelle que dans `write_latest`.
     if gate.get("baseline_model"):
         entry["baseline_model"] = gate["baseline_model"]
+    model_name = _station_model_name(s.id, models_dir)
+    if model_name:
+        entry["model_name"] = model_name
     return entry
 
 
 def write_stations(
-    out_dir: Path, stations: list[Station], gate: dict, updated: str | None = None
+    out_dir: Path,
+    stations: list[Station],
+    gate: dict,
+    updated: str | None = None,
+    models_dir: Path | None = None,
 ) -> dict:
     """`data/stations.json` — every configured station, gate verdict included.
 
@@ -167,13 +198,22 @@ def write_stations(
     its `write_scores` guard protects), and the site's freshness badge should
     date the *daily* run, the only producer whose staleness means something.
     The key is absent only on a true cold start, before the first daily run.
+
+    `model_name` is additive the same way: the ML candidate (`model.MODEL_NAMES`)
+    the station's own `models/<id>.joblib` runs, read straight from that artefact
+    (`models_dir`, defaulting to `model.MODELS_DIR`) rather than from `gate` — no
+    dependency on `gate.json` growing the field, no retraining required to
+    publish it. Omitted when there is no artefact yet, or its structure matches
+    none of `MODEL_NAMES`.
     """
     path = out_dir / "stations.json"
     updated = updated or (_read(path) or {}).get("updated")
     payload = {"schema_version": SCHEMA_VERSION}
     if updated:
         payload["updated"] = updated
-    payload["stations"] = [_station_entry(s, gate.get(s.id, {})) for s in stations]
+    payload["stations"] = [
+        _station_entry(s, gate.get(s.id, {}), models_dir) for s in stations
+    ]
     _atomic_write(path, payload)
     return payload
 
@@ -327,6 +367,24 @@ def _lead_bucket(lead_h: float) -> str | None:
     return "h48"
 
 
+def _abs_err_stats(errors: list[float], suffix: str) -> dict:
+    """`{"mae<suffix>", "p50<suffix>", "p90<suffix>"}` d'une liste d'erreurs
+    absolues, arrondis à 4 décimales — tout `None` si la liste est vide.
+
+    Un seul passage sur la liste déjà collectée par `compute_lead_breakdown`
+    (voir sa docstring pour l'estimateur de quantile retenu et pourquoi).
+    """
+    if not errors:
+        return {f"mae{suffix}": None, f"p50{suffix}": None, f"p90{suffix}": None}
+    values = np.asarray(errors, dtype=float)
+    p50, p90 = np.quantile(values, [0.5, 0.9])  # method="linear", le défaut NumPy
+    return {
+        f"mae{suffix}": round(float(values.mean()), 4),
+        f"p50{suffix}": round(float(p50), 4),
+        f"p90{suffix}": round(float(p90), 4),
+    }
+
+
 def compute_lead_breakdown(window: list[dict]) -> dict:
     """`by_lead`: point-by-point MAE decomposition by lead time (h06=0-6h,
     h12=7-12h, h24=13-24h, h48=25-48h), one bucket set for `scores.json`.
@@ -345,8 +403,29 @@ def compute_lead_breakdown(window: list[dict]) -> dict:
     calculée directement sur les points des `series` des jours retenus. Un
     jour ancien sans `series` détaillée (compat historique) ou un point sans
     `obs` valide est silencieusement ignoré plutôt que de faire échouer la
-    publication. Une tranche sans aucun point retombe sur
-    `{"mae_ia": None, "mae_baseline": None, "n_points": 0}`.
+    publication.
+
+    Chaque tranche publie aussi les **quantiles de l'erreur absolue** :
+    `p50_ia`, `p90_ia`, `p50_baseline`, `p90_baseline`. La MAE est une moyenne,
+    elle masque la queue de distribution ; le p90 dit si l'IA bat aussi la
+    physique sur les gros ratés — c'est l'argument qui compte pour un usage
+    risque, et c'est le seul but de ces champs (pas une distribution complète,
+    pas un intervalle de confiance). Ils sont calculés sur les *mêmes* erreurs
+    absolues déjà collectées pour la MAE, en un seul passage : aucun recalcul,
+    donc aucune possibilité de diverger de la MAE publiée à côté.
+
+    Estimateur de quantile : `np.quantile(..., method="linear")`, le défaut de
+    NumPy (interpolation linéaire, type 7 de Hyndman & Fan). Écrit noir sur
+    blanc parce qu'un quantile dont la méthode n'est pas spécifiée n'est pas
+    un chiffre reproductible : sept définitions courantes existent et elles ne
+    donnent pas le même p90 sur un petit échantillon. Pas de raison mesurée de
+    s'écarter du défaut ici — les tranches contiennent des centaines à des
+    milliers de points, régime où les types convergent. À un seul point, tous
+    les quantiles valent ce point.
+
+    Une tranche sans aucun point retombe sur `None` pour la MAE *et* pour les
+    quatre quantiles, `n_points` à 0 — mêmes règles de retombée, jamais de
+    NaN dans le JSON.
 
     Lead d'un point = son `t` moins l'instant d'émission du jour (`date` +
     `_ISSUE_HOUR` UTC) — pas `max_lead_h`, déjà agrégé et donc impossible à
@@ -373,8 +452,8 @@ def compute_lead_breakdown(window: list[dict]) -> dict:
 
     return {
         label: {
-            "mae_ia": round(float(np.mean(err_ia[label])), 4) if err_ia[label] else None,
-            "mae_baseline": round(float(np.mean(err_baseline[label])), 4) if err_baseline[label] else None,
+            **_abs_err_stats(err_ia[label], "_ia"),
+            **_abs_err_stats(err_baseline[label], "_baseline"),
             "n_points": len(err_ia[label]),
         }
         for label in LEAD_BUCKETS
@@ -469,6 +548,28 @@ def compute_scores(days: list[dict]) -> dict:
     their series — they simply do not feed the windows. Expect the wave windows
     to empty out the day the baseline changes and refill from there; an empty
     window already yields `None`, not a division by zero.
+
+    `daily_30d` publie le détail jour par jour de la fenêtre 30d :
+    `[{"date", "mae_ia", "mae_baseline"}, ...]`, tri par date croissante,
+    arrondis à 4 décimales comme le reste, liste vide si la fenêtre est vide.
+    Champ additif au schéma 1, motivé par un seul besoin : la sparkline par
+    station de la page d'ensemble du site, qui ne charge que `scores.json` —
+    sans lui il faudrait un `history.json` par station juste pour tracer huit
+    courbes de 30 points.
+
+    La fenêtre est **exactement** celle de `mae_ia_30d` : la liste construite
+    dans la boucle est réutilisée telle quelle, jamais refiltrée — même raison
+    que pour `compute_lead_breakdown`, qui reçoit sa fenêtre en paramètre. Un
+    jour de `daily_30d` est donc toujours un jour qui pèse dans `mae_ia_30d`,
+    et les deux ne peuvent pas raconter deux histoires différentes.
+
+    Même fenêtre, mais **pas la même agrégation** : `daily_30d` sert la MAE
+    brute de chaque jour, alors que `mae_ia_30d` est une moyenne pondérée par
+    `n_points` (un point = une voix, cf. ci-dessus). Moyenner les 30 valeurs de
+    `daily_30d` ne redonne donc pas `mae_ia_30d` dès que les jours n'ont pas
+    tous le même nombre d'observations valides. C'est voulu — une sparkline
+    trace des jours, pas des points — mais un consommateur qui l'ignorerait
+    croirait à une incohérence.
     """
     ok = _ok_days_current_baseline(days)
     # Among the "ok" days, how many were reconstructed a posteriori by
@@ -510,6 +611,15 @@ def compute_scores(days: list[dict]) -> dict:
             if window
             else None
         )
+        if label == "30d":
+            row["daily_30d"] = [
+                {
+                    "date": day["date"],
+                    "mae_ia": round(float(day["mae_ia"]), 4),
+                    "mae_baseline": round(float(day["mae_baseline"]), 4),
+                }
+                for day in sorted(window, key=lambda d: d["date"])
+            ]
     return row
 
 
