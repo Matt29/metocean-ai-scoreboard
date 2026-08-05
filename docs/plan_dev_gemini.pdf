@@ -263,4 +263,27 @@ OceanData Consulting — Confidentiel & Propriétaire
 
 Page 3 / 3
 
+---
+
+AVANCEMENT — 2026-08-05 (enrichissement du contrat JSON, côté données)
+
+Réalisé (5 commits, +32 tests, 272 passed) :
+
+•  AXE 1 / Monitor & Badge de Fraîcheur (côté données) : horodatage du run
+   (updated) et statut par station dans le contrat — commit 934a15a.
+•  AXE 2.2 / Décomposition par Échéance : by_lead (H+6…H+72, fenêtre 30 j)
+   dans scores.json — commit a5415c1.
+•  AXE 2.2 / Tableau Multi-Métriques : metrics_30d (RMSE, biais, R²) par
+   station dans scores.json — commit d241e4f.
+•  AXE 2.1 / Carte (côté données) : déjà satisfait — lat/lon existants ;
+   vert/rouge/gris dérivable de published × status. Aucun champ ajouté.
+•  AXE 2.2 / Zoom sur Extrêmes : extremes.json (pics observés + peak error,
+   ≤3 épisodes) écrit par le run daily — commit 216f857.
+•  AXE 3 / Export CSV des séries : series.csv par station (hors contrat
+   versionné) — commit e4f342c.
+
+Reste côté site (WEB/ODC_WEBSITE) : consommer status, by_lead, metrics_30d,
+updated, extremes.json et les CSV. Surveiller le premier run daily
+(cron 07:30 UTC) qui écrira extremes.json et les series.csv en prod.
+
 
