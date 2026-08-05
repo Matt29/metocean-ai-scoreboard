@@ -187,9 +187,19 @@ def test_scores_weight_each_valid_observation_and_keep_baseline_windows_separate
     row = publish.compute_scores(days)
 
     assert row["n_days"] == 2
+    # Le jour écarté est compté et nommé, jamais évaporé en silence : c'est la
+    # seule trace qui explique un `n_days` qui fond après un réentraînement.
+    assert row["n_days_other_baseline"] == 1
     for label in ("7d", "30d", "all"):
         assert row[f"mae_ia_{label}"] == 2.5
         assert row[f"mae_baseline_{label}"] == 5.5
+
+
+def test_no_excluded_day_means_no_counter_at_all():
+    """Clé additive : elle n'apparaît que quand elle mord."""
+    days = [_ok_day("2026-07-29", 1.0, 4.0, "ewam"), _ok_day("2026-07-30", 3.0, 6.0, "ewam")]
+
+    assert "n_days_other_baseline" not in publish.compute_scores(days)
 
 
 @pytest.mark.parametrize("n_points", [None, 0, -2, "oops", True, 1.5, float("nan")])

@@ -55,7 +55,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from scoreboard import daily, publish
+from scoreboard import daily, model, publish
 from scoreboard.config import Station, load_stations
 from scoreboard.sources import SourceError
 from scoreboard.sources.candhis import fetch_wave_obs
@@ -74,14 +74,28 @@ log = logging.getLogger(__name__)
 _WIND_MARGIN_DAYS = 2  # small pre-roll so the first replayed day's -24h baseline lookback has forcing
 
 
-def _missing_dates(out_dir: Path, station_id: str, since: date, until: date) -> list[date]:
-    """Dates in `[since, until]` without an `"ok"` `history.json` entry —
+def _missing_dates(
+    out_dir: Path, station_id: str, since: date, until: date, baseline_model: str | None = None
+) -> list[date]:
+    """Dates in `[since, until]` without an *usable* `"ok"` `history.json` entry —
     chronological. A `"missing"` day is deliberately NOT considered done: it is
-    the only recovery path from a transient source failure (résolution 5)."""
+    the only recovery path from a transient source failure (résolution 5).
+
+    Un jour `"ok"` scoré contre une autre baseline que `baseline_model` ne l'est
+    pas non plus : `publish.compute_scores` l'écarte de toutes les fenêtres, donc
+    il ne vaut pas mieux qu'un jour absent. C'est ce qui rend un réentraînement
+    auto-réparateur — sans ça, changer de modèle physique fait fondre les scores
+    publiés (les 29 jours MFWAM des stations houle, 2026-08-03) et aucun backfill
+    ne peut les récupérer, puisqu'ils sont déjà `"ok"`.
+    """
     if since > until:
         return []
     history = publish.read_history(out_dir, station_id)
-    ok = {d["date"] for d in (history["days"] if history else []) if d.get("status") == "ok"}
+    ok = {
+        d["date"]
+        for d in (history["days"] if history else [])
+        if d.get("status") == "ok" and d.get("baseline_model") == baseline_model
+    }
     n_days = (until - since).days + 1
     return [d for i in range(n_days) if (d := since + timedelta(days=i)).isoformat() not in ok]
 
@@ -235,9 +249,23 @@ def run(
 
     # Missing dates first, so a station with nothing to replay never fetches
     # anything at all (résolution 1 applies even at zero days).
-    missing_by_station = {
-        st.id: _missing_dates(out_dir, st.id, since, until) for st in published
-    }
+    #
+    # La baseline visée vient de l'artefact courant, et un artefact illisible
+    # coûte la station entière plutôt qu'un jour : sans lui, `_missing_dates`
+    # ne peut pas distinguer un jour périmé d'un jour à jour, requalifierait
+    # *tout* l'historique `"ok"` en jours à rejouer, et `_backfill_station` —
+    # qui butera sur le même artefact — les réécrirait en `"missing"`. C'est
+    # l'invariant du module (un backfill ne dégrade jamais un jour déjà scoré),
+    # et il se tient ici, pas dans un `except` qui rendrait `None`.
+    missing_by_station: dict[str, list[date]] = {}
+    for st in published:
+        try:
+            baseline_model = model.load_artifact(st.id, models_dir=models_dir)["baseline_model"]
+        except Exception as exc:  # noqa: BLE001
+            log.warning("%s: artefact illisible (%s) — aucun jour rejoué", st.id, exc)
+            missing_by_station[st.id] = []
+            continue
+        missing_by_station[st.id] = _missing_dates(out_dir, st.id, since, until, baseline_model)
 
     summary: dict[str, list[str]] = {}
     for st in published:

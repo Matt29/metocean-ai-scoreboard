@@ -10,6 +10,7 @@ consumer (the website, a separate repo) can detect a breaking change:
                                  "series"?,"mae_ia"?,"mae_baseline"?,
                                  "n_points"?}]}   (90d max)
     data/scores.json            {"updated","stations":[{"id","status","n_days",
+                                 "n_days_other_baseline"?,
                                  "mae_ia_7d","mae_baseline_7d","mae_ia_30d",
                                  "mae_baseline_30d","mae_ia_90d","mae_baseline_90d",
                                  "mae_ia_all","mae_baseline_all",
@@ -63,6 +64,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 import os
 import tempfile
 from datetime import date, datetime, timedelta, timezone
@@ -71,6 +73,8 @@ from pathlib import Path
 import numpy as np
 
 from scoreboard.config import Station
+
+log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
 MAX_HISTORY_DAYS = 90
@@ -471,6 +475,15 @@ def compute_scores(days: list[dict]) -> dict:
     # `scoreboard backfill` rather than scored the day after a live run — the
     # site surfaces this as "dont N jours reconstitués" (résolution 2).
     row = {"n_days": len(ok), "n_days_backfilled": sum(1 for d in ok if d.get("backfilled"))}
+    # Jours "ok" présents dans history.json mais écartés de toutes les fenêtres
+    # parce qu'ils ont été scorés contre une autre baseline (exclusion voulue,
+    # ci-dessus). Clé additive, émise seulement quand elle mord : sans elle, un
+    # réentraînement qui change de modèle physique fait fondre `n_days` sans que
+    # rien, ni ici ni dans les logs, ne dise pourquoi. Se répare en rejouant ces
+    # jours (`scoreboard backfill`, qui les détecte désormais tout seul).
+    excluded = sum(1 for d in days if d.get("status") == "ok") - len(ok)
+    if excluded:
+        row["n_days_other_baseline"] = excluded
     for label, suffix in _BREAKDOWN_WINDOWS.items():
         window = _window_days(ok, _SCORE_WINDOWS[label])
         row[f"by_lead{suffix}"] = compute_lead_breakdown(window)
@@ -528,9 +541,16 @@ def write_scores(
     for station_id in station_ids:
         history = _read(out_dir / station_id / "history.json")
         status = (statuses or {}).get(station_id) or _fallback_status(history)
-        rows.append(
-            {"id": station_id, "status": status, **compute_scores(history["days"] if history else [])}
-        )
+        scores = compute_scores(history["days"] if history else [])
+        if excluded := scores.get("n_days_other_baseline"):
+            log.warning(
+                "%s: %s jour(s) ok écarté(s) des scores — baseline différente de %r "
+                "(rejouer: scoreboard backfill --since ...)",
+                station_id,
+                excluded,
+                _current_baseline_model(history["days"]),
+            )
+        rows.append({"id": station_id, "status": status, **scores})
     payload = {"schema_version": SCHEMA_VERSION, "updated": updated, "stations": rows}
     _atomic_write(out_dir / "scores.json", payload)
     return payload

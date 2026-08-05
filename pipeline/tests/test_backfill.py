@@ -197,7 +197,13 @@ def _history_days(tmp_path, station_id):
     return json.loads(path.read_text())["days"]
 
 
-def _seed_history(tmp_path, station_id, dates, backfilled=False):
+def _seed_history(tmp_path, station_id, dates, backfilled=False, baseline_model=...):
+    """Un jour déjà scoré. `baseline_model` vaut par défaut celui de l'artefact
+    courant de la station : c'est ce qui en fait un jour *fini* aux yeux de
+    `_missing_dates`. Le passer explicitement (ou à `None`) simule un historique
+    scoré contre une baseline périmée, celui que le backfill doit rejouer."""
+    if baseline_model is ...:
+        baseline_model = _artifact(station_id)["baseline_model"]
     for d in dates:
         entry = {
             "date": d.isoformat(),
@@ -208,6 +214,8 @@ def _seed_history(tmp_path, station_id, dates, backfilled=False):
             "n_points": 1,
             "max_lead_h": 1,
         }
+        if baseline_model:
+            entry["baseline_model"] = baseline_model
         if backfilled:
             entry["backfilled"] = True
         publish.upsert_history(tmp_path, station_id, entry)
@@ -488,3 +496,39 @@ def test_backfill_wave_replays_off_the_marine_history_with_the_artefact_baseline
     assert replayed["baseline_model"] == BASELINE_MODEL
     # Baseline served = the artefact's column, not the first model available.
     assert {p["baseline"] for p in replayed["series"]} == {MODEL_HS[f"hs_{BASELINE_MODEL}"]}
+
+
+def test_a_day_scored_against_another_baseline_is_replayed(tmp_path, patched_sources, calls):
+    """Le cas réel du 2026-08-03 : 29 jours houle scorés contre MFWAM, puis un
+    réentraînement change de modèle physique. `publish.compute_scores` les écarte
+    de toutes les fenêtres — donc le backfill doit les rejouer, sans quoi les
+    scores publiés fondent sans recours."""
+    since = YESTERDAY - timedelta(days=2)
+    dates = [since + timedelta(days=i) for i in range(3)]
+    _seed_history(tmp_path, "wave-a", dates, baseline_model="mfwam")
+
+    summary = backfill.run(since, tmp_path, today=TODAY, stations=[WAVE], gate=GATE)
+
+    assert summary["wave-a"] == [d.isoformat() for d in dates]
+    assert {d["baseline_model"] for d in _history_days(tmp_path, "wave-a")} == {BASELINE_MODEL}
+
+
+def test_an_unreadable_artefact_replays_nothing_rather_than_the_whole_history(
+    tmp_path, patched_sources, calls, monkeypatch
+):
+    """Sans artefact, on ne sait pas contre quelle baseline viser — et requalifier
+    tout l'historique en « périmé » le ferait réécrire en `"missing"` par un
+    rejeu qui butera sur le même artefact. La station est sautée entière."""
+    since = YESTERDAY - timedelta(days=2)
+    dates = [since + timedelta(days=i) for i in range(3)]
+    _seed_history(tmp_path, "wave-a", dates)
+    pre_existing = _history_days(tmp_path, "wave-a")
+    monkeypatch.setattr(
+        backfill.model, "load_artifact", lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError())
+    )
+
+    summary = backfill.run(since, tmp_path, today=TODAY, stations=[WAVE], gate=GATE)
+
+    assert summary["wave-a"] == []
+    assert _history_days(tmp_path, "wave-a") == pre_existing
+    assert calls["marine"] == 0  # ni rejeu, ni fetch profond
