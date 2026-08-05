@@ -1,0 +1,266 @@
+PLAN DE DÉVELOPPEMENT STRATÉGIQUE
+
+Scoreboard Metocean IA : De la Vitrine Open-Data au Produit B2B Phare
+
+Éditeur : OceanData Consulting
+
+Horizon : 2026 – 2027
+
+Document : Plan Produit & Business
+
+Executive Summary & Vision Produit
+
+Le  Scoreboard Metocean IA  répond à un enjeu clé du secteur maritime : la transparence et l'auditabilité des
+
+modèles   d'IA   face   aux   prévisions   physiques   officielles   (Météo-France   MFWAM/ARPEGE,   ECMWF   IFS,   DWD,
+
+NCEP, marées harmoniques). En confrontant quotidiennement l'IA aux mesures réelles (bouées, marégraphes,
+stations   de   vent),   il   établit   une   preuve   de   concept   incontestable   ("Skin   in   the   game").   Ce   document   définit   la
+roadmap pour transformer cette vitrine en un produit B2B phare (SaaS & API Metocean Post-Processing).
+
+AXE 1 : REFONTE TECHNIQUE, ARCHITECTURE & SEO
+
+1. Diagnostic de l'Existant
+
+•
+
+•
+
+Rendu Client-Side (SPA) : Le chargement dynamique du fichier stations.json par le navigateur crée un risque
+d'écran d'erreur en cas de latence réseau ou de lecture sans JavaScript.
+
+SEO & Canonical : Les sous-pages stations (ex: /scoreboard/anglet) partagent la balise canonical globale, ce
+qui freine leur indexation individuelle par les moteurs de recherche.
+
+•
+
+Partage Social (Open Graph) : Absence de visuels d'aperçu personnalisés lors du partage de liens de stations sur
+LinkedIn/X.
+
+2. Plan d'Action Technique
+
+•
+
+Migration vers un Rendu Statique / Incrémental (SSG / ISR) : Compiler le HTML final lors du run quotidien (GitHub
+Actions + Astro/Next.js/Static Engine). Temps de chargement < 50ms, résilience à 100%, lisibilité garantie pour les
+crawlers.
+
+•
+
+SEO Structuré & Open Graph Dynamique : Générer automatiquement pour chaque station une image d'illustration
+dynamique (score du jour, graphique résumé) et des méta-données optimisées.
+
+•
+
+Monitor & Badge de Fraîcheur : Affichage explicite de l'horodatage UTC de la dernière exécution du pipeline et du
+statut des flux de données.
+
+AXE 2 : UX, VISUALISATION DE DONNÉES & MÉTRIQUES AVANCÉES
+
+1. Carte Interactive Métocéan (Homepage Scoreboard)
+
+Implémenter  une  carte  vectorielle  dynamique  (MapLibre  /  Leaflet)  géolocalisant  les  capteurs  avec  un  code  couleur
+métier :
+
+•
+
+VERT  L'IA améliore la prévision physique (Skill Score > 0).
+
+•
+
+ROUGE  La physique officielle reste supérieure (IA recalée / station affichée sans prévision IA).
+
+•
+
+GRIS  Capteur en maintenance ou données d'observation momentanément indisponibles.
+
+2. Enrichissement des Pages Stations Dédiées (ex: /scoreboard/anglet)
+
+•
+
+Décomposition par Échéance (Lead Time) : Évaluation de l'erreur par terme de prévision (H+6, H+12, H+24, H+48,
+H+72) pour mettre en évidence l'apport du post-traitement IA à court terme.
+
+OceanData Consulting — Confidentiel & Propriétaire
+
+Page 1 / 3
+
+•
+
+Zoom sur Extrêmes & Tempêtes : Analyse dédiée aux coups de mer récents avec calcul de la Peak Error (erreur sur
+le pic de hauteur de houle ou vent max).
+
+•
+
+Tableau Multi-Métriques : Skill Score (%), RMSE, MAE, Correction de Biais et Corrélation ($R^2$).
+
+•
+
+Filtres Temporels Interactifs : Sélection des fenêtres glissantes (7, 30, 90 jours) avec superposition des courbes
+d'observation, de la physique et de l'IA.
+
+AXE 3 : DIFFUSION, INBOUND MARKETING & ACQUISITION
+
+1. CONTENU VIRAL
+
+2. VITRINE PUBLIC
+
+3. LEAD MAGNET
+
+4. PIPELINE B2B
+
+Baromètre Métocéan IA
+mensuel & posts LinkedIn
+
+Scoreboard interactif & carte
+de performance
+
+Export CSV des séries &
+Widget intégrable
+
+Prospection qualifiée & démos
+grands comptes
+
+•
+
+Baromètre Trimestriel / Mensuel : Publication d'analyses d'impact lors d'événements métocéaniques majeurs (ex:
+gains de précision de l'IA pendant les tempêtes d'automne).
+
+•
+
+Widget Intégrable "Verified by Metocean Scoreboard" : Composant web / iframe permettant à des acteurs tiers
+(capitaineries, portail météo, clubs nautiques) d'afficher le score de leur station localement, générant des backlinks
+SEO à haute autorité.
+
+•
+
+Capture de Leads Qualifiés : Déblocage de l'export CSV des données historiques et de l'accès API Open-Data
+contre saisie de l'email professionnel du prospect.
+
+AXE 4 : ROADMAP DE COMMERCIALISATION B2B (OFFRES PRODUITS)
+
+Offre Produit
+
+Cible Privilégiée
+
+Modèle Économique
+
+Valeur Ajoutée Key
+
+1. Private
+
+Scoreboard
+
+Parcs éoliens offshore, Ports,
+
+SaaS (Abonnement
+
+Intégration de capteurs privés et calibration sur-
+
+Chantiers navals
+
+mensuel / annuel)
+
+mesure d'un dashboard de suivi de
+
+performance.
+
+2. Metocean AI
+
+Routage maritime, Bureaux
+
+API REST Pay-per-use
+
+Flux temps réel de prévisions métocéaniques
+
+Forecast API
+
+d'études EMR, Logiciels
+
+/ Pass mensuel
+
+corrigées par IA à haute résolution (H+1 à
+
+SaaS
+
+H+72).
+
+3. Risk &
+
+Uncertainty
+
+Engine
+
+Assureurs maritimes,
+
+SaaS Add-on /
+
+Prévisions probabilistes (Conformal Prediction)
+
+Ingénierie offshore
+
+Ingestion sur-mesure
+
+fournissant les seuils de risque opérationnel.
+
+4. On-Premise &
+
+Grands Instituts, Marine,
+
+Licence logicielle +
+
+Déploiement complet de la chaîne de valeur
+
+Licensing
+
+Majors de l'Énergie
+
+Maintenance
+
+(Pipeline + IA + UI) sur l'infrastructure du client.
+
+PLANNING D'EXÉCUTION SUR 12 MOIS
+
+Période
+
+Jalon Technique & Marketing
+
+Livrables Clés
+
+Q3 2026
+
+Refonte SSG & Moteur SEO
+
+Architecture SSG opérationnelle, Meta OpenGraph dynamique par station.
+
+Q4 2026
+
+UX Avancée & Carte Interactive
+
+Carte MapLibre globale, séries temporelles par échéance (Lead Time).
+
+Q1 2027
+
+Baromètre & Lead Capture
+
+Publication du Baromètre #1, module Widget Web, export CSV conditionné.
+
+Q2 2027
+
+Lancement Commercial B2B
+
+Pilote "Private Scoreboard", API Metocean AI commerciale documentée.
+
+OceanData Consulting — Confidentiel & Propriétaire
+
+Page 2 / 3
+
+OceanData Consulting — Modélisation océanique, analyse marine et IA pour des prévisions côtières fiables.
+
+Contact : contact@oceandataconsulting.fr | Site : oceandataconsulting.fr
+
+OceanData Consulting — Confidentiel & Propriétaire
+
+Page 3 / 3
+
+
