@@ -542,6 +542,9 @@ def evaluate(
     # requested stations, preventing a later evaluation error from replacing an
     # earlier station's live artefact.
     row["_estimator"] = final
+    # Test-fold internals, for callers comparing two candidates on the same rows
+    # (`scripts/compare_ridge.py`). Underscored: not part of the report or gate.
+    row["_test_eval"] = (level_test, x_test, obs_test, test_fold_ids)
     return row
 
 
