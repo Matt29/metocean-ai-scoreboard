@@ -5,10 +5,11 @@ Run:  cd pipeline && uv run python scripts/build_dataset.py [--days 1825]
 
 Sources and documented compromises
 ----------------------------------
-* Waves (Candhis): ONE `getCampTR.php` call per station covering the whole
-  window (the TR archive serves >= 365 days in a single request — verified in
-  the Task-1 spike, docs/data-sources.md). Candhis has a daily quota, so this
-  script deliberately never loops per-day.
+* Waves (Candhis): `fetch_wave_obs` chains `getCampTR.php` calls to cover the
+  whole window — each response is capped at ~365 days from `dateDeb`, never up
+  to "now" (verified live, docs/data-sources.md). Candhis has a daily quota,
+  so the chaining only fires more than one request when the window actually
+  exceeds the cap; a short daily/backfill window still costs one call.
 * Wave models (Open-Meteo Marine, `sources.marine`): ONE request per station
   for the 5 candidate wave models, raw Hs, no baseline selection here — that
   choice (and feature assembly) moves to `train.py` (Task 5), because it must
@@ -78,6 +79,13 @@ from scoreboard.sources.wind import (
 
 OUT_DIR = Path(__file__).resolve().parents[1] / "data_train"
 
+# Above this, obs stopping short of the window's end is not a station going
+# quiet for a day — it is a truncated archive (e.g. a source capping a
+# response well before "now" while the raw frame still spans to "now" via the
+# model columns). Fail loud rather than write a dataset silently missing its
+# most recent months.
+_MAX_OBS_GAP = timedelta(days=7)
+
 
 def _build_raw(
     stations: list[Station],
@@ -94,6 +102,16 @@ def _build_raw(
     out = {}
     for st in stations:
         raw = fetch(st)
+        obs_valid = raw[obs_column].dropna()
+        if obs_valid.empty:
+            raise RuntimeError(f"{st.id}: aucune observation exploitable dans la fenêtre demandée")
+        gap = raw.index[-1] - obs_valid.index[-1]
+        if gap > _MAX_OBS_GAP:
+            raise RuntimeError(
+                f"{st.id}: obs arrêtées le {obs_valid.index[-1]:%Y-%m-%d}, "
+                f"{gap} avant la fin de fenêtre ({raw.index[-1]:%Y-%m-%d}) — "
+                "archive tronquée, dataset non écrit"
+            )
         raw.to_parquet(OUT_DIR / f"{st.id}_raw.parquet")
         out[st.id] = raw
         print(f"  {st.id}: {len(raw)}h, obs {raw[obs_column].notna().mean():.0%} couverts")

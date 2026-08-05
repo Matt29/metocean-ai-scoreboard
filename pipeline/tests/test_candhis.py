@@ -66,3 +66,103 @@ def test_failure_raises_source_error():
     bad = {"success": False, "message": "erreur interne", "results": None}
     with pytest.raises(SourceError):
         fetch_wave_obs(ST, date(2026, 7, 28), session=make_session(bad, status=500))
+
+
+def _row_payload(date_str: str) -> dict:
+    return {
+        "success": True,
+        "entete": [
+            "Date", "H1/3 (m)", "Hmax (m)", "TH1/3 (s)",
+            "Dir. au pic (°)", "Etal. au pic (°)", "Temp. mer (°C)",
+        ],
+        "results": [[date_str, "1.0000", "1.6000", "8.6000", "295.0000", "23.0000", "18.6000"]],
+    }
+
+
+def test_short_window_is_a_single_request():
+    """A daily/backfill-sized window never hits the ~365-day cap: one call."""
+    session = make_session(FIX)
+    df = fetch_wave_obs(ST, date(2026, 7, 28), session=session)  # default date_end = today
+    assert session.get.call_count == 1
+    assert not df.empty
+
+
+def test_chains_requests_when_window_exceeds_cap():
+    """A response cut off close to the ~365-day cap triggers a second, chained
+    request picking up right after the first one's last observation."""
+    first_start = date(2020, 1, 1)
+    last1 = "2020-12-30 00:00"   # within 2 days of first_start + 365d -> "capped"
+    last2 = "2021-06-01 00:00"   # past date_end -> chaining stops
+
+    session = Mock()
+    session.get.side_effect = [
+        Mock(status_code=200, json=Mock(return_value=_row_payload(last1))),
+        Mock(status_code=200, json=Mock(return_value=_row_payload(last2))),
+    ]
+
+    df = fetch_wave_obs(ST, first_start, session=session, date_end=date(2021, 3, 1))
+
+    assert session.get.call_count == 2
+    first_call, second_call = session.get.call_args_list
+    assert first_call.kwargs["params"]["dateDeb"] == "2020-01-01"
+    # Anchored on last1 itself, not last1 + 1 day: a mid-day boundary must not
+    # skip the rest of that day (résolution 5, see candhis.py).
+    assert second_call.kwargs["params"]["dateDeb"] == "2020-12-30"
+    assert len(df) == 2
+    assert list(df.index.date) == [date(2020, 12, 30), date(2021, 6, 1)]
+
+
+def test_chunk_join_does_not_drop_same_day_points():
+    """A chunk cut off mid-day must not lose that day's remaining points: the
+    next chunk re-requests `last`'s own day, and dedup on the index (not on a
+    day skip) is what keeps the joined series whole."""
+    first_start = date(2020, 1, 1)
+    boundary_day = "2020-12-30"
+
+    def payload_two_points_same_day(hour1: str, hour2: str) -> dict:
+        return {
+            "success": True,
+            "entete": [
+                "Date", "H1/3 (m)", "Hmax (m)", "TH1/3 (s)",
+                "Dir. au pic (°)", "Etal. au pic (°)", "Temp. mer (°C)",
+            ],
+            "results": [
+                [f"{boundary_day} {hour1}", "1.0000", "1.6000", "8.6000", "295.0000", "23.0000", "18.6000"],
+                [f"{boundary_day} {hour2}", "1.1000", "1.6000", "8.6000", "295.0000", "23.0000", "18.6000"],
+            ],
+        }
+
+    session = Mock()
+    session.get.side_effect = [
+        # First chunk stops mid-day, within the ~365-day cap window -> "capped".
+        Mock(status_code=200, json=Mock(return_value=payload_two_points_same_day("00:00", "12:00"))),
+        # Second chunk, re-anchored on that same day, has the rest of it plus a
+        # point past date_end -> chaining stops here.
+        Mock(status_code=200, json=Mock(return_value=_row_payload("2021-06-01 00:00"))),
+    ]
+
+    df = fetch_wave_obs(ST, first_start, session=session, date_end=date(2021, 3, 1))
+
+    assert session.get.call_count == 2
+    # Both boundary-day points survive the join — nothing lost, nothing duplicated.
+    assert len(df[df.index.date == date(2020, 12, 30)]) == 2
+
+
+def test_chunk_loop_terminates_when_second_chunk_makes_no_progress():
+    """If the re-anchored chunk still ends on the exact same day (no more data
+    yet available past it), the stall guard must break — not loop forever."""
+    first_start = date(2020, 1, 1)
+    same_day = "2020-12-30 12:00"  # within cap of first_start -> "capped" on chunk 1
+
+    session = Mock()
+    session.get.side_effect = [
+        Mock(status_code=200, json=Mock(return_value=_row_payload(same_day))),
+        # Re-anchored dateDeb == 2020-12-30: this response returns the same day
+        # again, so `last <= chunk_start` must stop the loop right here.
+        Mock(status_code=200, json=Mock(return_value=_row_payload(same_day))),
+    ]
+
+    df = fetch_wave_obs(ST, first_start, session=session, date_end=date(2021, 3, 1))
+
+    assert session.get.call_count == 2  # not 3+: the loop terminated
+    assert len(df) == 1
