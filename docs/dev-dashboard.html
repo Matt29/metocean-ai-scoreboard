@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Dashboard de management — Metocean AI Scoreboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b1622;
+    --bg-panel: #11202f;
+    --bg-panel-2: #0e1b28;
+    --border: #1f3345;
+    --text: #dce7ef;
+    --text-dim: #8fa6b8;
+    --text-faint: #7c93a3;
+    --accent: #4fb0c6;
+    --green: #4caf7d;
+    --amber: #d6a94b;
+    --red: #dd8a84;
+    --grey: #93a2ae;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+  body {
+    margin: 0;
+    background: linear-gradient(180deg, #0a1420 0%, #0b1622 400px, #0b1622 100%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    padding: 0 0 60px;
+  }
+  header {
+    padding: 36px 24px 28px;
+    max-width: 980px;
+    margin: 0 auto;
+  }
+  h1 {
+    margin: 0 0 6px;
+    font-size: 1.6rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 0.92rem;
+    margin-bottom: 22px;
+  }
+  .global-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .bar-track {
+    flex: 1;
+    height: 10px;
+    border-radius: 6px;
+    background: #14232f;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3a8fa3, var(--accent));
+    border-radius: 6px 0 0 6px;
+  }
+  .bar-label {
+    font-variant-numeric: tabular-nums;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 16px;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+  }
+  .legend span.dot {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  main {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+  section.plan {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 26px 24px;
+    margin-bottom: 22px;
+  }
+  .plan-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    margin-bottom: 4px;
+  }
+  .plan-title {
+    font-size: 1.12rem;
+    font-weight: 600;
+    margin: 0;
+  }
+  .plan-source {
+    font-size: 0.78rem;
+    color: var(--text-faint);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .plan-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 10px 0 16px;
+  }
+  .plan-bar-row .bar-track { height: 7px; }
+  .plan-note {
+    font-size: 0.86rem;
+    color: var(--text-dim);
+    margin: 0 0 14px;
+    padding-left: 2px;
+  }
+  ul.tasks {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  ul.tasks li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 7px 0;
+    border-top: 1px solid #142433;
+  }
+  ul.tasks li:first-child { border-top: none; }
+  ul.tasks input[type=checkbox] {
+    margin-top: 3px;
+    accent-color: var(--green);
+    flex: none;
+  }
+  .task-body { flex: 1; min-width: 0; }
+  .task-label { }
+  .task-label.done { color: var(--text); }
+  .task-label.todo { color: var(--text); }
+  .task-label.wip { color: var(--text); }
+  .task-note {
+    display: block;
+    font-size: 0.79rem;
+    color: var(--text-faint);
+    margin-top: 2px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 2px 7px;
+    border-radius: 5px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .badge.wip { background: rgba(214,169,75,0.18); color: var(--amber); }
+  .badge.caduc { background: rgba(107,125,140,0.2); color: var(--grey); }
+  .badge.decision { background: rgba(107,125,140,0.2); color: var(--grey); }
+  .badge.confirm { background: rgba(221,138,132,0.18); color: var(--red); }
+  .badge.archived { background: rgba(107,125,140,0.16); color: var(--text-faint); font-weight: 500; text-transform: none; letter-spacing: normal; }
+  .strike { text-decoration: line-through; color: var(--text-faint); }
+  section.reste {
+    background: var(--bg-panel-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 26px 26px;
+    margin-top: 30px;
+  }
+  section.reste h2 {
+    font-size: 1.1rem;
+    margin: 0 0 4px;
+  }
+  section.reste .plan-note { margin-bottom: 16px; }
+  ol.reste-list {
+    margin: 0;
+    padding-left: 22px;
+  }
+  ol.reste-list li {
+    padding: 6px 0;
+    border-top: 1px solid #182b3a;
+  }
+  ol.reste-list li:first-child { border-top: none; }
+  ol.reste-list .src {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--text-faint);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    margin-top: 2px;
+  }
+  footer {
+    max-width: 980px;
+    margin: 30px auto 0;
+    padding: 0 24px;
+    color: var(--text-faint);
+    font-size: 0.78rem;
+  }
+  code { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Dashboard de management — Metocean AI Scoreboard</h1>
+  <div class="subtitle">Généré le 2026-08-05 · croise 5 plans de développement avec l'état réel du dépôt (git log, code, docs/review_codex_2026-08-05.md)</div>
+  <div class="global-bar-row">
+    <div class="bar-track"><div class="bar-fill" style="width:68%"></div></div>
+    <div class="bar-label">≈68 % des items planifiés faits ou en cours</div>
+  </div>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--green)"></span>fait</span>
+    <span><span class="dot" style="background:var(--amber)"></span>en cours</span>
+    <span><span class="dot" style="background:var(--text-faint)"></span>à faire</span>
+    <span><span class="dot" style="background:var(--grey)"></span>caduc / non retenu</span>
+  </div>
+</header>
+
+<main>
+
+<!-- ============ PLAN 1 : plan_dev_gemini.md ============ -->
+<section class="plan">
+  <div class="plan-head">
+    <h3 class="plan-title">Plan stratégique — OceanData Consulting (4 axes)</h3>
+    <span class="plan-source">docs/plan_dev_gemini.md</span>
+  </div>
+  <div class="plan-bar-row">
+    <div class="bar-track"><div class="bar-fill" style="width:50%"></div></div>
+    <div class="bar-label">≈50 %</div>
+  </div>
+  <p class="plan-note">Export identique du PDF interne (plan_developpement_scoreboard_metocean.pdf). Axe 1 = SEO/technique, Axe 2 = UX/métriques, Axe 3 = diffusion/inbound, Axe 4 = offres B2B. Le fichier porte lui-même une section « Avancement » à jour au 2026-08-05, reprise ici.</p>
+
+  <ul class="tasks">
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 1 — Monitor &amp; badge de fraîcheur (horodatage UTC du run + statut par station)</span><span class="task-note">commit 934a15a — contrat ; consommé site ODC commit 602584a</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 1 — Migration SSG/ISR du rendu (aujourd'hui SPA React côté site ODC)</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 1 — Open Graph dynamique par station (image 1200×630)</span><span class="task-note">pipeline/src/scoreboard/og.py, étape "og images" dans .github/workflows/daily.yml</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 1 — Canonical distinct par sous-page station (SEO)</span><span class="badge confirm">à confirmer</span><span class="task-note">non vérifié sur le site ODC dans ce passage</span></div></li>
+
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 2.1 — Carte interactive MapLibre/Leaflet vectorielle</span><span class="badge decision">décision : non retenue</span><span class="task-note">le SVG maison suffit — 8 stations, zéro dépendance ; carte SVG déjà livrée (commit 2bb8635 côté site)</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 2.1 — Code couleur vert/rouge/gris carte + tableau, jamais couleur seule</span><span class="task-note">site ODC, commit 602584a</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 2.2 — Décomposition par échéance (H+6…H+72), fenêtre 30 j</span><span class="task-note">by_lead — commit a5415c1 ; LeadTimeChart.jsx côté site</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 2.2 — Zoom sur extrêmes (peak error)</span><span class="task-note">extremes.json — commit 216f857</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 2.2 — Tableau multi-métriques (Skill Score, MAE, RMSE, biais, R²)</span><span class="task-note">metrics_30d — commit d241e4f ; MetricsTable.jsx côté site</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 2.2 — Filtres temporels interactifs 7/30/90 j</span><span class="task-note">bascule 7/30/90 livrée côté site ODC — vérifiée</span></div></li>
+
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 3 — Baromètre trimestriel / mensuel (posts LinkedIn d'impact)</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 3 — Widget intégrable « Verified by »</span><span class="task-note">ScoreboardWidgetPage.jsx routé (/scoreboard/widget/:stationId), snippet documenté sur la page méthode — vérifié</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 3 — Export CSV des séries par station</span><span class="task-note">series.csv — commit e4f342c</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 3 — Capture de leads qualifiés (email pro contre export/API)</span></div></li>
+
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 4 — Offre 1 : Private Scoreboard (SaaS)</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 4 — Offre 2 : Metocean AI Forecast API</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 4 — Offre 3 : Risk &amp; Uncertainty Engine</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 4 — Offre 4 : On-Premise &amp; Licensing</span></div></li>
+  </ul>
+</section>
+
+<!-- ============ PLAN 2 : plan-dev-modele.md ============ -->
+<section class="plan">
+  <div class="plan-head">
+    <h3 class="plan-title">Backlog de modélisation (features, baseline, entraînement)</h3>
+    <span class="plan-source">docs/plan-dev-modele.md</span>
+  </div>
+  <div class="plan-bar-row">
+    <div class="bar-track"><div class="bar-fill" style="width:92%"></div></div>
+    <div class="bar-label">≈92 %</div>
+  </div>
+  <p class="plan-note">Backlog quasi soldé le 2026-08-04 : baseline harmonique, protocole d'évaluation et les trois dernières features candidates sont tous mesurés et tranchés.</p>
+
+  <ul class="tasks">
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Baseline harmonique 90 j → 730 j glissants</span><span class="task-note">−29 % MAE brest, −11 % saint-malo, causal ; FIT_LOOKBACK_DAYS=730</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Forçage tide stratifié par âge de run (Previous Runs API, ecmwf_ifs025)</span><span class="task-note">réserve de forçage levée, mesurée sur forçage réel</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Protocole d'évaluation P1/P2/P3 (fenêtre de test saisonnière, diagnostic événements, saisonnalité mesurée)</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Constantes harmoniques persistées + cadence de refit (30 j)</span><span class="task-note">harmonic.REFIT_DAYS, daily._ensure_harmonic, commit 846d235</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Feature — tide_rate (phase de marée)</span><span class="task-note">gardée : saint-malo +4,11 pts, brest +0,78 pt</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Feature — dp_dt_3h / dp_dt_6h (tendance de pression)</span><span class="task-note">gardée : brest +2,83 pts, saint-malo +0,17 pt</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Feature — tension de vent (wind_stress_u/v)</span><span class="task-note">mesurée puis jetée : −0,05/−0,04 pt, code retiré</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Mémoire plus longue du résidu (mean_err_3h/6h)</span><span class="task-note">commit bf60c04, saint-malo +3,5 pts</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Dette « régression brest sous la feature vent »</span><span class="task-note">close le 2026-08-04 : le vent apporte désormais +3,4 pts, ce n'était pas le vent mais la baseline dérivante</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Skew ERA5 restant dans backfill.py</span><span class="task-note">résolu — forçage stratifié partagé</span></div></li>
+    <li><input type="checkbox"><div class="task-body"><span class="task-label wip">Réserve — plafond propre à saint-malo (résidu semi-diurne non stationnaire)</span><span class="badge wip">diagnostic ouvert</span><span class="task-note">axe « interaction marée-surcote » épuisé, pas seulement joué ; aucun nouveau candidat identifié, un secteur « flot début » non expliqué</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">Arbitrage trend=False re-mesuré à 30 j de péremption (2,6 pts en jeu)</span><span class="task-note">réserve honnête laissée ouverte dans le plan lui-même</span></div></li>
+  </ul>
+</section>
+
+<!-- ============ PLAN 3 : goal-3-features-tide.md ============ -->
+<section class="plan">
+  <div class="plan-head">
+    <h3 class="plan-title">GOAL — 3 features restantes, chemin tide</h3>
+    <span class="plan-source">docs/archive/goal-3-features-tide.md<span class="badge archived">archivé</span></span>
+  </div>
+  <div class="plan-bar-row">
+    <div class="bar-track"><div class="bar-fill" style="width:100%"></div></div>
+    <div class="bar-label">100 %</div>
+  </div>
+  <p class="plan-note">Brief d'exécution autonome pour le chantier features tide. Entièrement recouvert par les entrées correspondantes de plan-dev-modele.md (mesuré, décidé, documenté, gate toujours PASS aux deux stations).</p>
+  <ul class="tasks">
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Feature 1 — interaction marée-surcote (tide_rate)</span><span class="task-note">gardée</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Feature 2 — tension de vent (wind_stress_u/v)</span><span class="task-note">jetée, mesurée</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Feature 3 — tendance de pression (dp_dt_3h/6h)</span><span class="task-note">gardée</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Ré-entraînement brest + saint-malo, gate.json PASS aux deux</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Doc mise à jour (plan-dev-modele.md, model-eval.md) + handoff</span></div></li>
+  </ul>
+</section>
+
+<!-- ============ PLAN 4 : demandes-produit.md ============ -->
+<section class="plan">
+  <div class="plan-head">
+    <h3 class="plan-title">Demandes produit en attente</h3>
+    <span class="plan-source">docs/demandes-produit.md</span>
+  </div>
+  <div class="plan-bar-row">
+    <div class="bar-track"><div class="bar-fill" style="width:55%"></div></div>
+    <div class="bar-label">≈55 %</div>
+  </div>
+  <p class="plan-note">4 demandes de Matthieu (2026-08-03), chacune conditionnée par des préalables de données mesurés au fil de l'eau plutôt qu'implémentées directement.</p>
+
+  <ul class="tasks">
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">1. Graphiques enrichis — vue multi-stations, distinction jours reconstitués/opérationnels, dispersion de l'erreur</span><span class="task-note">préalable : dizaine de jours de scoring non-backfilled — StationChart.jsx / DailyMaeTable.jsx existent déjà pour la vue par station simple</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">2. Prévision +48 h — déjà publiée et affichée (pas une demande de front)</span><span class="task-note">latest.json, StationChart.jsx</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">2. Scoring étendu jusqu'à 48 h (mécanisme pending / _rescore_pending)</span><span class="task-note">résolu 2026-08-03</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">2. Nowcasting 0–6 h / réentraînement sur prévisions réellement archivées</span><span class="task-note">data_forecast_archive/ collecte depuis 2026-08-03 ; levier identifié comme le plus fort, pas encore rejoué</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">3. Stations de vent (kind="wind", 3 stations, baseline wind-best)</span><span class="task-note">livré — 3 stations, gate 3/3 PASS, commit 29b10df</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">4. Archivage des observations bouées MF (cron quotidien)</span><span class="task-note">sources/mfbuoy.py, data_obs_archive/, commit 8bbcd05 ; 8 bouées exploitables confirmées</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">4. Carte interactive du réseau (bouées + stations)</span><span class="task-note">SVG maison, commit 2bb8635 côté site — ne dépend d'aucun modèle</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">4. Inscription des bouées MF comme stations wave scorées à part entière</span><span class="task-note">bloqué jusqu'à ~2-3 mois d'obs archivées → entraînement Méditerranée visé 2026-10/11</span></div></li>
+  </ul>
+</section>
+
+<!-- ============ PLAN 5 : superpowers plan (archivé) ============ -->
+<section class="plan">
+  <div class="plan-head">
+    <h3 class="plan-title">Implementation Plan — scoreboard-metocean-ia (Tasks 1-14)</h3>
+    <span class="plan-source">docs/archive/2026-07-30-scoreboard-metocean-ia.md<span class="badge archived">archivé</span></span>
+  </div>
+  <div class="plan-bar-row">
+    <div class="bar-track"><div class="bar-fill" style="width:71%"></div></div>
+    <div class="bar-label">10/14 tâches livrées, 4 caduques</div>
+  </div>
+  <p class="plan-note"><strong>Archivé le 2026-08-04</strong> par le plan lui-même. Tasks 1-10 (pipeline Python) livrées et tournent en cron quotidien. <span class="badge caduc">caduc</span> Tasks 11-14 (app Next.js/Vercel séparée dans <code>web/</code>) : décision d'architecture du 2026-08-03 — le front est une route du site Ocean Data Consulting existant, pas une app séparée. Cases volontairement laissées décochées dans le plan source pour ne pas laisser croire que <code>web/</code> a été livré ; reprises ici comme caduques plutôt que comme « à faire ».</p>
+
+  <ul class="tasks">
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Task 1 — Spike sources de données + config stations</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Task 2 — Scaffold pipeline + chargeur de config</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Task 3 — Fetcher Candhis (obs vagues)</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Task 4 — Fetcher niveau d'eau (IOC) + prédiction harmonique</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Task 5 — Fetcher prévisions MFWAM (baseline vagues)</span><span class="badge decision">remplacée</span><span class="task-note">CMEMS retiré au profit d'Open-Meteo Marine (meilleur des 5 modèles) lors du retrain multi-modèles</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Task 6 — Features + dataset d'entraînement</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Task 7 — Entraînement + évaluation des modèles</span><span class="task-note">durci depuis : gate sur gain hors biais, protocole rolling-origin (voir review_codex)</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Task 8 — Run quotidien (prédire, scorer, publier)</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Task 9 — Backfill</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Task 10 — GitHub Actions cron</span><span class="task-note">07:37 + 09:37 UTC, commit 9fbf908</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo strike">Task 11 — Web : scaffold + page Scoreboard (Next.js)</span><span class="badge caduc">caduque</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo strike">Task 12 — Web : page station</span><span class="badge caduc">caduque</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo strike">Task 13 — Web : page méthode + analytics</span><span class="badge caduc">caduque</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo strike">Task 14 — Déploiement Vercel + E2E</span><span class="badge caduc">caduque</span></div></li>
+  </ul>
+</section>
+
+<!-- ============ PLAN 6 : model-eval.md / review_codex (fiabilité) ============ -->
+<section class="plan">
+  <div class="plan-head">
+    <h3 class="plan-title">Protocole scientifique et fiabilité du pipeline</h3>
+    <span class="plan-source">docs/review_codex_2026-08-05.md · docs/model-eval.md</span>
+  </div>
+  <div class="plan-bar-row">
+    <div class="bar-track"><div class="bar-fill" style="width:85%"></div></div>
+    <div class="bar-label">≈85 %</div>
+  </div>
+  <p class="plan-note">Pas un plan initial mais une note de revue qui liste ce qui a été corrigé (commits dd5924b, 1a9b8fa) et ce qui reste ouvert. Reprise ici parce qu'elle fixe les invariants de fiabilité que tout futur chantier doit respecter.</p>
+  <ul class="tasks">
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Entraînement transactionnel (staging + promotion groupée modèles/gate, rollback in-process)</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Validation stricte du gate (daily/backfill sortent en erreur si gate incomplet ou 0 station publiable)</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Split rolling-origin wave/wind : 4 origines, purge 48 h, sélection modèle jamais sur le test</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">IC95 % bootstrap par jour d'émission (2000 réplications), gate sur borne basse &gt; 0</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Pondération des scores publics par n_points (une observation = une voix)</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">Accumuler l'historique wave/wind jusqu'à 730 j pour permettre les 4 folds saisonniers partout</span><span class="task-note">stations wind ~914 j déjà couverts ; wave pas encore réentraîné sur ce protocole</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">Inspecter le nouveau docs/model-eval.md (format folds + IC) au prochain retrain</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">Envisager un block bootstrap multi-jours si l'autocorrélation météo inter-journalière l'exige</span></div></li>
+  </ul>
+</section>
+
+<!-- ============ Item mémoire projet ============ -->
+<section class="plan">
+  <div class="plan-head">
+    <h3 class="plan-title">Autres items connus (mémoire projet)</h3>
+    <span class="plan-source">mémoire de session Claude Code</span>
+  </div>
+  <div class="plan-bar-row">
+    <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+    <div class="bar-label">0 %</div>
+  </div>
+  <ul class="tasks">
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">Tester d'autres modèles ML (ridge comme plancher honnête, un modèle par lead)</span><span class="task-note">explicitement reporté après stabilisation du cron</span></div></li>
+  </ul>
+</section>
+
+<section class="reste">
+  <h2>Reste à faire — agrégé et trié par priorité apparente</h2>
+  <p class="plan-note">Priorité déduite des préalables déjà levés, de l'ordre suggéré dans demandes-produit.md et de ce qui bloque le reste.</p>
+  <ol class="reste-list">
+    <li>Réentraîner sur les vraies prévisions archivées (data_forecast_archive/) — le levier identifié comme le plus fort pour sortir les chiffres wave/tide du régime « plafond reconstitué ».<span class="src">demandes-produit.md § 2</span></li>
+    <li>Graphiques enrichis (vue multi-stations, distinction jours reconstitués/opérationnels, dispersion de l'erreur) — dizaine de jours de scoring non-backfilled désormais accumulés depuis le 2026-08-04, préalable proche d'être levé.<span class="src">demandes-produit.md § 1</span></li>
+    <li>Accumuler l'historique wave jusqu'à 730 j pour le protocole rolling-origin complet (wind déjà à ~914 j).<span class="src">review_codex_2026-08-05.md § 6</span></li>
+    <li>Inscrire les bouées Météo-France comme stations wave scorées (stations.toml, gate, dispatch de source) — bloqué jusqu'à ~2-3 mois d'obs archivées, entraînement Méditerranée visé 2026-10/11.<span class="src">demandes-produit.md § 4</span></li>
+    <li>Tester d'autres modèles ML (ridge plancher honnête, un modèle par lead) — après stabilisation du cron.<span class="src">mémoire projet</span></li>
+    <li>Rouvrir l'arbitrage trend=False à la cadence de refit réelle (30 j) — 2,6 points potentiels non re-mesurés dans ce régime.<span class="src">plan-dev-modele.md § Constantes harmoniques</span></li>
+    <li>Canonical distinct par sous-page station (SEO) — à confirmer, non vérifié dans ce passage.<span class="src">plan_dev_gemini.md § AXE 1 — à confirmer</span></li>
+    <li>Migration SSG/ISR du rendu (le site reste une SPA React côté client).<span class="src">plan_dev_gemini.md § AXE 1</span></li>
+    <li>Widget « Verified by » — livré et vérifié ; reste la mise en avant / prospection pour en faire un canal d'acquisition réel.<span class="src">plan_dev_gemini.md § AXE 3</span></li>
+    <li>Baromètre trimestriel / mensuel (posts LinkedIn d'impact lors d'événements métocéaniques).<span class="src">plan_dev_gemini.md § AXE 3</span></li>
+    <li>Capture de leads qualifiés (email professionnel contre export CSV / accès API).<span class="src">plan_dev_gemini.md § AXE 3</span></li>
+    <li>Offres B2B (Private Scoreboard, Forecast API, Risk &amp; Uncertainty Engine, On-Premise) — placées Q1/Q2 2027 dans le planning, aucun avancement rapporté.<span class="src">plan_dev_gemini.md § AXE 4</span></li>
+    <li>Diagnostic du plafond propre à saint-malo (résidu semi-diurne non stationnaire) — axe features épuisé, aucun nouveau candidat identifié ; le secteur « flot début » reste inexpliqué.<span class="src">plan-dev-modele.md § Réserves ouvertes</span></li>
+    <li>Envisager un block bootstrap multi-jours pour l'autocorrélation météo inter-journalière, si le besoin se confirme.<span class="src">review_codex_2026-08-05.md § 6</span></li>
+    <li>Carte MapLibre vectorielle — <strong>non retenue</strong>, le SVG maison suffit à l'échelle actuelle (8 stations). À reconsidérer seulement si le réseau grossit significativement.<span class="src">plan_dev_gemini.md § AXE 2.1 — décision : non retenu</span></li>
+  </ol>
+</section>
+
+</main>
+
+<footer>
+  Sources croisées : docs/plan_dev_gemini.md, docs/plan-dev-modele.md, docs/archive/goal-3-features-tide.md,
+  docs/demandes-produit.md, docs/archive/2026-07-30-scoreboard-metocean-ia.md,
+  docs/review_codex_2026-08-05.md, docs/model-eval.md, git log, .github/workflows/daily.yml,
+  pipeline/src/scoreboard/*, ~/Documents/DEV/WEB/ODC_WEBSITE/site (lecture seule).
+  Statuts non prouvés par un commit ou du code visible sont marqués « à confirmer », jamais inventés.
+</footer>
+
+</body>
+</html>
