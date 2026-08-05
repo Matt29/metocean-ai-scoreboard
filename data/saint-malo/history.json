@@ -9136,18 +9136,19 @@
           "obs": 6.5826,
           "ia": 9.341,
           "baseline": 9.2843
-        }
-      ],
-      "mae_ia": 0.1932,
-      "mae_baseline": 0.2165,
-      "n_points": 26,
-      "max_lead_h": 26,
-      "pending": [
+        },
         {
           "t": "2026-08-05T09:00:00Z",
+          "obs": 8.7332,
           "ia": 10.6042,
           "baseline": 10.5521
-        },
+        }
+      ],
+      "mae_ia": 0.2553,
+      "mae_baseline": 0.2758,
+      "n_points": 27,
+      "max_lead_h": 27,
+      "pending": [
         {
           "t": "2026-08-05T10:00:00Z",
           "ia": 10.6389,
@@ -9254,6 +9255,10 @@
           "baseline": 4.1854
         }
       ]
+    },
+    {
+      "date": "2026-08-05",
+      "status": "missing"
     }
   ]
 }
