@@ -608,7 +608,10 @@ def run(
     t0 = pd.Timestamp(run_date, tz="UTC") + pd.Timedelta(hours=ISSUE_HOUR)
     issued = iso(t0)
 
-    publish.write_stations(out_dir, stations, gate)
+    # `issued` here doubles as `stations.json`'s freshness marker — same
+    # determinism reasoning as `write_scores`'s call below (see the comment
+    # there): a re-run of the same `run_date` must write byte-identical output.
+    publish.write_stations(out_dir, stations, gate, updated=issued)
 
     published = [s for s in stations if gate.get(s.id, {}).get("pass", False)]
     # No shared pre-fetch any more: every source is one request per station
@@ -628,7 +631,8 @@ def run(
     # here by making the timestamp itself deterministic per `run_date` instead
     # (daily always writes at least one station's status, so a truthy-summary
     # guard wouldn't skip anything here).
-    publish.write_scores(out_dir, [s.id for s in published], issued)
+    statuses = {sid: result["status"] for sid, result in summary.items()}
+    publish.write_scores(out_dir, [s.id for s in published], issued, statuses)
     if published and not any(result["status"] == "ok" for result in summary.values()):
         raise DailyRunError(run_date, summary)
     return summary

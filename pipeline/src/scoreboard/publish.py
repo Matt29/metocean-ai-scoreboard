@@ -3,13 +3,13 @@
 Four files per run, all wrapped in `{"schema_version": 1, ...}` so an external
 consumer (the website, a separate repo) can detect a breaking change:
 
-    data/stations.json          {"stations": [{"id","name","kind","lat","lon",
+    data/stations.json          {"updated","stations": [{"id","name","kind","lat","lon",
                                  "unit","published","weak","baseline_model"?}]}
     data/<id>/latest.json       {"station","issued","series":[{"t","ia","baseline"}]}
     data/<id>/history.json      {"station","days":[{"date","status",
                                  "series"?,"mae_ia"?,"mae_baseline"?,
                                  "n_points"?}]}   (90d max)
-    data/scores.json            {"updated","stations":[{"id","n_days",
+    data/scores.json            {"updated","stations":[{"id","status","n_days",
                                  "mae_ia_7d","mae_baseline_7d","mae_ia_30d",
                                  "mae_baseline_30d","mae_ia_all","mae_baseline_all"}]}
 
@@ -98,7 +98,9 @@ def _station_entry(s: Station, gate: dict) -> dict:
     return entry
 
 
-def write_stations(out_dir: Path, stations: list[Station], gate: dict) -> dict:
+def write_stations(
+    out_dir: Path, stations: list[Station], gate: dict, updated: str | None = None
+) -> dict:
     """`data/stations.json` — every configured station, gate verdict included.
 
     `baseline_model` is emitted here as well as in `latest.json`, and that is not
@@ -108,12 +110,24 @@ def write_stations(out_dir: Path, stations: list[Station], gate: dict) -> dict:
     without it here, naming the reference in the table would cost one extra
     request per station. Omitted for tide stations, whose baseline is the
     harmonic fit, not a model.
+
+    `updated` is the run's own freshness timestamp (ISO UTC). `daily.run()`
+    passes its deterministic `issued` (derived from `run_date`, never
+    `datetime.now()`) so a re-run of the same `run_date` writes a byte-identical
+    file. A caller without such a value (backfill) preserves whatever `updated`
+    is already on disk instead of stamping wall-clock time or clobbering it:
+    a no-op backfill must keep `stations.json` byte-identical (same property
+    its `write_scores` guard protects), and the site's freshness badge should
+    date the *daily* run, the only producer whose staleness means something.
+    The key is absent only on a true cold start, before the first daily run.
     """
-    payload = {
-        "schema_version": SCHEMA_VERSION,
-        "stations": [_station_entry(s, gate.get(s.id, {})) for s in stations],
-    }
-    _atomic_write(out_dir / "stations.json", payload)
+    path = out_dir / "stations.json"
+    updated = updated or (_read(path) or {}).get("updated")
+    payload = {"schema_version": SCHEMA_VERSION}
+    if updated:
+        payload["updated"] = updated
+    payload["stations"] = [_station_entry(s, gate.get(s.id, {})) for s in stations]
+    _atomic_write(path, payload)
     return payload
 
 
@@ -289,12 +303,37 @@ def compute_scores(days: list[dict]) -> dict:
     return row
 
 
-def write_scores(out_dir: Path, station_ids: list[str], updated: str) -> dict:
-    """`data/scores.json` — recomputed from each station's on-disk history."""
+def _fallback_status(history: dict | None) -> str:
+    """Freshness status when the caller has no live run summary (e.g. backfill):
+    the most recent history day's own status is the best signal available.
+    `history["days"]` is kept sorted ascending by `upsert_history`, so the last
+    entry is the newest."""
+    if not history or not history.get("days"):
+        return "missing"
+    return history["days"][-1].get("status", "missing")
+
+
+def write_scores(
+    out_dir: Path,
+    station_ids: list[str],
+    updated: str,
+    statuses: dict[str, str] | None = None,
+) -> dict:
+    """`data/scores.json` — recomputed from each station's on-disk history.
+
+    `statuses` is this run's own per-station `"ok"`/`"missing"` verdict — `daily.run()`
+    passes it straight from `_run_station`'s summary, since that is the only place
+    that knows whether *today's* issuance succeeded (a station's history can lag a
+    day behind that). Callers without such a summary (backfill) fall back to the
+    freshness implied by the station's own history.
+    """
     rows = []
     for station_id in station_ids:
         history = _read(out_dir / station_id / "history.json")
-        rows.append({"id": station_id, **compute_scores(history["days"] if history else [])})
+        status = (statuses or {}).get(station_id) or _fallback_status(history)
+        rows.append(
+            {"id": station_id, "status": status, **compute_scores(history["days"] if history else [])}
+        )
     payload = {"schema_version": SCHEMA_VERSION, "updated": updated, "stations": rows}
     _atomic_write(out_dir / "scores.json", payload)
     return payload

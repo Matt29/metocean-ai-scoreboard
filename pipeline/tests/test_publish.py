@@ -78,11 +78,37 @@ def test_publishing_the_same_day_twice_is_idempotent(tmp_path):
 
 
 def test_write_stations_is_idempotent(tmp_path):
-    publish.write_stations(tmp_path, STATIONS, GATE)
+    """Same contract daily.run() relies on: passing the same `updated` twice (the
+    same `run_date`'s deterministic `issued`) must write byte-identical output,
+    never `datetime.now()`."""
+    publish.write_stations(tmp_path, STATIONS, GATE, updated="2026-07-30T06:00:00Z")
     first = (tmp_path / "stations.json").read_bytes()
-    publish.write_stations(tmp_path, STATIONS, GATE)
+    publish.write_stations(tmp_path, STATIONS, GATE, updated="2026-07-30T06:00:00Z")
     second = (tmp_path / "stations.json").read_bytes()
     assert first == second
+
+
+def test_stations_json_carries_the_updated_timestamp(tmp_path):
+    payload = publish.write_stations(tmp_path, STATIONS, GATE, updated="2026-07-30T06:00:00Z")
+    assert payload["updated"] == "2026-07-30T06:00:00Z"
+    on_disk = json.loads((tmp_path / "stations.json").read_text())
+    assert on_disk["updated"] == "2026-07-30T06:00:00Z"
+
+
+def test_stations_json_omits_updated_on_a_true_cold_start(tmp_path):
+    """Backfill calls `write_stations` without `updated`: on an empty data/ dir
+    the key is simply absent — never stamped with wall-clock time, so a no-op
+    backfill keeps `stations.json` byte-identical."""
+    payload = publish.write_stations(tmp_path, STATIONS, GATE)
+    assert "updated" not in payload
+
+
+def test_stations_json_preserves_updated_written_by_a_previous_run(tmp_path):
+    """A warm backfill (no `updated` of its own) must not clobber the freshness
+    timestamp the last daily run published — it reads it back off disk."""
+    publish.write_stations(tmp_path, STATIONS, GATE, updated="2026-07-30T06:00:00Z")
+    payload = publish.write_stations(tmp_path, STATIONS, GATE)
+    assert payload["updated"] == "2026-07-30T06:00:00Z"
 
 
 def test_stations_carry_the_baseline_model_the_gate_chose(tmp_path):
@@ -219,6 +245,30 @@ def test_scores_json_has_schema_version_and_aggregates(tmp_path):
     assert row["n_days"] == 3
     assert row["mae_ia_7d"] == pytest.approx(0.1)
     assert row["mae_baseline_all"] == pytest.approx(0.2)
+
+
+def test_scores_json_status_comes_from_the_run_summary(tmp_path):
+    """`status` is *today's* issuance verdict, not derived from history — a
+    station can be `"missing"` today even if yesterday's history entry says
+    `"ok"` (or the reverse), so it must come straight from the caller."""
+    for d in ["2026-07-27", "2026-07-28"]:
+        publish.upsert_history(tmp_path, "a", _day(d))
+    publish.upsert_history(tmp_path, "b", _day("2026-07-27"))
+    payload = publish.write_scores(
+        tmp_path, ["a", "b"], "2026-07-30T07:00:00Z", {"a": "ok", "b": "missing"}
+    )
+    by_id = {row["id"]: row["status"] for row in payload["stations"]}
+    assert by_id == {"a": "ok", "b": "missing"}
+
+
+def test_scores_json_status_falls_back_to_history_when_no_summary_given(tmp_path):
+    """Backward-compat call (backfill): no `statuses` dict passed, so the field
+    still exists, sourced from each station's most recent history day."""
+    publish.upsert_history(tmp_path, "a", _day("2026-07-29"))
+    publish.upsert_history(tmp_path, "b", {"date": "2026-07-29", "status": "missing"})
+    payload = publish.write_scores(tmp_path, ["a", "b", "c"], "2026-07-30T07:00:00Z")
+    by_id = {row["id"]: row["status"] for row in payload["stations"]}
+    assert by_id == {"a": "ok", "b": "missing", "c": "missing"}  # "c": no history at all
 
 
 # --- Task 6 fix 2: score windows are per baseline_model ---------------------

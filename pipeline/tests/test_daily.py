@@ -450,6 +450,44 @@ def test_rerunning_the_same_date_writes_byte_identical_scores_json(tmp_path, pat
     assert first == second
 
 
+def test_rerunning_the_same_date_writes_byte_identical_stations_json(tmp_path, patched_sources):
+    """Same determinism contract as `scores.json` above, for `stations.json["updated"]`."""
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    first = (tmp_path / "stations.json").read_text()
+
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    second = (tmp_path / "stations.json").read_text()
+
+    assert first == second
+
+
+def test_stations_json_updated_matches_the_run_own_issuance_instant(tmp_path, patched_sources):
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    stations_payload = json.loads((tmp_path / "stations.json").read_text())
+    scores = json.loads((tmp_path / "scores.json").read_text())
+    # Both files are stamped from the same deterministic `issued` value for a
+    # given run — not independently wall-clocked.
+    assert stations_payload["updated"] == scores["updated"]
+
+
+def test_scores_json_status_reflects_this_run_own_verdict_per_station(tmp_path, patched_sources):
+    """`status` is `daily.run()`'s own summary, not a re-derivation from history —
+    a station whose obs fetch fails today must show `"missing"` even though its
+    history keeps yesterday's `"ok"` entry untouched."""
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    next_date = date(2026, 7, 31)
+
+    def _boom(station, start):
+        raise SourceError(station.id, "candhis 429")
+
+    patched_sources.setattr(daily, "fetch_wave_obs", _boom)
+    daily.run(next_date, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+
+    scores = json.loads((tmp_path / "scores.json").read_text())
+    by_id = {row["id"]: row["status"] for row in scores["stations"]}
+    assert by_id == {"wave-a": "missing", "tide-b": "ok"}
+
+
 def test_scored_day_carries_n_points_and_max_lead_h(tmp_path, patched_sources):
     daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
     daily.run(date(2026, 7, 31), tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
