@@ -1,0 +1,271 @@
+{
+  "schema_version": 1,
+  "updated": "2026-08-05T06:00:00Z",
+  "stations": [
+    {
+      "id": "pierres-noires",
+      "episodes": [
+        {
+          "date": "2026-07-25",
+          "obs_peak": 2.2,
+          "t_peak": "2026-07-27T06:00:00Z",
+          "ia_at_peak": 1.7429,
+          "baseline_at_peak": 1.92,
+          "peak_error_ia": -0.4571,
+          "peak_error_baseline": -0.28
+        },
+        {
+          "date": "2026-07-26",
+          "obs_peak": 2.2,
+          "t_peak": "2026-07-27T06:00:00Z",
+          "ia_at_peak": 1.7571,
+          "baseline_at_peak": 1.92,
+          "peak_error_ia": -0.4429,
+          "peak_error_baseline": -0.28
+        },
+        {
+          "date": "2026-07-27",
+          "obs_peak": 1.8,
+          "t_peak": "2026-07-27T07:00:00Z",
+          "ia_at_peak": 1.9001,
+          "baseline_at_peak": 1.8733,
+          "peak_error_ia": 0.1001,
+          "peak_error_baseline": 0.0733
+        }
+      ]
+    },
+    {
+      "id": "belle-ile",
+      "episodes": [
+        {
+          "date": "2026-07-24",
+          "obs_peak": 1.6,
+          "t_peak": "2026-07-25T19:00:00Z",
+          "ia_at_peak": 1.2185,
+          "baseline_at_peak": 1.24,
+          "peak_error_ia": -0.3815,
+          "peak_error_baseline": -0.36
+        },
+        {
+          "date": "2026-07-25",
+          "obs_peak": 1.6,
+          "t_peak": "2026-07-25T19:00:00Z",
+          "ia_at_peak": 1.2395,
+          "baseline_at_peak": 1.24,
+          "peak_error_ia": -0.3605,
+          "peak_error_baseline": -0.36
+        },
+        {
+          "date": "2026-07-26",
+          "obs_peak": 1.4,
+          "t_peak": "2026-07-26T16:00:00Z",
+          "ia_at_peak": 1.4581,
+          "baseline_at_peak": 1.5367,
+          "peak_error_ia": 0.0581,
+          "peak_error_baseline": 0.1367
+        }
+      ]
+    },
+    {
+      "id": "anglet",
+      "episodes": [
+        {
+          "date": "2026-07-24",
+          "obs_peak": 2.7,
+          "t_peak": "2026-07-25T15:00:00Z",
+          "ia_at_peak": 1.9411,
+          "baseline_at_peak": 1.97,
+          "peak_error_ia": -0.7589,
+          "peak_error_baseline": -0.73
+        },
+        {
+          "date": "2026-07-25",
+          "obs_peak": 2.7,
+          "t_peak": "2026-07-25T15:00:00Z",
+          "ia_at_peak": 2.0818,
+          "baseline_at_peak": 1.97,
+          "peak_error_ia": -0.6182,
+          "peak_error_baseline": -0.73
+        },
+        {
+          "date": "2026-07-23",
+          "obs_peak": 2.0,
+          "t_peak": "2026-07-24T23:00:00Z",
+          "ia_at_peak": 1.3016,
+          "baseline_at_peak": 1.3833,
+          "peak_error_ia": -0.6984,
+          "peak_error_baseline": -0.6167
+        }
+      ]
+    },
+    {
+      "id": "brest",
+      "episodes": [
+        {
+          "date": "2026-07-15",
+          "obs_peak": 7.4449,
+          "t_peak": "2026-07-16T17:00:00Z",
+          "ia_at_peak": 7.3226,
+          "baseline_at_peak": 7.3458,
+          "peak_error_ia": -0.1223,
+          "peak_error_baseline": -0.0991
+        },
+        {
+          "date": "2026-07-16",
+          "obs_peak": 7.4449,
+          "t_peak": "2026-07-16T17:00:00Z",
+          "ia_at_peak": 7.4061,
+          "baseline_at_peak": 7.3458,
+          "peak_error_ia": -0.0388,
+          "peak_error_baseline": -0.0991
+        },
+        {
+          "date": "2026-07-14",
+          "obs_peak": 7.3043,
+          "t_peak": "2026-07-15T16:00:00Z",
+          "ia_at_peak": 7.2226,
+          "baseline_at_peak": 7.2748,
+          "peak_error_ia": -0.0817,
+          "peak_error_baseline": -0.0295
+        }
+      ]
+    },
+    {
+      "id": "saint-malo",
+      "episodes": [
+        {
+          "date": "2026-07-15",
+          "obs_peak": 12.5372,
+          "t_peak": "2026-07-16T19:00:00Z",
+          "ia_at_peak": 12.346,
+          "baseline_at_peak": 12.3665,
+          "peak_error_ia": -0.1912,
+          "peak_error_baseline": -0.1707
+        },
+        {
+          "date": "2026-07-16",
+          "obs_peak": 12.5372,
+          "t_peak": "2026-07-16T19:00:00Z",
+          "ia_at_peak": 12.3722,
+          "baseline_at_peak": 12.3665,
+          "peak_error_ia": -0.165,
+          "peak_error_baseline": -0.1707
+        },
+        {
+          "date": "2026-07-17",
+          "obs_peak": 12.4272,
+          "t_peak": "2026-07-17T20:00:00Z",
+          "ia_at_peak": 12.2121,
+          "baseline_at_peak": 12.269,
+          "peak_error_ia": -0.2151,
+          "peak_error_baseline": -0.1582
+        }
+      ]
+    },
+    {
+      "id": "ouessant",
+      "episodes": [
+        {
+          "date": "2026-07-12",
+          "obs_peak": 16.6,
+          "t_peak": "2026-07-13T08:00:00Z",
+          "ia_at_peak": 12.6373,
+          "baseline_at_peak": 13.76,
+          "peak_error_ia": -3.9627,
+          "peak_error_baseline": -2.84,
+          "baseline_model": "meteofrance_arpege_europe"
+        },
+        {
+          "date": "2026-07-13",
+          "obs_peak": 16.6,
+          "t_peak": "2026-07-13T08:00:00Z",
+          "ia_at_peak": 12.4802,
+          "baseline_at_peak": 13.76,
+          "peak_error_ia": -4.1198,
+          "peak_error_baseline": -2.84,
+          "baseline_model": "meteofrance_arpege_europe"
+        },
+        {
+          "date": "2026-07-11",
+          "obs_peak": 14.8,
+          "t_peak": "2026-07-12T12:00:00Z",
+          "ia_at_peak": 13.7509,
+          "baseline_at_peak": 14.79,
+          "peak_error_ia": -1.0491,
+          "peak_error_baseline": -0.01,
+          "baseline_model": "meteofrance_arpege_europe"
+        }
+      ]
+    },
+    {
+      "id": "dieppe",
+      "episodes": [
+        {
+          "date": "2026-07-25",
+          "obs_peak": 10.3,
+          "t_peak": "2026-07-26T15:00:00Z",
+          "ia_at_peak": 8.8309,
+          "baseline_at_peak": 8.41,
+          "peak_error_ia": -1.4691,
+          "peak_error_baseline": -1.89,
+          "baseline_model": "meteofrance_arpege_europe"
+        },
+        {
+          "date": "2026-07-26",
+          "obs_peak": 10.3,
+          "t_peak": "2026-07-26T15:00:00Z",
+          "ia_at_peak": 9.57,
+          "baseline_at_peak": 8.41,
+          "peak_error_ia": -0.73,
+          "peak_error_baseline": -1.89,
+          "baseline_model": "meteofrance_arpege_europe"
+        },
+        {
+          "date": "2026-07-19",
+          "obs_peak": 9.9,
+          "t_peak": "2026-07-20T15:00:00Z",
+          "ia_at_peak": 9.3292,
+          "baseline_at_peak": 7.53,
+          "peak_error_ia": -0.5708,
+          "peak_error_baseline": -2.37,
+          "baseline_model": "meteofrance_arpege_europe"
+        }
+      ]
+    },
+    {
+      "id": "cherbourg-vent",
+      "episodes": [
+        {
+          "date": "2026-07-12",
+          "obs_peak": 16.4,
+          "t_peak": "2026-07-13T14:00:00Z",
+          "ia_at_peak": 14.7078,
+          "baseline_at_peak": 10.32,
+          "peak_error_ia": -1.6922,
+          "peak_error_baseline": -6.08,
+          "baseline_model": "meteofrance_arpege_europe"
+        },
+        {
+          "date": "2026-07-13",
+          "obs_peak": 16.4,
+          "t_peak": "2026-07-13T14:00:00Z",
+          "ia_at_peak": 15.5972,
+          "baseline_at_peak": 10.32,
+          "peak_error_ia": -0.8028,
+          "peak_error_baseline": -6.08,
+          "baseline_model": "meteofrance_arpege_europe"
+        },
+        {
+          "date": "2026-07-11",
+          "obs_peak": 15.8,
+          "t_peak": "2026-07-12T22:00:00Z",
+          "ia_at_peak": 15.7765,
+          "baseline_at_peak": 10.38,
+          "peak_error_ia": -0.0235,
+          "peak_error_baseline": -5.42,
+          "baseline_model": "meteofrance_arpege_europe"
+        }
+      ]
+    }
+  ]
+}
