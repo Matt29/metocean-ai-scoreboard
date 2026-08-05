@@ -18,9 +18,15 @@ prévisions, et l'écart entre IA et modèle, et comment ça améliore. »
 +48 h en cours. Il interrompt le trait sur une journée sans donnée au lieu de
 l'enjamber. `DailyMaeTable.jsx` donne les MAE quotidiennes.
 
-Il manque : une vue d'ensemble multi-stations, l'évolution de l'écart dans le
-temps (aujourd'hui seul l'agrégat 30 j est affiché), et une lecture de la
-distribution de l'erreur plutôt que de sa seule moyenne.
+**Livré le 2026-08-05 (T4a)** : la distinction visuelle jours reconstitués /
+opérationnels — trame diagonale sur les périodes reconstituées dans
+`StationChart.jsx`, légende explicite en toutes lettres, libellé factuel compté
+sur la fenêtre affichée (7/30/90 j). Le badge « Reconstitué » du tableau
+quotidien existait déjà.
+
+Il manque encore : une vue d'ensemble multi-stations, et une lecture de la
+distribution de l'erreur plutôt que de sa seule moyenne. §1 n'est donc **pas**
+soldée — deux des trois sous-features restent à faire.
 
 ### Le blocage, à lire avant de dessiner quoi que ce soit
 
@@ -46,9 +52,9 @@ dizaine de jours avant qu'une courbe d'écart veuille dire quelque chose.
 
 ### Quand ce sera le cas
 
-- Distinguer visuellement les jours reconstitués des jours opérationnels. Les
-  mélanger dans une même courbe est le piège principal : la partie reconstituée
-  est systématiquement plus flatteuse.
+- ~~Distinguer visuellement les jours reconstitués des jours opérationnels.~~
+  **Fait (T4a, 2026-08-05).** Les mélanger dans une même courbe était le piège
+  principal : la partie reconstituée est systématiquement plus flatteuse.
 - Montrer la dispersion, pas seulement la moyenne : la MAE seule masque les
   épisodes où l'IA dégrade la prévision.
 - Le gain **hors biais** est le chiffre à mettre en avant, pas le gain brut (voir
@@ -321,24 +327,30 @@ avec la demande 1 (graphiques).
 
 ## 5. Encart causal — expliquer l'écart, pas seulement l'afficher
 
-Demandé le 2026-08-05, à l'issue du chantier filtres/widget/OG.
+Demandé le 2026-08-05, à l'issue du chantier filtres/widget/OG. **Livré le
+2026-08-05.**
 
-### Ce qui existe déjà
+### Ce qui existait déjà
 
-En partie seulement. La page station a déjà un encart pour le cas « gain
-surtout dû à une correction de biais » (`weak`) et un verdict explicite
-« Suivie — l'IA n'y bat pas encore la physique » pour les stations sous le
-gate.
+La page station avait déjà un encart pour le cas « gain surtout dû à une
+correction de biais » (`weak`) et un verdict explicite « Suivie — l'IA n'y bat
+pas encore la physique » pour les stations sous le gate.
 
-### Ce qui manque
+### Ce qui a été livré
 
-Un encart **causal** : expliquer pourquoi l'écart est grand tel jour ou
-pourquoi l'IA perd sur telle station — tempête, dégradation par échéance,
-plafond du backfill. Ce n'était pas dans le lot du 2026-08-05 ; c'est un bon
-candidat pour un prochain chantier, d'autant que `by_lead`/`by_lead_90d` et
-les extrêmes publiés donnent déjà la matière pour des explications honnêtes
-**sans LLM** (règles simples : écart concentré sur les leads longs, jour
-d'extrême observé, jours reconstitués vs opérationnels).
+Un encart **causal** (repo site ODC) : fonction pure `causalNotes()` dans
+`src/data/scoreboard.js`, composant `src/sections/scoreboard/CausalNotes.jsx`,
+rendu dans `ScoreboardStationPage.jsx`, tests dans `scoreboard.test.mjs`. Trois
+règles déterministes à seuils, chacune prouvée par un chiffre affiché, aucune
+cause météo affirmée :
+
+1. dégradation par échéance — gain(H+6) − gain(H+48) ≥ 15 points de pourcentage ;
+2. plafond du backfill — `n_days_backfilled / n_days` ≥ 50 % ;
+3. journée extrême — jour le plus récent présent dans `extremes.json`, ou MAE
+   ≥ 1,5× la médiane, avec un minimum de 5 jours scorés.
+
+Zéro LLM, zéro nouveau champ pipeline — exactement la matière que
+`by_lead`/`by_lead_90d` et les extrêmes publiés donnaient déjà.
 
 ---
 
