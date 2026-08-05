@@ -278,7 +278,8 @@ Trois conditions :
    C'est la cicatrice du module : un fit figé avait porté un offset de −0,3 m.
    Cette observation datait d'un fit sur 90 jours, où la tendance est du bruit —
    sur 730 jours elle est bien conditionnée — mais l'extrapoler reste le risque
-   inutile de la conception.
+   inutile de la conception. Re-mesuré et **tranché le 2026-08-05** dans le
+   régime servi : voir « `trend=False` — réserve rouverte et fermée » plus bas.
 3. **Une date de fit dans l'artefact**, et un run qui refuse de servir au-delà
    d'une péremption. Sans ça, un cron cassé sert silencieusement un fit vieux
    de deux ans.
@@ -323,10 +324,72 @@ la pression écartée le 2026-08-03 sur une baseline dérivante.
 
 `trend=False` reste retenu malgré ses 2,6 pts : c'est la condition 2, et elle
 achète un biais 2 à 3× meilleur (−1,4 / −1,8 cm contre +0,6 / −0,1 cm).
-**Réserve honnête** : cet arbitrage n'a pas été re-mesuré à 30 jours de
-péremption. L'argument d'origine (l'offset de −0,3 m) venait d'un fit figé bien
-plus vieux, et extrapoler une tendance sur 30 jours n'est pas l'extrapoler sur
-six mois. À rouvrir si on veut récupérer ces 2,6 points.
+
+### `trend=False` — réserve rouverte et fermée le 2026-08-05
+
+La réserve était : *cet arbitrage n'a pas été re-mesuré à 30 jours de
+péremption, à rouvrir si on veut récupérer ces 2,6 points.* Re-mesuré dans le
+régime réellement servi (fit 730 j, refit 30 j, péremption active), de bout en
+bout **après le modèle ML**, sur la fenêtre 2024-02-07 → 2026-08-05 (test = 365
+derniers jours d'émission, 17 484 lignes, sélection du candidat ML sur la
+validation interne au train de chaque bras) :
+
+| station | `trend` | MAE baseline | biais baseline | MAE publiée | gain hors biais | IC95 % |
+|---|---|---|---|---|---|---|
+| brest | `False` | 11,75 cm | **−0,83 cm** | **5,41 cm** | +53,7 % | [+50,6 %, +56,3 %] |
+| brest | `True` | 11,85 cm | +1,04 cm | 5,34 cm | +55,1 % | [+51,7 %, +58,1 %] |
+| saint-malo | `False` | 15,05 cm | **−0,22 cm** | **9,99 cm** | +33,6 % | [+31,3 %, +35,9 %] |
+| saint-malo | `True` | 15,48 cm | +1,30 cm | 10,01 cm | +35,4 % | [+33,1 %, +37,5 %] |
+
+Bootstrap **apparié** par jour d'émission (2 000 tirages, les deux bras notés
+sur le même ré-échantillonnage, comme pour les ablations) :
+
+| station | Δ MAE publiée (`True` − `False`) | Δ gain hors biais |
+|---|---|---|
+| brest | **−0,74 mm**, IC95 [−2,81 mm, +1,31 mm] | +1,45 pts, IC95 [−0,35, +3,15] |
+| saint-malo | **+0,22 mm**, IC95 [−1,31 mm, +1,69 mm] | +1,80 pts, IC95 [+0,64, +2,99] |
+
+**Décision : on garde `trend=False`.** Trois raisons, dans cet ordre.
+
+1. **Sur la quantité publiée, `trend=True` ne rend rien.** −0,7 mm à Brest,
+   +0,2 mm à Saint-Malo, les deux IC à cheval sur zéro. Il n'y a pas de 2,6
+   points à récupérer sur ce qu'on sert.
+2. **Les « points » étaient un effet de dénominateur.** `trend=True` dégrade la
+   baseline (MAE 11,75 → 11,85 et 15,05 → 15,48 cm) : le gain relatif monte
+   parce que l'étalon baisse, pendant que la MAE du produit stagne. Le gain hors
+   biais reste le bon chiffre à publier, mais il n'est **pas** le bon chiffre
+   pour arbitrer un changement de baseline — c'est un ratio dont ce changement
+   déplace les deux termes. Variante inédite de la leçon du dépôt : mesurer la
+   quantité publiée, et pas seulement un ratio la concernant.
+3. **Le biais confirme l'argument d'origine, en plus net.** `trend=False` tient
+   −0,8 / −0,2 cm contre +1,0 / +1,3 cm — un biais 1,3 à 6× meilleur, dans le
+   même sens qu'au 2026-08-04.
+
+**Le risque de dérive n'est pas ce qui condamne `trend=True`, et il faut le dire
+avec le chiffre.** Sur les 31 fits rejoués par bras, l'extrapolation de la
+tendance sur les 30 jours de péremption vaut 0,1 mm (médiane, Brest) à 1,4 mm
+(Saint-Malo), au pire 6 mm : négligeable devant 12–15 cm de MAE de baseline. La
+péremption à 30 j a bien désarmé la cicatrice de −0,3 m. Ce qui reste
+rédhibitoire est ailleurs : **la pente elle-même n'est pas une tendance**.
+|pente| monte à 2·10⁻⁴ m/j, soit 7 cm/an, ~25× le signal séculaire réel
+(~3 mm/an à Brest) ; la médiane, elle, est à 3,6·10⁻⁶ m/j (1,3 mm/an) et donc
+physique. Sur 730 j, utide ajuste de la variabilité interannuelle du niveau
+moyen et l'appelle tendance, puis la reporte du centre de sa fenêtre jusqu'au
+temps de service — jusqu'à 8 cm sur le pire fit, et cet offset saute d'un refit
+à l'autre. C'est exactement le biais perdu au point 3.
+
+Réserve résiduelle : deux stations, une fenêtre de test d'un an. Un troisième
+marégraphe ou une autre année pourrait déplacer les 1,5–1,8 pts de gain, mais
+il faudrait un renversement du signe de l'effet sur la MAE **et** sur le biais
+pour rouvrir — les deux pointent aujourd'hui dans la même direction.
+
+Reproduction : `docs/archive/` ne porte pas ce script ; la mesure se rejoue en
+recalculant les deux baselines depuis les mêmes observations REFMAR (fetch
+unique de 1 825 j), via `harmonic.causal_predict` avec `harmonic.fit`
+monkeypatché sur `utide.solve(..., trend=<flag>)`, puis `dataset.assemble` et le
+chemin `tide` de `scripts/train.py::evaluate` (365 j de test, mêmes candidats
+ML, même bootstrap `_gain_confidence_interval`), les deux bras notés sur le même
+ré-échantillonnage par jour d'émission.
 
 Implémenté : `harmonic.REFIT_DAYS` (constante partagée backtest/production),
 `HarmonicModel.fitted_at` persisté, et `daily` qui marque la station `missing`
@@ -524,6 +587,114 @@ par le coefficient d'une ridge.
 fixé la règle de décision réutilisée pour les trois ci-dessus.
 
 **Le backlog de features est vide.** Ce qui reste ouvert est plus bas.
+
+---
+
+## Ridge comme plancher honnête — mesuré le 2026-08-05
+
+**Question.** Le scoreboard publie un gain IA contre une baseline physique.
+Combien de ce gain un simple linéaire régularisé capte-t-il déjà ? Si `ridge`
+fait jeu égal, le gradient boosting est de la complexité non payée et il faut
+le dire. `ridge` existait déjà comme candidat (`model._estimator`), mais il
+n'était comparé que sur la **validation** (tableau « Comparaison des modèles
+ML » de `model-eval.md`) — jamais chiffré sur les folds de test scellés, et
+jamais avec une barre d'erreur sur l'**écart**.
+
+**Comment.** `pipeline/scripts/compare_ridge.py` rejoue le protocole
+d'évaluation de `train.py` — mêmes origines rolling, même purge 48 h, même
+sélection de baseline physique dans le seul passé de chaque origine — une fois
+par candidat forcé, puis une fois en sélection automatique (le comportement de
+production). Aucun effet de bord : rien n'est promu dans `models/`, et
+`docs/model-eval.md`, qui est généré, n'est pas réécrit à la main.
+
+```
+cd pipeline && UV_CACHE_DIR=.uv-cache uv run python scripts/compare_ridge.py
+```
+
+**Périmètre — partiel, et volontairement dit comme tel.** Seules les
+**5 stations dont le jeu d'entraînement est présent** dans `pipeline/data_train/`
+sont mesurées : `brest`, `saint-malo` (marée) et `ouessant`, `dieppe`,
+`cherbourg-vent` (vent). Les 4 stations `wave` (`pierres-noires`, `belle-ile`,
+`anglet`, `cherbourg`) n'ont plus leur `*_raw.parquet` sur disque et sont
+ignorées par le protocole ; **la conclusion ci-dessous ne les couvre pas.**
+
+### Par candidat, sur les folds de test scellés
+
+| Station | Type | Candidat | MAE modèle | Gain hors biais | IC95 % gain | Protocole | Coût protocole (s) | Artefact |
+|---|---|---|---|---|---|---|---|---|
+| brest | tide | `ridge` | 0.0564 | +51.8 % | [+48.0 ; +55.1] | holdout annuel (1×365 j) | 0.7 | 2 ko |
+| brest | tide | `hgb` | 0.0556 | +52.4 % | [+49.1 ; +55.4] | holdout annuel (1×365 j) | 2.8 | 1 084 ko |
+| brest | tide | `hgb-per-lead` | 0.0539 | +53.9 % | [+50.8 ; +56.7] | holdout annuel (1×365 j) | 10.5 | 3 247 ko |
+| brest | tide | auto (production) → `hgb-per-lead` | 0.0539 | +53.9 % | [+50.8 ; +56.7] | holdout annuel (1×365 j) | 21.3 | 3 247 ko |
+| saint-malo | tide | `ridge` | 0.1186 | +21.2 % | [+18.4 ; +23.9] | holdout annuel (1×365 j) | 0.7 | 2 ko |
+| saint-malo | tide | `hgb` | 0.1018 | +32.4 % | [+30.0 ; +34.7] | holdout annuel (1×365 j) | 5.1 | 1 084 ko |
+| saint-malo | tide | `hgb-per-lead` | 0.0991 | +34.1 % | [+31.6 ; +36.4] | holdout annuel (1×365 j) | 12.9 | 3 248 ko |
+| saint-malo | tide | auto (production) → `hgb-per-lead` | 0.0991 | +34.1 % | [+31.6 ; +36.4] | holdout annuel (1×365 j) | 20.2 | 3 248 ko |
+| ouessant | wind | `ridge` | 1.0809 | +11.9 % | [+10.3 ; +13.3] | rolling-origin multi-saisons (4×90 j) | 21.6 | 2 ko |
+| ouessant | wind | `hgb` | 0.9690 | +21.0 % | [+19.2 ; +22.7] | rolling-origin multi-saisons (4×90 j) | 28.7 | 1 091 ko |
+| ouessant | wind | `hgb-per-lead` | 0.9831 | +19.9 % | [+18.0 ; +21.6] | rolling-origin multi-saisons (4×90 j) | 36.8 | 2 867 ko |
+| ouessant | wind | auto (production) → `hgb` | 0.9690 | +21.0 % | [+19.2 ; +22.7] | rolling-origin multi-saisons (4×90 j) | 40.3 | 1 091 ko |
+| dieppe | wind | `ridge` | 0.8744 | +29.0 % | [+26.3 ; +31.3] | rolling-origin multi-saisons (4×90 j) | 19.4 | 2 ko |
+| dieppe | wind | `hgb` | 0.8084 | +34.3 % | [+31.9 ; +36.5] | rolling-origin multi-saisons (4×90 j) | 25.8 | 1 091 ko |
+| dieppe | wind | `hgb-per-lead` | 0.8222 | +33.2 % | [+30.8 ; +35.3] | rolling-origin multi-saisons (4×90 j) | 34.6 | 2 786 ko |
+| dieppe | wind | auto (production) → `hgb` | 0.8084 | +34.3 % | [+31.9 ; +36.5] | rolling-origin multi-saisons (4×90 j) | 47.1 | 1 091 ko |
+| cherbourg-vent | wind | `ridge` | 1.1759 | +17.6 % | [+14.8 ; +20.5] | rolling-origin multi-saisons (4×90 j) | 20.2 | 2 ko |
+| cherbourg-vent | wind | `hgb` | 1.0818 | +24.2 % | [+21.5 ; +26.8] | rolling-origin multi-saisons (4×90 j) | 26.4 | 1 091 ko |
+| cherbourg-vent | wind | `hgb-per-lead` | 1.0902 | +23.6 % | [+20.9 ; +26.2] | rolling-origin multi-saisons (4×90 j) | 41.9 | 3 266 ko |
+| cherbourg-vent | wind | auto (production) → `hgb` | 1.0856 | +24.0 % | [+21.2 ; +26.6] | rolling-origin multi-saisons (4×90 j) | 48.1 | 1 091 ko |
+
+Le « coût protocole » est le temps mur du protocole **entier** (assemblage des
+données + tous les folds + refit production), pas un temps de fit unitaire.
+Sur les stations `wind`, ~20 s sont de l'assemblage commun à tous les
+candidats : le surcoût propre au boosting y est de l'ordre de +6 à +20 s. Sur
+`brest`, où l'assemblage est négligeable, le rapport est net : **0,7 s et 2 ko
+pour `ridge`, 10,5 s et 3 247 ko pour `hgb-per-lead`** — ×15 en temps, ×1 600
+en taille d'artefact.
+
+### L'écart, avec sa barre d'erreur
+
+Deux IC95 % qui se chevauchent ne concluent rien sur un écart mesuré aux mêmes
+heures. Le tableau ci-dessous est donc un bootstrap **apparié** : mêmes lignes
+de test, même baseline débiaisée au dénominateur, rééchantillonnage de **jours
+d'émission entiers** — jamais de lignes, les 48 leads d'un run n'étant pas
+indépendants.
+
+| Station | Type | Incumbent | Gain `ridge` | Gain incumbent | Δ (incumbent − ridge) | IC95 % de l'écart | Conclusion |
+|---|---|---|---|---|---|---|---|
+| brest | tide | `hgb-per-lead` | +51.8 % | +53.9 % | +2.1 pt | [+0.7 ; +3.5] pt | boosting payé |
+| saint-malo | tide | `hgb-per-lead` | +21.2 % | +34.1 % | +12.9 pt | [+10.7 ; +15.1] pt | boosting payé |
+| ouessant | wind | `hgb` | +11.9 % | +21.0 % | +9.1 pt | [+7.7 ; +10.6] pt | boosting payé |
+| dieppe | wind | `hgb` | +29.0 % | +34.3 % | +5.4 pt | [+4.4 ; +6.3] pt | boosting payé |
+| cherbourg-vent | wind | `hgb` | +17.6 % | +24.0 % | +6.3 pt | [+4.9 ; +7.7] pt | boosting payé |
+
+### Conclusion
+
+**Le gradient boosting est payé sur les 5 stations mesurées : sur chacune, sa
+borne IC95 % basse d'écart contre `ridge` est strictement positive.** Le modèle
+servi en production **n'est donc pas changé**.
+
+Nuances qui restent vraies :
+
+* `brest` est le cas limite : +2,1 pt seulement, IC95 % [+0,7 ; +3,5]. Le
+  plancher linéaire y capture **96 % du gain publié** (51,8 / 53,9) pour ~1/15
+  du temps et 1/1600 de la taille d'artefact. Si la marée devait un jour
+  tourner sur un budget contraint, c'est la station où basculer coûterait le
+  moins.
+* `saint-malo` est l'inverse exact : `ridge` n'y capte que 62 % du gain. C'est
+  la station où la non-linéarité paie le plus, ce qui est cohérent avec
+  l'interaction marée-surcote documentée plus haut (§ Features, point 3).
+* `hgb-per-lead` ne se justifie **que** sur les `tide`. Sur les trois stations
+  `wind`, il est battu par `hgb` simple tout en pesant 2,5× plus lourd — la
+  sélection automatique le rejette déjà, et c'est bien ce qu'elle doit faire.
+* Le tableau « Comparaison des modèles ML » de `model-eval.md` reste, lui, sur
+  la **validation** : c'est voulu, c'est la fenêtre où la sélection a le droit
+  de regarder. Les chiffres ci-dessus sont sur le **test**, et ne s'y
+  substituent pas.
+
+**Réserve de périmètre.** Les 4 stations `wave` ne sont pas couvertes. Le
+protocole d'évaluation les ignore faute de `*_raw.parquet` ; leur `gate.json`
+date d'un run antérieur. La mesure ridge devra être rejouée sur elles dès que
+leur dataset sera reconstruit — la commande est la même.
 
 ---
 

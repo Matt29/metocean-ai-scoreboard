@@ -111,9 +111,27 @@ def fit(obs: pd.Series, lat: float) -> HarmonicModel:
     # `trend=False` : utide extrapole sinon la tendance séculaire qu'il a
     # estimée, et un fit figé la propage linéairement hors de sa fenêtre. C'est
     # la cicatrice du module — un fit de 90 j gelé avait porté un offset de
-    # -0,3 m. Sur 730 j la tendance est bien conditionnée, mais l'extrapoler
-    # reste un risque sans contrepartie dès lors qu'on sert le fit pendant
-    # `REFIT_DAYS`.
+    # -0,3 m.
+    #
+    # Arbitrage rouvert et **tranché le 2026-08-05**, dans le régime réellement
+    # servi (fit 730 j, refit 30 j), de bout en bout après le modèle ML sur les
+    # 365 derniers jours d'émission. `trend=True` ne rend rien sur la quantité
+    # publiée : MAE 5,41 -> 5,34 cm à Brest et 9,99 -> 10,01 cm à Saint-Malo,
+    # les deux IC95 % (bootstrap apparié par jour d'émission) à cheval sur zéro.
+    # Les « 2,6 points de gain » de la mesure du 2026-08-04 sont un effet de
+    # dénominateur : `trend=True` **dégrade la baseline** (MAE 11,75 -> 11,85 et
+    # 15,05 -> 15,48 cm) et son biais (-0,8 / -0,2 cm -> +1,0 / +1,3 cm), donc le
+    # gain relatif monte pendant que le produit stagne.
+    #
+    # Le risque de dérive, lui, est petit et mesuré : sur les 31 fits rejoués,
+    # l'extrapolation de la tendance sur les 30 j de péremption vaut 0,1 mm
+    # (médiane, Brest) à 1,4 mm (Saint-Malo), au pire 6 mm — négligeable devant
+    # 12-15 cm de MAE. Ce n'est donc pas l'extrapolation qui condamne
+    # `trend=True`, c'est la pente elle-même : |pente| va jusqu'à 2e-4 m/j, soit
+    # 7 cm/an, ~25x le vrai signal séculaire (~3 mm/an). Sur 730 j utide ajuste
+    # de la variabilité interannuelle du niveau moyen, pas une tendance, et la
+    # reporte au temps de service (jusqu'à 8 cm sur le pire fit) — c'est
+    # exactement le biais gagné ci-dessus. Voir `docs/plan-dev-modele.md`.
     coef = utide.solve(obs.index, obs.values, lat=lat, trend=False, verbose=False)
     return HarmonicModel(coef=coef, fitted_at=obs.index[-1])
 
