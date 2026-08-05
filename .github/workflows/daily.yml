@@ -12,8 +12,13 @@ name: daily
 # serving yesterday's run, which covers the horizon and returns ok all the same);
 # that one is unaffected by the hour. Do not widen the margin expecting otherwise.
 "on":
+  # Deux crans plutôt qu'un : les schedules GitHub sont best-effort (retards
+  # d'heures observés, pires aux minutes rondes — d'où :37). Le second cran
+  # rattrape un premier déclenchement en retard ou sauté ; le daily étant
+  # idempotent au jour près, un second run le même jour est inoffensif.
   schedule:
-    - cron: "30 7 * * *"
+    - cron: "37 7 * * *"
+    - cron: "37 9 * * *"
   workflow_dispatch:
     inputs:
       backfill_since:
@@ -24,9 +29,9 @@ name: daily
         required: false
         type: string
 
-# A schedule trigger can slip by several minutes, and GitHub may skip a run
-# if the repo has been inactive for a long stretch — workflow_dispatch above
-# is the manual escape hatch for both cases.
+# A schedule trigger can slip by minutes to hours, and GitHub may skip a run
+# if the repo has been inactive for a long stretch — the 9:37 retry covers the
+# common slip/skip, workflow_dispatch above remains the manual escape hatch.
 concurrency:
   group: daily
   cancel-in-progress: false
