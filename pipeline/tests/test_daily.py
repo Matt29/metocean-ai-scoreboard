@@ -470,6 +470,14 @@ def test_stations_json_updated_matches_the_run_own_issuance_instant(tmp_path, pa
     assert stations_payload["updated"] == scores["updated"]
 
 
+def test_extremes_json_shares_the_run_own_updated_with_scores_json(tmp_path, patched_sources):
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    scores = json.loads((tmp_path / "scores.json").read_text())
+    extremes = json.loads((tmp_path / "extremes.json").read_text())
+    assert extremes["updated"] == scores["updated"]
+    assert {row["id"] for row in extremes["stations"]} == {"wave-a", "tide-b"}
+
+
 def test_scores_json_status_reflects_this_run_own_verdict_per_station(tmp_path, patched_sources):
     """`status` is `daily.run()`'s own summary, not a re-derivation from history —
     a station whose obs fetch fails today must show `"missing"` even though its

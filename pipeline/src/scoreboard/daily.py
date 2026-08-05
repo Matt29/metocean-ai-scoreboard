@@ -633,6 +633,12 @@ def run(
     # guard wouldn't skip anything here).
     statuses = {sid: result["status"] for sid, result in summary.items()}
     publish.write_scores(out_dir, [s.id for s in published], issued, statuses)
+    # Same deterministic `issued`, same station set, so a same-`run_date` rerun
+    # is byte-identical here too. Not called from backfill.py: its no-op guard
+    # only protects the files it itself writes, so a backfill covering a station
+    # that also gained a peak day would leave extremes.json stale until the
+    # next daily run — an acceptable lag, extremes are not backfill's job.
+    publish.write_extremes(out_dir, [s.id for s in published], issued)
     if published and not any(result["status"] == "ok" for result in summary.values()):
         raise DailyRunError(run_date, summary)
     return summary

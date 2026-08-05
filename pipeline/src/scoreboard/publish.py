@@ -24,6 +24,14 @@ Plus un cinquième fichier, écrit par une autre commande (`archive-obs`, pas
     data/buoys.json             {"updated","since","buoys":[{"id","name",
                                  "lat","lon","wave"}]}
 
+Et un sixième, écrit par `daily` juste après `scores.json` mais délibérément
+séparé de lui (pas question de gonfler `scores.json` avec des séries) :
+
+    data/extremes.json          {"updated","stations":[{"id","episodes":[
+                                 {"date","obs_peak","t_peak","ia_at_peak",
+                                 "baseline_at_peak","peak_error_ia",
+                                 "peak_error_baseline","baseline_model"?}]}]}
+
 `published`/`weak` on every station entry come straight from `models/gate.json`
 (read by the caller, passed in here) — a `pass: false` station is still listed
 (the site can say "tracked, not yet beating the baseline") but never gets a
@@ -501,4 +509,60 @@ def write_scores(
         )
     payload = {"schema_version": SCHEMA_VERSION, "updated": updated, "stations": rows}
     _atomic_write(out_dir / "scores.json", payload)
+    return payload
+
+
+PEAK_EPISODES = 3  # nombre de pics publiés par station
+
+
+def compute_extreme_episodes(days: list[dict]) -> list[dict]:
+    """Les `PEAK_EPISODES` jours de plus fort pic observé, tri décroissant.
+
+    Pas de filtre baseline ici (contrairement à `compute_scores`) : un pic est
+    un événement physique observé, pas une moyenne à comparer d'une baseline à
+    l'autre — chaque épisode nomme sa propre `baseline_model` quand le jour en
+    a un. Seuls les jours `status=="ok"` avec une `series` non vide sont
+    éligibles ; un jour sans pic observable n'a rien à publier.
+
+    Le pic du jour = le point de `series` à l'`obs` maximal. `peak_error_*` =
+    prédiction moins observation à cet instant (signé : une sous-estimation de
+    tempête, plus dangereuse qu'une surestimation, doit rester visible comme
+    telle), arrondi à 4 décimales.
+    """
+    episodes = []
+    for day in days:
+        if day.get("status") != "ok":
+            continue
+        series = [p for p in day.get("series") or [] if p.get("obs") is not None]
+        if not series:
+            continue
+        peak = max(series, key=lambda p: p["obs"])
+        episode = {
+            "date": day["date"],
+            "obs_peak": peak["obs"],
+            "t_peak": peak["t"],
+            "ia_at_peak": peak["ia"],
+            "baseline_at_peak": peak["baseline"],
+            "peak_error_ia": round(peak["ia"] - peak["obs"], 4),
+            "peak_error_baseline": round(peak["baseline"] - peak["obs"], 4),
+        }
+        if day.get("baseline_model"):
+            episode["baseline_model"] = day["baseline_model"]
+        episodes.append(episode)
+    episodes.sort(key=lambda e: e["obs_peak"], reverse=True)
+    return episodes[:PEAK_EPISODES]
+
+
+def write_extremes(out_dir: Path, station_ids: list[str], updated: str) -> dict:
+    """`data/extremes.json` — recomputed from each station's on-disk history,
+    même lecture que `write_scores`. Fichier séparé exprès (voir docstring de
+    module) : un pic est un événement, pas une agrégation, et `scores.json` ne
+    doit pas grossir pour ça.
+    """
+    rows = []
+    for station_id in station_ids:
+        history = _read(out_dir / station_id / "history.json")
+        rows.append({"id": station_id, "episodes": compute_extreme_episodes(history["days"] if history else [])})
+    payload = {"schema_version": SCHEMA_VERSION, "updated": updated, "stations": rows}
+    _atomic_write(out_dir / "extremes.json", payload)
     return payload

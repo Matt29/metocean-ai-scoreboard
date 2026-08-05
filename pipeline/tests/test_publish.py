@@ -569,3 +569,102 @@ def test_station_entry_publishes_the_unit_of_its_kind(tmp_path):
     payload = publish.write_stations(tmp_path, stations, gate={})
     units = {s["id"]: s["unit"] for s in payload["stations"]}
     assert units == {"w": "m", "t": "m", "v": "m/s"}
+
+
+# --- extremes.json: peak episodes ----------------------------------------
+
+
+def _day_with_series(date_str, series, status="ok", baseline_model=None):
+    day = {"date": date_str, "status": status, "series": series}
+    if baseline_model:
+        day["baseline_model"] = baseline_model
+    return day
+
+
+def test_extreme_episode_picks_the_obs_max_point_of_its_day():
+    day = _day_with_series("2026-07-30", [
+        {"t": "2026-07-30T07:00:00Z", "obs": 1.0, "ia": 1.2, "baseline": 0.8},
+        {"t": "2026-07-30T13:00:00Z", "obs": 3.5, "ia": 3.0, "baseline": 4.0},  # the peak
+        {"t": "2026-07-30T19:00:00Z", "obs": 2.0, "ia": 2.1, "baseline": 1.9},
+    ], baseline_model="ewam")
+
+    episodes = publish.compute_extreme_episodes([day])
+
+    assert len(episodes) == 1
+    ep = episodes[0]
+    assert ep["date"] == "2026-07-30"
+    assert ep["obs_peak"] == 3.5
+    assert ep["t_peak"] == "2026-07-30T13:00:00Z"
+    assert ep["ia_at_peak"] == 3.0
+    assert ep["baseline_at_peak"] == 4.0
+    assert ep["baseline_model"] == "ewam"
+
+
+def test_extreme_episode_error_sign_shows_under_and_overestimation():
+    """A storm underestimated by the IA (predicted lower than observed) must
+    keep a negative sign — that's the dangerous direction, not a magnitude to
+    hide behind abs()."""
+    day = _day_with_series("2026-07-30", [
+        {"t": "2026-07-30T07:00:00Z", "obs": 5.0, "ia": 4.0, "baseline": 6.0},
+    ])
+
+    ep = publish.compute_extreme_episodes([day])[0]
+
+    assert ep["peak_error_ia"] == pytest.approx(-1.0)  # underestimated
+    assert ep["peak_error_baseline"] == pytest.approx(1.0)  # overestimated
+    assert "baseline_model" not in ep  # tide-like day, none named
+
+
+def test_extreme_episodes_keep_only_the_three_strongest_sorted_desc():
+    days = [
+        _day_with_series("2026-07-01", [{"t": "2026-07-01T07:00:00Z", "obs": 1.0, "ia": 1.0, "baseline": 1.0}]),
+        _day_with_series("2026-07-02", [{"t": "2026-07-02T07:00:00Z", "obs": 4.0, "ia": 4.0, "baseline": 4.0}]),
+        _day_with_series("2026-07-03", [{"t": "2026-07-03T07:00:00Z", "obs": 2.0, "ia": 2.0, "baseline": 2.0}]),
+        _day_with_series("2026-07-04", [{"t": "2026-07-04T07:00:00Z", "obs": 5.0, "ia": 5.0, "baseline": 5.0}]),
+        _day_with_series("2026-07-05", [{"t": "2026-07-05T07:00:00Z", "obs": 3.0, "ia": 3.0, "baseline": 3.0}]),
+    ]
+
+    episodes = publish.compute_extreme_episodes(days)
+
+    assert [e["date"] for e in episodes] == ["2026-07-04", "2026-07-02", "2026-07-05"]
+    assert [e["obs_peak"] for e in episodes] == [5.0, 4.0, 3.0]
+
+
+def test_extreme_episodes_skip_missing_days_and_days_without_series():
+    days = [
+        {"date": "2026-07-01", "status": "missing"},
+        _day_with_series("2026-07-02", []),
+        _day_with_series("2026-07-03", [{"t": "2026-07-03T07:00:00Z", "obs": 1.0, "ia": 1.1, "baseline": 0.9}]),
+    ]
+    episodes = publish.compute_extreme_episodes(days)
+    assert [e["date"] for e in episodes] == ["2026-07-03"]
+
+
+def test_extreme_episodes_no_baseline_filter_unlike_scores():
+    """A peak is a physical event, not an average — a day scored against a
+    superseded baseline still gets its episode, unlike `compute_scores`."""
+    days = [
+        _day_with_series("2026-07-29", [{"t": "2026-07-29T07:00:00Z", "obs": 9.0, "ia": 8.0, "baseline": 7.0}], baseline_model="mfwam"),
+        _day_with_series("2026-07-30", [{"t": "2026-07-30T07:00:00Z", "obs": 1.0, "ia": 1.0, "baseline": 1.0}], baseline_model="ewam"),
+    ]
+    episodes = publish.compute_extreme_episodes(days)
+    assert [e["date"] for e in episodes] == ["2026-07-29", "2026-07-30"]
+    assert episodes[0]["baseline_model"] == "mfwam"
+
+
+def test_write_extremes_reads_history_for_each_station(tmp_path):
+    publish.upsert_history(tmp_path, "a", _day_with_series(
+        "2026-07-30", [{"t": "2026-07-30T07:00:00Z", "obs": 2.0, "ia": 2.1, "baseline": 1.9}], baseline_model="ewam"
+    ))
+
+    payload = publish.write_extremes(tmp_path, ["a", "b"], updated="2026-07-30T06:00:00Z")
+
+    assert payload["schema_version"] == 1
+    assert payload["updated"] == "2026-07-30T06:00:00Z"
+    by_id = {row["id"]: row["episodes"] for row in payload["stations"]}
+    assert len(by_id["a"]) == 1
+    assert by_id["a"][0]["obs_peak"] == 2.0
+    assert by_id["b"] == []  # no history at all -> empty episodes, not an error
+
+    on_disk = json.loads((tmp_path / "extremes.json").read_text())
+    assert on_disk == payload
