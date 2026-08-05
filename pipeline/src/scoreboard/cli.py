@@ -9,7 +9,7 @@ import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from scoreboard import archive, archive_obs, backfill, daily
+from scoreboard import archive, archive_obs, backfill, daily, og
 from scoreboard.config import load_env
 from scoreboard.sources import SourceError, mfbuoy
 
@@ -54,6 +54,13 @@ def main(argv: list[str] | None = None) -> int:
         "--dry-run", action="store_true", help="write to a temp dir instead of data_obs_archive/"
     )
 
+    og_parser = sub.add_parser(
+        "og-images", help="write a 1200x630 Open Graph PNG per station from scores.json"
+    )
+    og_parser.add_argument(
+        "--dry-run", action="store_true", help="write to a temp dir instead of data/"
+    )
+
     args = parser.parse_args(argv)
     load_env()
     out_dir = _resolve_out_dir(args.dry_run)
@@ -76,6 +83,13 @@ def main(argv: list[str] | None = None) -> int:
         # là. Sortie de cron, donc lue quand quelque chose cloche.
         print(mfbuoy.non_null_counts(obs).to_string())
         print(f"  {len(written)} fichier(s) jour: {', '.join(p.name for p in written)}")
+        return 0
+
+    if args.command == "og-images":
+        written = og.run(DATA_DIR / "scores.json", out_dir)
+        print(f"og-images -> {out_dir}" + (" (dry-run)" if args.dry_run else ""))
+        for path in written:
+            print(f"  {path}")
         return 0
 
     if args.command == "daily":

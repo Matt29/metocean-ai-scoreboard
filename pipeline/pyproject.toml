@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "joblib>=1.5.3",
     "pandas>=3.0.5",
+    "pillow>=10.1.0",
     "pyarrow>=25.0.0",
     "requests>=2.34.2",
     "scikit-learn>=1.9.0",

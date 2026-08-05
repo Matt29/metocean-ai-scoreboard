@@ -118,6 +118,16 @@ jobs:
             uv run scoreboard daily
           fi
 
+      # Best-effort: a social-share PNG per station is nice-to-have, never a
+      # reason to turn the daily job red. `continue-on-error` here (rather than
+      # the internal try/except pattern used by archive-obs) because a broken
+      # render has no downstream step that needs to see it fail — the next
+      # commit step just finds no og.png changes and moves on.
+      - name: og images
+        working-directory: pipeline
+        continue-on-error: true
+        run: uv run scoreboard og-images
+
       # Commit only output belonging to a successful scoreboard/backfill run:
       # the public payload, served-forecast archive, and refreshed harmonic
       # constants. Buoy observations were already committed above. If daily
