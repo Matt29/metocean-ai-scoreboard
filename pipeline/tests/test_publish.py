@@ -457,6 +457,104 @@ def test_compute_scores_carries_by_lead(tmp_path):
     assert row["by_lead"]["h12"] == {"mae_ia": None, "mae_baseline": None, "n_points": 0}
 
 
+# --- metrics_30d: RMSE / biais / R² point à point ---------------------------
+
+
+def test_window_metrics_match_a_manual_calculation():
+    """obs=[1,2,3], ia=[1.5,2.5,2.5], baseline=[2,2,4].
+
+    err_ia = [.5,.5,-.5]      -> rmse_ia = sqrt(mean(.25,.25,.25)) = 0.5
+                               -> bias_ia = mean(.5,.5,-.5) = 1/6 ≈ 0.1667
+    err_baseline = [1,0,1]    -> rmse_baseline = sqrt(mean(1,0,1)) = sqrt(2/3) ≈ 0.8165
+                               -> bias_baseline = mean(1,0,1) = 2/3 ≈ 0.6667
+    obs mean = 2, ss_tot = (1-2)²+(2-2)²+(3-2)² = 2
+    ss_res_ia = .25+.25+.25 = .75       -> r2_ia = 1 - .75/2 = 0.625
+    ss_res_baseline = 1+0+1 = 2         -> r2_baseline = 1 - 2/2 = 0.0
+    """
+    day = {
+        "date": "2026-07-30",
+        "series": [
+            {"t": "2026-07-30T07:00:00Z", "obs": 1, "ia": 1.5, "baseline": 2},
+            {"t": "2026-07-30T13:00:00Z", "obs": 2, "ia": 2.5, "baseline": 2},
+            {"t": "2026-07-31T07:00:00Z", "obs": 3, "ia": 2.5, "baseline": 4},
+        ],
+    }
+    metrics = publish.compute_window_metrics([day])
+    assert metrics == {
+        "rmse_ia": 0.5,
+        "rmse_baseline": pytest.approx(0.8165),
+        "bias_ia": pytest.approx(0.1667),
+        "bias_baseline": pytest.approx(0.6667),
+        "r2_ia": 0.625,
+        "r2_baseline": 0.0,
+        "n_points": 3,
+    }
+
+
+def test_window_metrics_r2_is_none_when_obs_variance_is_zero():
+    day = {
+        "date": "2026-07-30",
+        "series": [
+            {"t": "2026-07-30T07:00:00Z", "obs": 2, "ia": 2.1, "baseline": 1.9},
+            {"t": "2026-07-30T13:00:00Z", "obs": 2, "ia": 1.9, "baseline": 2.1},
+        ],
+    }
+    metrics = publish.compute_window_metrics([day])
+    assert metrics["r2_ia"] is None
+    assert metrics["r2_baseline"] is None
+    assert metrics["n_points"] == 2
+    # RMSE/bias restent calculables même sans variance des obs.
+    assert metrics["rmse_ia"] is not None
+
+
+def test_window_metrics_r2_is_none_with_a_single_point():
+    day = {"date": "2026-07-30", "series": [{"t": "2026-07-30T07:00:00Z", "obs": 1, "ia": 1.1, "baseline": 0.9}]}
+    metrics = publish.compute_window_metrics([day])
+    assert metrics["n_points"] == 1
+    assert metrics["r2_ia"] is None
+    assert metrics["r2_baseline"] is None
+
+
+def test_window_metrics_ignore_legacy_days_without_series():
+    days = [_ok_day("2026-07-30", 0.1, 0.2)]  # `_ok_day` has an empty `series`
+    metrics = publish.compute_window_metrics(days)
+    assert metrics == {
+        "rmse_ia": None,
+        "rmse_baseline": None,
+        "bias_ia": None,
+        "bias_baseline": None,
+        "r2_ia": None,
+        "r2_baseline": None,
+        "n_points": 0,
+    }
+
+
+def test_window_metrics_ignore_points_without_obs():
+    day = {
+        "date": "2026-07-30",
+        "series": [
+            {"t": "2026-07-30T07:00:00Z", "obs": None, "ia": 1.5, "baseline": 1.6},
+            {"t": "2026-07-30T13:00:00Z", "obs": 1.0, "ia": 1.1, "baseline": 1.2},
+        ],
+    }
+    metrics = publish.compute_window_metrics([day])
+    assert metrics["n_points"] == 1
+
+
+def test_compute_scores_carries_metrics_30d():
+    day = {
+        "date": "2026-07-30",
+        "status": "ok",
+        "mae_ia": 0.1,
+        "mae_baseline": 0.2,
+        "n_points": 1,
+        "series": [_series_point(6, obs=1.0, ia=1.1, baseline=1.2)],
+    }
+    row = publish.compute_scores([day])
+    assert row["metrics_30d"] == publish.compute_window_metrics([day])
+    assert row["metrics_30d"]["n_points"] == 1
+
+
 def test_station_entry_publishes_the_unit_of_its_kind(tmp_path):
     """`unit` est une donnée publique : une station de vent servie en mètres est
     une erreur de fait, pas un détail d'affichage."""

@@ -13,7 +13,10 @@ consumer (the website, a separate repo) can detect a breaking change:
                                  "mae_ia_7d","mae_baseline_7d","mae_ia_30d",
                                  "mae_baseline_30d","mae_ia_all","mae_baseline_all",
                                  "by_lead":{"h06"|"h12"|"h24"|"h48":
-                                 {"mae_ia","mae_baseline","n_points"}}}]}
+                                 {"mae_ia","mae_baseline","n_points"}},
+                                 "metrics_30d":{"rmse_ia","rmse_baseline",
+                                 "bias_ia","bias_baseline","r2_ia","r2_baseline",
+                                 "n_points"}}]}
 
 Plus un cinquième fichier, écrit par une autre commande (`archive-obs`, pas
 `daily`) et volontairement hors du contrat des stations :
@@ -342,6 +345,73 @@ def compute_lead_breakdown(window: list[dict]) -> dict:
     }
 
 
+def compute_window_metrics(window: list[dict]) -> dict:
+    """`metrics_30d` : RMSE, biais moyen signé (IA/baseline moins obs) et R²,
+    calculés point à point sur `window` — la *même* liste 30d que
+    `compute_lead_breakdown` (voir sa docstring), passée par l'appelant plutôt
+    que refiltrée ici, pour la même raison de ne pas pouvoir diverger. Une
+    seule fenêtre (30d) pour la même raison qu'un seul `by_lead` : un nombre
+    de référence, pas trois versions à interpréter.
+
+    Point à point et non dérivable des MAE journalières : RMSE et R² ne se
+    moyennent pas (contrairement à la MAE, dont la moyenne pondérée par
+    `n_points` est exacte) — il faut les recalculer sur les erreurs
+    individuelles, pas sur des agrégats journaliers déjà réduits.
+
+    R² = 1 - SS_res/SS_tot avec SS_tot = variance des obs de la fenêtre.
+    `None` (jamais NaN/inf dans le JSON) si moins de 2 points ou variance
+    nulle (obs constante sur la fenêtre : SS_tot=0, division impossible).
+
+    Mêmes exclusions que `compute_lead_breakdown` : jour sans `series`
+    (compat historique) ou point sans `obs` valide, silencieusement ignoré.
+    Fenêtre sans aucun point valide -> tout `None`, `n_points` à 0.
+    """
+    obs_vals: list[float] = []
+    ia_vals: list[float] = []
+    baseline_vals: list[float] = []
+    for day in window:
+        series = day.get("series")
+        if not series:
+            continue
+        for point in series:
+            if point.get("obs") is None:
+                continue
+            obs_vals.append(point["obs"])
+            ia_vals.append(point["ia"])
+            baseline_vals.append(point["baseline"])
+
+    n_points = len(obs_vals)
+    if n_points == 0:
+        return {
+            "rmse_ia": None,
+            "rmse_baseline": None,
+            "bias_ia": None,
+            "bias_baseline": None,
+            "r2_ia": None,
+            "r2_baseline": None,
+            "n_points": 0,
+        }
+
+    obs = np.asarray(obs_vals, dtype=float)
+    err_ia = np.asarray(ia_vals, dtype=float) - obs
+    err_baseline = np.asarray(baseline_vals, dtype=float) - obs
+    ss_tot = float(np.sum((obs - obs.mean()) ** 2))
+    can_r2 = n_points >= 2 and ss_tot != 0  # invariant for both models, checked once
+
+    def r2(err: np.ndarray) -> float | None:
+        return round(1 - float(np.sum(err**2)) / ss_tot, 4) if can_r2 else None
+
+    return {
+        "rmse_ia": round(float(np.sqrt(np.mean(err_ia**2))), 4),
+        "rmse_baseline": round(float(np.sqrt(np.mean(err_baseline**2))), 4),
+        "bias_ia": round(float(np.mean(err_ia)), 4),
+        "bias_baseline": round(float(np.mean(err_baseline)), 4),
+        "r2_ia": r2(err_ia),
+        "r2_baseline": r2(err_baseline),
+        "n_points": n_points,
+    }
+
+
 def compute_scores(days: list[dict]) -> dict:
     """MAE aggregates over "ok" days only — a "missing" day must not move them.
 
@@ -370,7 +440,9 @@ def compute_scores(days: list[dict]) -> dict:
     # `scoreboard backfill` rather than scored the day after a live run — the
     # site surfaces this as "dont N jours reconstitués" (résolution 2).
     row = {"n_days": len(ok), "n_days_backfilled": sum(1 for d in ok if d.get("backfilled"))}
-    row["by_lead"] = compute_lead_breakdown(_window_days(ok, _SCORE_WINDOWS["30d"]))
+    window_30d = _window_days(ok, _SCORE_WINDOWS["30d"])
+    row["by_lead"] = compute_lead_breakdown(window_30d)
+    row["metrics_30d"] = compute_window_metrics(window_30d)
     for label, n in _SCORE_WINDOWS.items():
         window = _window_days(ok, n)
         weights = [_score_weight(d) for d in window]
