@@ -149,6 +149,61 @@ def test_wave_evaluation_uses_multiple_rolling_issue_day_folds_and_reports_ci(tm
     assert row["evaluation_ready"] is True
 
 
+def test_a_degenerate_origin_is_dropped_for_every_candidate_and_never_silently(
+    tmp_path, monkeypatch
+):
+    """Two candidates must be scored on the same test rows, or a paired CI is void.
+
+    The first origin here has a train period shorter than its own validation
+    window, so no candidate can be ranked inside it. It must then be unusable for
+    a forced candidate exactly as for the automatic selection — and it must say so.
+    """
+    raw = _raw(days=160)
+    raw["hs_gwam"] = raw["hs"] + 0.02
+    # Forcing gap over the first 112 days: `assemble` drops those issues, so the
+    # first origin keeps far fewer train issue days than the observation history
+    # suggests — the wave-station shape that exposed the asymmetry.
+    raw.loc[raw.index < raw.index[0] + pd.Timedelta(days=112), MULTI_FORCING_COLUMNS] = np.nan
+    monkeypatch.setattr(train, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(train, "SEASONAL_HISTORY_DAYS", 100)
+    monkeypatch.setattr(train, "SEASONAL_STRIDE_DAYS", 10)
+    raw.to_parquet(tmp_path / "synthetic_raw.parquet")
+
+    forced = train.evaluate(STATION, test_days=10, model_names=("ridge",))
+    auto = train.evaluate(STATION, test_days=10, model_names=("ridge", "hgb"))
+
+    assert forced["n_folds"] == auto["n_folds"] < 4
+    assert forced["_test_eval"][1].index.equals(auto["_test_eval"][1].index)
+    assert any("validation" in reason for reason in forced["skipped_origins"])
+    assert forced["skipped_origins"] == auto["skipped_origins"]
+
+
+def test_write_report_publishes_skipped_origins(tmp_path, monkeypatch):
+    """`skipped_origins` must reach the versioned report — not just stdout —
+    without being propagated to `gate.json` (a station's `n_folds` alone can't
+    tell a reader how many origins were planned but dropped)."""
+    raw = _raw(days=160)
+    raw["hs_gwam"] = raw["hs"] + 0.02
+    raw.loc[raw.index < raw.index[0] + pd.Timedelta(days=112), MULTI_FORCING_COLUMNS] = np.nan
+    monkeypatch.setattr(train, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(train, "SEASONAL_HISTORY_DAYS", 100)
+    monkeypatch.setattr(train, "SEASONAL_STRIDE_DAYS", 10)
+    monkeypatch.setattr(train, "REPORT_PATH", tmp_path / "model-eval.md")
+    raw.to_parquet(tmp_path / "synthetic_raw.parquet")
+
+    row = train.evaluate(STATION, test_days=10, model_names=("ridge",))
+    assert row["skipped_origins"]  # the fixture must actually exercise the path
+
+    gate = {row["station"]: {"pass": row["pass"], "weak": row["weak"]}}
+    train.write_report([row], gate)
+    report = train.REPORT_PATH.read_text()
+    for reason in row["skipped_origins"]:
+        assert reason in report
+
+    gate_json = json.loads(json.dumps(train.merge_gate({}, [row], {row["station"]})))
+    assert "skipped_origins" not in gate_json[row["station"]]
+
+
 @pytest.mark.parametrize("holdout_days", [90, 120])
 def test_rolling_origins_keep_whole_issue_days_and_purge_future_rows(holdout_days):
     idx = pd.date_range("2024-01-01", periods=800 * 24, freq="h", tz="UTC")

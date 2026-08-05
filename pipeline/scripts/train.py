@@ -386,6 +386,7 @@ def evaluate(
     fold_ids = []
     fold_models = []
     fold_baselines = []
+    skipped_origins: list[str] = []
     val_scores: dict = {}
     best = model_names[0]
     final_x = final_target = None
@@ -400,19 +401,35 @@ def evaluate(
         target = obs - x["baseline"] if station.kind == "tide" else obs
         baseline_model = fold_baseline
         for train_mask, is_test in test_masks:
+            # An origin is usable, or it is not — the same way for every
+            # candidate. Deciding per run (e.g. only when several candidates
+            # must be ranked) would evaluate `auto` and a forced candidate on
+            # different test rows, and any paired CI between them is then void.
+            # Nothing is ever dropped silently: 29 wave days were once lost that
+            # way (commits ec34e9f, 8ff3f70).
+            day_test = issue_days(x)[is_test]
+            label = str(day_test.min().date()) if len(day_test) else "vide"
+            needed = int(np.ceil(test_days * MIN_FOLD_COVERAGE))
+            reason = None
             if is_test.all() or not is_test.any() or not train_mask.any():
-                continue
-            if station.kind in KIND_MODELS:
-                observed_test_days = len(issue_days(x)[is_test].unique())
-                if observed_test_days < int(np.ceil(test_days * MIN_FOLD_COVERAGE)):
-                    continue
+                reason = "split train/test dégénéré"
+            elif station.kind in KIND_MODELS and len(day_test.unique()) < needed:
+                reason = f"couverture {len(day_test.unique())}/{needed} jours d'émission"
             x_train, target_train, obs_train = x[train_mask], target[train_mask], obs[train_mask]
-            current_val_scores = {}
-            if len(model_names) > 1:
+            if reason is None:
                 val_days = min(test_days, VAL_DAYS_CAP)
                 is_val = split_by_issue_day(x_train, val_days)
                 if is_val.all() or not is_val.any():
-                    continue
+                    reason = (
+                        f"validation interne dégénérée (train plus court que ses "
+                        f"{val_days} jours de validation)"
+                    )
+            if reason is not None:
+                skipped_origins.append(f"{label}: {reason}")
+                print(f"  {station.id}: origine {label} écartée — {reason}")
+                continue
+            current_val_scores = {}
+            if len(model_names) > 1:
                 for name in model_names:
                     m = model.train(x_train[~is_val], target_train[~is_val], name=name)
                     current_val_scores[name] = _score(
@@ -498,6 +515,7 @@ def evaluate(
         "n_test": int(len(x_test)),
         "n_val": int(is_val.sum()) if val_scores else 0,
         "n_folds": len(fold_levels),
+        "skipped_origins": skipped_origins,
         "fold_models": fold_models,
         "fold_baselines": fold_baselines,
         "n_issue_days": n_issue_days,
@@ -813,6 +831,7 @@ def write_report(
         " MAE modèle | Gain affiché | **Gain hors biais** | IC95% gain | Protocole | Verdict |",
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
+    n_skipped = sum(len(r.get("skipped_origins", [])) for r in rows)
     for r in rows:
         production_baseline = r["baseline_model"] or "harmonique"
         test_baselines = ", ".join(
@@ -833,6 +852,20 @@ def write_report(
             f"({r.get('n_folds', 1)}×{r['test_days']}j) | "
             f"{_verdict(r).replace('*', r'\*')} |"
         )
+    if n_skipped:
+        lines += [
+            "",
+            f"**{n_skipped} origine(s) rolling écartée(s) avant de compter dans `n_folds` "
+            "ci-dessus** — une origine prévue par le calendrier saisonnier mais dont le "
+            "split train/test ou la couverture ne suffisait pas (voir `_origin_split` / "
+            "`MIN_FOLD_COVERAGE`) :",
+            "",
+        ]
+        lines += [
+            f"   * `{r['station']}` : {'; '.join(r['skipped_origins'])}"
+            for r in rows
+            if r.get("skipped_origins")
+        ]
     if skipped:
         lines += [
             "",
