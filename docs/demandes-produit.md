@@ -319,6 +319,29 @@ avec la demande 1 (graphiques).
 
 ---
 
+## 5. Encart causal — expliquer l'écart, pas seulement l'afficher
+
+Demandé le 2026-08-05, à l'issue du chantier filtres/widget/OG.
+
+### Ce qui existe déjà
+
+En partie seulement. La page station a déjà un encart pour le cas « gain
+surtout dû à une correction de biais » (`weak`) et un verdict explicite
+« Suivie — l'IA n'y bat pas encore la physique » pour les stations sous le
+gate.
+
+### Ce qui manque
+
+Un encart **causal** : expliquer pourquoi l'écart est grand tel jour ou
+pourquoi l'IA perd sur telle station — tempête, dégradation par échéance,
+plafond du backfill. Ce n'était pas dans le lot du 2026-08-05 ; c'est un bon
+candidat pour un prochain chantier, d'autant que `by_lead`/`by_lead_90d` et
+les extrêmes publiés donnent déjà la matière pour des explications honnêtes
+**sans LLM** (règles simples : écart concentré sur les leads longs, jour
+d'extrême observé, jours reconstitués vs opérationnels).
+
+---
+
 ## Ordre suggéré
 
 1. Vérifier les premiers jours scorés non reconstitués.

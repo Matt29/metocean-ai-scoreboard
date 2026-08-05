@@ -219,8 +219,8 @@
   <h1>Dashboard de management — Metocean AI Scoreboard</h1>
   <div class="subtitle">Généré le 2026-08-05 · croise 5 plans de développement avec l'état réel du dépôt (git log, code, docs/review_codex_2026-08-05.md)</div>
   <div class="global-bar-row">
-    <div class="bar-track"><div class="bar-fill" style="width:68%"></div></div>
-    <div class="bar-label">≈68 % des items planifiés faits ou en cours</div>
+    <div class="bar-track"><div class="bar-fill" style="width:67%"></div></div>
+    <div class="bar-label">≈67 % des items planifiés faits ou en cours (45/67)</div>
   </div>
   <div class="legend">
     <span><span class="dot" style="background:var(--green)"></span>fait</span>
@@ -239,8 +239,8 @@
     <span class="plan-source">docs/plan_dev_gemini.md</span>
   </div>
   <div class="plan-bar-row">
-    <div class="bar-track"><div class="bar-fill" style="width:50%"></div></div>
-    <div class="bar-label">≈50 %</div>
+    <div class="bar-track"><div class="bar-fill" style="width:56%"></div></div>
+    <div class="bar-label">≈56 %</div>
   </div>
   <p class="plan-note">Export identique du PDF interne (plan_developpement_scoreboard_metocean.pdf). Axe 1 = SEO/technique, Axe 2 = UX/métriques, Axe 3 = diffusion/inbound, Axe 4 = offres B2B. Le fichier porte lui-même une section « Avancement » à jour au 2026-08-05, reprise ici.</p>
 
@@ -248,7 +248,7 @@
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 1 — Monitor &amp; badge de fraîcheur (horodatage UTC du run + statut par station)</span><span class="task-note">commit 934a15a — contrat ; consommé site ODC commit 602584a</span></div></li>
     <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 1 — Migration SSG/ISR du rendu (aujourd'hui SPA React côté site ODC)</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 1 — Open Graph dynamique par station (image 1200×630)</span><span class="task-note">pipeline/src/scoreboard/og.py, étape "og images" dans .github/workflows/daily.yml</span></div></li>
-    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 1 — Canonical distinct par sous-page station (SEO)</span><span class="badge confirm">à confirmer</span><span class="task-note">non vérifié sur le site ODC dans ce passage</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 1 — Canonical distinct par sous-page station (SEO)</span><span class="task-note">livré 2026-08-05 — Seo par station (canonical /scoreboard/&lt;id&gt;, méta, og:image, JSON-LD Dataset), commit ee89ff2 côté site</span></div></li>
 
     <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 2.1 — Carte interactive MapLibre/Leaflet vectorielle</span><span class="badge decision">décision : non retenue</span><span class="task-note">le SVG maison suffit — 8 stations, zéro dépendance ; carte SVG déjà livrée (commit 2bb8635 côté site)</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 2.1 — Code couleur vert/rouge/gris carte + tableau, jamais couleur seule</span><span class="task-note">site ODC, commit 602584a</span></div></li>
@@ -338,6 +338,7 @@
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">4. Archivage des observations bouées MF (cron quotidien)</span><span class="task-note">sources/mfbuoy.py, data_obs_archive/, commit 8bbcd05 ; 8 bouées exploitables confirmées</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">4. Carte interactive du réseau (bouées + stations)</span><span class="task-note">SVG maison, commit 2bb8635 côté site — ne dépend d'aucun modèle</span></div></li>
     <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">4. Inscription des bouées MF comme stations wave scorées à part entière</span><span class="task-note">bloqué jusqu'à ~2-3 mois d'obs archivées → entraînement Méditerranée visé 2026-10/11</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">5. Encart causal — expliquer pourquoi l'écart est grand tel jour ou pourquoi l'IA perd sur telle station (tempête, dégradation par échéance, plafond du backfill)</span><span class="task-note">demandé 2026-08-05 ; partiel : encarts « weak » et « sous le gate » existent déjà — by_lead/by_lead_90d et les extrêmes publiés donnent la matière pour des règles honnêtes sans LLM</span></div></li>
   </ul>
 </section>
 
@@ -415,11 +416,11 @@
   <ol class="reste-list">
     <li>Réentraîner sur les vraies prévisions archivées (data_forecast_archive/) — le levier identifié comme le plus fort pour sortir les chiffres wave/tide du régime « plafond reconstitué ».<span class="src">demandes-produit.md § 2</span></li>
     <li>Graphiques enrichis (vue multi-stations, distinction jours reconstitués/opérationnels, dispersion de l'erreur) — dizaine de jours de scoring non-backfilled désormais accumulés depuis le 2026-08-04, préalable proche d'être levé.<span class="src">demandes-produit.md § 1</span></li>
+    <li>Encart causal sur la page station — expliquer pourquoi l'écart est grand tel jour ou pourquoi l'IA perd (tempête, dégradation par échéance, plafond du backfill) ; by_lead/by_lead_90d et les extrêmes publiés donnent la matière, sans LLM.<span class="src">demandes-produit.md § 5</span></li>
     <li>Accumuler l'historique wave jusqu'à 730 j pour le protocole rolling-origin complet (wind déjà à ~914 j).<span class="src">review_codex_2026-08-05.md § 6</span></li>
     <li>Inscrire les bouées Météo-France comme stations wave scorées (stations.toml, gate, dispatch de source) — bloqué jusqu'à ~2-3 mois d'obs archivées, entraînement Méditerranée visé 2026-10/11.<span class="src">demandes-produit.md § 4</span></li>
     <li>Tester d'autres modèles ML (ridge plancher honnête, un modèle par lead) — après stabilisation du cron.<span class="src">mémoire projet</span></li>
     <li>Rouvrir l'arbitrage trend=False à la cadence de refit réelle (30 j) — 2,6 points potentiels non re-mesurés dans ce régime.<span class="src">plan-dev-modele.md § Constantes harmoniques</span></li>
-    <li>Canonical distinct par sous-page station (SEO) — à confirmer, non vérifié dans ce passage.<span class="src">plan_dev_gemini.md § AXE 1 — à confirmer</span></li>
     <li>Migration SSG/ISR du rendu (le site reste une SPA React côté client).<span class="src">plan_dev_gemini.md § AXE 1</span></li>
     <li>Widget « Verified by » — livré et vérifié ; reste la mise en avant / prospection pour en faire un canal d'acquisition réel.<span class="src">plan_dev_gemini.md § AXE 3</span></li>
     <li>Baromètre trimestriel / mensuel (posts LinkedIn d'impact lors d'événements métocéaniques).<span class="src">plan_dev_gemini.md § AXE 3</span></li>
