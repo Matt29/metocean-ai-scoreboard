@@ -555,6 +555,81 @@ def test_compute_scores_carries_metrics_30d():
     assert row["metrics_30d"]["n_points"] == 1
 
 
+# --- fenêtre 90d : ajout strictement additif au contrat ---------------------
+
+
+def _scored_hour_day(date_str, mae_ia, mae_baseline, obs, ia, baseline):
+    """Un jour "ok" d'une heure, émis à `date_str` 06:00 UTC, point à H+6."""
+    return {
+        "date": date_str,
+        "status": "ok",
+        "mae_ia": mae_ia,
+        "mae_baseline": mae_baseline,
+        "n_points": 1,
+        "series": [{"t": f"{date_str}T12:00:00Z", "obs": obs, "ia": ia, "baseline": baseline}],
+    }
+
+
+def test_90d_window_is_wider_than_30d_and_narrower_than_all():
+    """Trois jours : dans les 30 j, entre 30 et 90 j, au-delà de 90 j."""
+    days = [
+        _ok_day("2026-03-01", 9.0, 9.0),  # > 90 jours avant l'ancre
+        _ok_day("2026-06-20", 3.0, 4.0),  # 40 jours avant l'ancre
+        _ok_day("2026-07-30", 1.0, 2.0),  # ancre
+    ]
+
+    row = publish.compute_scores(days)
+
+    assert row["mae_ia_30d"] == 1.0
+    assert row["mae_ia_90d"] == 2.0  # (3.0 + 1.0) / 2, le jour de mars exclu
+    assert row["mae_baseline_90d"] == 3.0
+    assert row["mae_ia_all"] == round((9.0 + 3.0 + 1.0) / 3, 4)
+
+
+def test_by_lead_90d_and_metrics_90d_cover_the_90d_window():
+    """Un jour hors 30 j mais dans 90 j compte pour les breakdowns 90d seuls."""
+    recent = _scored_hour_day("2026-07-30", 0.1, 0.2, obs=1.0, ia=1.1, baseline=1.2)
+    mid = _scored_hour_day("2026-06-20", 0.5, 0.6, obs=2.0, ia=2.5, baseline=2.6)
+
+    row = publish.compute_scores([mid, recent])
+
+    assert row["by_lead"]["h06"]["n_points"] == 1
+    assert row["by_lead_90d"]["h06"]["n_points"] == 2
+    assert row["by_lead_90d"]["h06"]["mae_ia"] == pytest.approx((0.1 + 0.5) / 2)
+    assert row["metrics_30d"]["n_points"] == 1
+    assert row["metrics_90d"]["n_points"] == 2
+    assert row["metrics_90d"] == publish.compute_window_metrics([mid, recent])
+
+
+def test_90d_window_degrades_cleanly_on_a_short_history():
+    """~31 jours d'historique : la fenêtre 90d vaut la fenêtre "all", sans NaN.
+
+    C'est l'état réel du corpus aujourd'hui — le contrat doit être publiable
+    tel quel, pas attendre d'avoir 90 jours.
+    """
+    days = [_ok_day(f"2026-07-{d:02d}", 0.1 * d, 0.2 * d) for d in range(1, 32)]
+    days.append(_scored_hour_day("2026-07-30", 0.1, 0.2, obs=1.0, ia=1.1, baseline=1.2))
+    days = {d["date"]: d for d in days}  # le jour avec series remplace le 30
+    row = publish.compute_scores(list(days.values()))
+
+    assert row["mae_ia_90d"] == row["mae_ia_all"]
+    assert row["mae_baseline_90d"] == row["mae_baseline_all"]
+    assert row["by_lead_90d"] == row["by_lead"]  # < 30 j d'écart : mêmes jours
+    assert row["metrics_90d"]["n_points"] == 1  # un seul jour porte une series
+    # Sérialisable : ni NaN ni inf, que JSON refuserait de relire.
+    assert "NaN" not in json.dumps(row)
+
+
+def test_90d_fields_are_present_even_with_an_empty_history():
+    row = publish.compute_scores([])
+
+    assert row["mae_ia_90d"] is None
+    assert row["mae_baseline_90d"] is None
+    assert row["metrics_90d"]["n_points"] == 0
+    for label in publish.LEAD_BUCKETS:
+        assert row["by_lead_90d"][label] == {"mae_ia": None, "mae_baseline": None, "n_points": 0}
+
+
 def test_station_entry_publishes_the_unit_of_its_kind(tmp_path):
     """`unit` est une donnée publique : une station de vent servie en mètres est
     une erreur de fait, pas un détail d'affichage."""

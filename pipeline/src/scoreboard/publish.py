@@ -11,12 +11,20 @@ consumer (the website, a separate repo) can detect a breaking change:
                                  "n_points"?}]}   (90d max)
     data/scores.json            {"updated","stations":[{"id","status","n_days",
                                  "mae_ia_7d","mae_baseline_7d","mae_ia_30d",
-                                 "mae_baseline_30d","mae_ia_all","mae_baseline_all",
-                                 "by_lead":{"h06"|"h12"|"h24"|"h48":
+                                 "mae_baseline_30d","mae_ia_90d","mae_baseline_90d",
+                                 "mae_ia_all","mae_baseline_all",
+                                 "by_lead"|"by_lead_90d":{"h06"|"h12"|"h24"|"h48":
                                  {"mae_ia","mae_baseline","n_points"}},
-                                 "metrics_30d":{"rmse_ia","rmse_baseline",
+                                 "metrics_30d"|"metrics_90d":{"rmse_ia","rmse_baseline",
                                  "bias_ia","bias_baseline","r2_ia","r2_baseline",
                                  "n_points"}}]}
+
+Les champs `*_90d` (`mae_ia_90d`, `mae_baseline_90d`, `by_lead_90d`,
+`metrics_90d`) sont *additifs* : même forme et mêmes règles de dégradation que
+leurs homologues 30d, `schema_version` inchangé (voir `write_latest`). Tant que
+l'historique est plus court que 90 jours, la fenêtre 90d contient simplement
+tous les jours disponibles — `n_points` dit alors la vérité, et une fenêtre
+vide vaut `None`, jamais NaN.
 
 Plus un cinquième fichier, écrit par une autre commande (`archive-obs`, pas
 `daily`) et volontairement hors du contrat des stations :
@@ -67,7 +75,10 @@ from scoreboard.config import Station
 SCHEMA_VERSION = 1
 MAX_HISTORY_DAYS = 90
 # Window sizes in calendar days (not "ok" day counts) — see compute_scores().
-_SCORE_WINDOWS = {"7d": 7, "30d": 30, "all": None}
+_SCORE_WINDOWS = {"7d": 7, "30d": 30, "90d": 90, "all": None}
+# Windows getting a point-by-point `by_lead`/`metrics` breakdown, and the
+# suffix their keys carry. "30d" keeps its historical unsuffixed `by_lead`.
+_BREAKDOWN_WINDOWS = {"30d": "", "90d": "_90d"}
 # Emission instant of a day's issue, UTC hour — must match daily.ISSUE_HOUR.
 # Duplicated rather than imported: `daily` imports `publish`, not the reverse,
 # and this module has no other reason to depend on the orchestrator.
@@ -319,12 +330,11 @@ def compute_lead_breakdown(window: list[dict]) -> dict:
     `window` is the already-filtered, already-windowed day list — the *same
     list* `compute_scores` builds for its "30d" column (`_ok_days_current_baseline`
     + `_window_days`), passed through rather than re-derived here, so the two
-    cannot drift on what counts as a comparable day. A single window rather
-    than one bucket set per window size: the station page needs one
-    representative decomposition, and publishing three would triple the
-    contract for a number nobody reads three ways — 30d is the one already
-    used as the site's headline gain, and legibility of the contract wins
-    over exhaustiveness here.
+    cannot drift on what counts as a comparable day. Publié pour deux fenêtres
+    seulement (`by_lead` = 30d, `by_lead_90d` = 90d, cf. `_BREAKDOWN_WINDOWS`) :
+    30d reste la fenêtre du gain affiché en tête de site, 90d donne le recul
+    saisonnier. Pas de version 7d ni "all" — la lisibilité du contrat prime
+    sur l'exhaustivité.
 
     Un point = une voix, cohérent avec le poids `n_points` des scores
     agrégés : ce n'est pas une MAE journalière repondérée, c'est une MAE
@@ -368,12 +378,11 @@ def compute_lead_breakdown(window: list[dict]) -> dict:
 
 
 def compute_window_metrics(window: list[dict]) -> dict:
-    """`metrics_30d` : RMSE, biais moyen signé (IA/baseline moins obs) et R²,
-    calculés point à point sur `window` — la *même* liste 30d que
+    """`metrics_30d`/`metrics_90d` : RMSE, biais moyen signé (IA/baseline moins
+    obs) et R², calculés point à point sur `window` — la *même* liste que
     `compute_lead_breakdown` (voir sa docstring), passée par l'appelant plutôt
-    que refiltrée ici, pour la même raison de ne pas pouvoir diverger. Une
-    seule fenêtre (30d) pour la même raison qu'un seul `by_lead` : un nombre
-    de référence, pas trois versions à interpréter.
+    que refiltrée ici, pour la même raison de ne pas pouvoir diverger. Mêmes
+    deux fenêtres que `by_lead`, et pas une de plus.
 
     Point à point et non dérivable des MAE journalières : RMSE et R² ne se
     moyennent pas (contrairement à la MAE, dont la moyenne pondérée par
@@ -462,9 +471,10 @@ def compute_scores(days: list[dict]) -> dict:
     # `scoreboard backfill` rather than scored the day after a live run — the
     # site surfaces this as "dont N jours reconstitués" (résolution 2).
     row = {"n_days": len(ok), "n_days_backfilled": sum(1 for d in ok if d.get("backfilled"))}
-    window_30d = _window_days(ok, _SCORE_WINDOWS["30d"])
-    row["by_lead"] = compute_lead_breakdown(window_30d)
-    row["metrics_30d"] = compute_window_metrics(window_30d)
+    for label, suffix in _BREAKDOWN_WINDOWS.items():
+        window = _window_days(ok, _SCORE_WINDOWS[label])
+        row[f"by_lead{suffix}"] = compute_lead_breakdown(window)
+        row[f"metrics_{label}"] = compute_window_metrics(window)
     for label, n in _SCORE_WINDOWS.items():
         window = _window_days(ok, n)
         weights = [_score_weight(d) for d in window]
