@@ -219,8 +219,8 @@
   <h1>Dashboard de management — Metocean AI Scoreboard</h1>
   <div class="subtitle">Mis à jour le 2026-08-05 (clôture du chantier du jour) · croise 5 plans de développement avec l'état réel du dépôt (git log, code, docs/review_codex_2026-08-05.md)</div>
   <div class="global-bar-row">
-    <div class="bar-track"><div class="bar-fill" style="width:77%"></div></div>
-    <div class="bar-label">≈77 % des items planifiés faits ou en cours (56/73)</div>
+    <div class="bar-track"><div class="bar-fill" style="width:76%"></div></div>
+    <div class="bar-label">≈76 % des items planifiés faits ou en cours (56/74)</div>
   </div>
   <div class="legend">
     <span><span class="dot" style="background:var(--green)"></span>fait</span>
@@ -239,8 +239,8 @@
     <span class="plan-source">docs/plan_dev_gemini.md</span>
   </div>
   <div class="plan-bar-row">
-    <div class="bar-track"><div class="bar-fill" style="width:58%"></div></div>
-    <div class="bar-label">≈58 %</div>
+    <div class="bar-track"><div class="bar-fill" style="width:55%"></div></div>
+    <div class="bar-label">≈55 %</div>
   </div>
   <p class="plan-note">Export identique du PDF interne (plan_developpement_scoreboard_metocean.pdf). Axe 1 = SEO/technique, Axe 2 = UX/métriques, Axe 3 = diffusion/inbound, Axe 4 = offres B2B. Le fichier porte lui-même une section « Avancement » à jour au 2026-08-05, reprise ici.</p>
 
@@ -258,8 +258,9 @@
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 2.2 — Filtres temporels interactifs 7/30/90 j</span><span class="task-note">bascule 7/30/90 livrée côté site ODC — vérifiée</span></div></li>
 
     <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 3 — Baromètre trimestriel / mensuel (posts LinkedIn d'impact)</span></div></li>
-    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 3 — Post LinkedIn de méthode (premier post)</span><span class="task-note">angle retenu : la méthode, pas le chiffre — 30-31 j sur 32 sont reconstitués, un post de performance serait démenti par le site lui-même. Trois preuves non copiables : cherbourg publiée comme non-publiée (gate débiaisé +3,0 % &lt; 5 %), saint-malo à +8,4 % avec plafond assumé et diagnostiqué (docs/plan-dev-modele.md § Réserves), distinction reconstitué/opérationnel affichée sur les graphes (T4a). Post n°2 plus tard, quand des jours opérationnels existeront : cherbourg-vent (1,48 → 1,12 m/s) et les fenêtres de transfert CTV en éolien offshore</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 3 — Post LinkedIn n°1 : « combien vaut vraiment un post-traitement IA ? »</span><span class="task-note">angle recalé 2026-08-05 (design validé) : la mesure ridge vs gradient boosting du 2026-08-05, pas « la méthode » en général — anti-hype, indépendant des jours opérationnels manquants. Objectif rendu explicite : des missions de conseil entrantes, pas des vues ; le scoreboard est la démo publique du Service 01 vendu sur le site. Cadence : au fil des résultats, sans calendrier, compensée par cinq déclencheurs observables dans des fichiers que le pipeline publie déjà — aucun n'est automatisé, délibérément : (1) premier mois opérationnel, n_days_backfilled / n_days sous 50 % sur une station — déclencheur majeur à ~1 mois, débloque l'angle « fenêtres de transfert CTV en éolien offshore » sur cherbourg-vent ; (2) événement extrême à fort écart IA/physique (extremes.json) ; (3) réserve fermée ou résultat négatif — le plafond saint-malo du 2026-08-05 en est un ; (4) panne trouvée et corrigée — matière réservée à un lectorat technique ; (5) station qui bascule publiée ↔ non publiée. Texte du post pas encore écrit. Voir docs/superpowers/specs/2026-08-05-axe-editorial-design.md</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 3 — Widget intégrable « Verified by »</span><span class="task-note">ScoreboardWidgetPage.jsx routé (/scoreboard/widget/:stationId), snippet documenté sur la page méthode — vérifié</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 3 — Widget « Verified by » : corriger la prémisse « backlinks SEO »</span><span class="task-note">vérifié 2026-08-05 dans ScoreboardWidgetPage.jsx (repo site) : le lien du badge (href={homeHref}) vit à l'intérieur de l'iframe, donc sur oceandataconsulting.fr lui-même — une intégration tierce ne crée aucun backlink. Correction en cours (repo site, hors périmètre de ce dépôt) : une ligne d'attribution &lt;a href&gt; visible hors iframe dans le snippet de la page méthode. Prospection d'intégrateurs (capitaineries, portails météo, clubs nautiques) explicitement hors périmètre éditorial. Voir docs/superpowers/specs/2026-08-05-axe-editorial-design.md § Widget</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 3 — Export CSV des séries par station</span><span class="task-note">series.csv — commit e4f342c</span></div></li>
     <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 3 — Capture de leads qualifiés (email pro contre export/API)</span></div></li>
 
@@ -421,11 +422,11 @@
   <p class="plan-note">Réécrite le 2026-08-05 : les items soldés du 2026-08-05 (graphiques enrichis, SSG, réserve saint-malo) sont retirés de cette liste — ils sont cochés dans les sections ci-dessus. Priorité déduite des préalables déjà levés, de l'ordre suggéré dans demandes-produit.md et de ce qui bloque le reste.</p>
   <ol class="reste-list">
     <li>Réentraîner sur les vraies prévisions archivées (data_forecast_archive/) — le levier identifié comme le plus fort pour sortir les métriques du régime « plafond reconstitué » (30-31 j/32 sont `backfilled: true` sur toutes les stations publiées). Voir <a href="biais-forcage-jours-reconstitues.html" style="color:var(--accent)">docs/biais-forcage-jours-reconstitues.html</a> pour le mécanisme exact : le skew ERA5 est fermé (2026-08-04), houle et vent restent volontairement sur l'archive « runs frais » (le gain est un rapport, le biais tombe des deux côtés).<span class="src">demandes-produit.md § 2</span></li>
+    <li>Post LinkedIn n°1 — angle recalé : « combien vaut vraiment un post-traitement IA ? » (mesure ridge vs gradient boosting du 2026-08-05), pas la méthode en général ; objectif explicite : missions de conseil entrantes. Ne dépend pas des jours opérationnels manquants, donc jouable maintenant. Cadence au fil des résultats ; les cinq déclencheurs sont inscrits sous AXE 3 ci-dessus, aucun automatisé.<span class="src">docs/superpowers/specs/2026-08-05-axe-editorial-design.md</span></li>
+    <li>Widget « Verified by » — livré et vérifié côté fonctionnalité ; la prémisse « backlinks SEO » du plan est fausse en l'état (le lien du badge vit dans l'iframe, donc sur notre propre domaine). Correction (ligne d'attribution hors iframe) en cours dans le repo du site. Prospection d'intégrateurs hors périmètre éditorial.<span class="src">docs/superpowers/specs/2026-08-05-axe-editorial-design.md § Widget</span></li>
     <li>Accumuler l'historique wave jusqu'à 730 j pour le protocole rolling-origin complet (wind déjà à ~914 j) — les 4 stations wave sont en holdout dégradé (1 à 3 folds sur 4), donc `evaluation_ready = false` : aucune n'est publiable dans ce nouveau protocole en l'état.<span class="src">review_codex_2026-08-05.md § 6 · plan-dev-modele.md § Ridge</span></li>
     <li>Inscrire les bouées Météo-France comme stations wave scorées (stations.toml, gate, dispatch de source) — bloqué jusqu'à ~2-3 mois d'obs archivées, entraînement Méditerranée visé 2026-10/11.<span class="src">demandes-produit.md § 4</span></li>
-    <li>Post LinkedIn de méthode (angle : la méthode, pas le chiffre) — voir la ligne dédiée sous AXE 3 ci-dessus pour les trois preuves retenues.<span class="src">plan_dev_gemini.md § AXE 3</span></li>
-    <li>Widget « Verified by » — livré et vérifié ; reste la mise en avant / prospection pour en faire un canal d'acquisition réel.<span class="src">plan_dev_gemini.md § AXE 3</span></li>
-    <li>Baromètre trimestriel / mensuel (posts LinkedIn d'impact lors d'événements métocéaniques) — après le post de méthode ci-dessus.<span class="src">plan_dev_gemini.md § AXE 3</span></li>
+    <li>Baromètre trimestriel / mensuel (posts LinkedIn d'impact lors d'événements métocéaniques) — après le post n°1 ci-dessus.<span class="src">plan_dev_gemini.md § AXE 3</span></li>
     <li>Capture de leads qualifiés (email professionnel contre export CSV / accès API).<span class="src">plan_dev_gemini.md § AXE 3</span></li>
     <li>Envisager un block bootstrap multi-jours pour l'autocorrélation météo inter-journalière, si le besoin se confirme.<span class="src">review_codex_2026-08-05.md § 6</span></li>
     <li>Offres B2B (Private Scoreboard, Forecast API, Risk &amp; Uncertainty Engine, On-Premise) — placées Q1/Q2 2027 dans le planning, aucun avancement rapporté.<span class="src">plan_dev_gemini.md § AXE 4</span></li>
