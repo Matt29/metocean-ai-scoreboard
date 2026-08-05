@@ -668,3 +668,63 @@ def test_write_extremes_reads_history_for_each_station(tmp_path):
 
     on_disk = json.loads((tmp_path / "extremes.json").read_text())
     assert on_disk == payload
+
+
+# --- series.csv: lead magnet export ---------------------------------------
+
+
+def test_series_csv_content_header_lead_h_and_empty_baseline_model_for_tide():
+    days = [
+        _day_with_series("2026-07-29", [
+            {"t": "2026-07-29T18:00:00Z", "obs": 2.0, "ia": 2.1, "baseline": 1.9},
+            {"t": "2026-07-29T07:00:00Z", "obs": 1.0, "ia": 1.2, "baseline": 0.8},
+        ]),  # no baseline_model: tide-like
+        {"date": "2026-07-30", "status": "missing"},
+    ]
+
+    text = publish.compute_series_csv(days)
+
+    assert text == (
+        "date,t,lead_h,obs,ia,baseline,baseline_model\n"
+        "2026-07-29,2026-07-29T07:00:00Z,1,1.0,1.2,0.8,\n"
+        "2026-07-29,2026-07-29T18:00:00Z,12,2.0,2.1,1.9,\n"
+    )
+
+
+def test_series_csv_sorts_across_days_by_t_and_keeps_baseline_model():
+    days = [
+        _day_with_series("2026-07-30", [
+            {"t": "2026-07-30T07:00:00Z", "obs": 3.0, "ia": 3.1, "baseline": 2.9},
+        ], baseline_model="ewam"),
+        _day_with_series("2026-07-29", [
+            {"t": "2026-07-29T07:00:00Z", "obs": 1.0, "ia": 1.1, "baseline": 0.9},
+        ], baseline_model="ewam"),
+    ]
+
+    text = publish.compute_series_csv(days)
+
+    assert text == (
+        "date,t,lead_h,obs,ia,baseline,baseline_model\n"
+        "2026-07-29,2026-07-29T07:00:00Z,1,1.0,1.1,0.9,ewam\n"
+        "2026-07-30,2026-07-30T07:00:00Z,1,3.0,3.1,2.9,ewam\n"
+    )
+
+
+def test_write_series_csv_is_idempotent_byte_for_byte(tmp_path):
+    publish.upsert_history(tmp_path, "a", _day_with_series(
+        "2026-07-30", [{"t": "2026-07-30T07:00:00Z", "obs": 2.0, "ia": 2.1, "baseline": 1.9}], baseline_model="ewam"
+    ))
+
+    first = publish.write_series_csv(tmp_path, "a")
+    on_disk_first = (tmp_path / "a" / "series.csv").read_text()
+    second = publish.write_series_csv(tmp_path, "a")
+    on_disk_second = (tmp_path / "a" / "series.csv").read_text()
+
+    assert first == second == on_disk_first == on_disk_second
+
+
+def test_write_series_csv_header_only_when_no_history(tmp_path):
+    text = publish.write_series_csv(tmp_path, "empty-station")
+
+    assert text == "date,t,lead_h,obs,ia,baseline,baseline_model\n"
+    assert (tmp_path / "empty-station" / "series.csv").read_text() == text

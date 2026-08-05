@@ -32,6 +32,14 @@ séparé de lui (pas question de gonfler `scores.json` avec des séries) :
                                  "baseline_at_peak","peak_error_ia",
                                  "peak_error_baseline","baseline_model"?}]}]}
 
+Et un septième, écrit par `daily` juste après `extremes.json`, hors contrat
+JSON versionné (pas de `schema_version`, le site le télécharge tel quel plutôt
+que de le désérialiser comme les fichiers ci-dessus) — le lead magnet CSV :
+
+    data/<id>/series.csv        date,t,lead_h,obs,ia,baseline,baseline_model —
+                                 une ligne par point des jours "ok" de
+                                 l'historique complet, triée par `t` croissant.
+
 `published`/`weak` on every station entry come straight from `models/gate.json`
 (read by the caller, passed in here) — a `pass: false` station is still listed
 (the site can say "tracked, not yet beating the baseline") but never gets a
@@ -44,6 +52,8 @@ to read.
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 import tempfile
@@ -73,7 +83,7 @@ def score_day(obs, pred_ia, pred_baseline) -> tuple[float, float]:
     return float(np.abs(ia - obs).mean()), float(np.abs(baseline - obs).mean())
 
 
-def _atomic_write(path: Path, payload: dict) -> None:
+def _atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # A unique tmp name (not a fixed `<file>.tmp` sibling) so a crash between
     # write and rename never leaves a stale, colliding file for the next run
@@ -82,11 +92,15 @@ def _atomic_write(path: Path, payload: dict) -> None:
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
-            f.write(json.dumps(payload, indent=2) + "\n")
+            f.write(text)
         os.replace(tmp_name, path)  # atomic within the same directory/filesystem
     except BaseException:
         Path(tmp_name).unlink(missing_ok=True)
         raise
+
+
+def _atomic_write(path: Path, payload: dict) -> None:
+    _atomic_write_text(path, json.dumps(payload, indent=2) + "\n")
 
 
 def _read(path: Path) -> dict | None:
@@ -566,3 +580,54 @@ def write_extremes(out_dir: Path, station_ids: list[str], updated: str) -> dict:
     payload = {"schema_version": SCHEMA_VERSION, "updated": updated, "stations": rows}
     _atomic_write(out_dir / "extremes.json", payload)
     return payload
+
+
+SERIES_CSV_HEADER = ("date", "t", "lead_h", "obs", "ia", "baseline", "baseline_model")
+
+
+def compute_series_csv(days: list[dict]) -> str:
+    """`series.csv` text for one station's full history — every point of every
+    `status=="ok"` day, sorted by `t` ascending. Pure/no I/O, mirroring
+    `compute_extreme_episodes`, so `write_series_csv` and tests share one
+    source of truth for the content.
+
+    `lead_h` is the point's `t` minus that day's issue instant (`date` +
+    `_ISSUE_HOUR` UTC), rounded to the nearest hour — same definition as
+    `compute_lead_breakdown`. `baseline_model` is the day's own, or the empty
+    string when absent (tide, or a history written before Task 6): a CSV has
+    no `null`, and an empty cell reads unambiguously as "no named model" to a
+    spreadsheet.
+    """
+    rows = []
+    for day in days:
+        if day.get("status") != "ok":
+            continue
+        issued = datetime.combine(date.fromisoformat(day["date"]), datetime.min.time(), timezone.utc)
+        issued += timedelta(hours=_ISSUE_HOUR)
+        baseline_model = day.get("baseline_model", "")
+        for point in day.get("series") or []:
+            lead_h = round((datetime.fromisoformat(point["t"]) - issued).total_seconds() / 3600)
+            rows.append(
+                (day["date"], point["t"], lead_h, point.get("obs"), point["ia"], point["baseline"], baseline_model)
+            )
+    rows.sort(key=lambda r: r[1])
+
+    buf = io.StringIO(newline="")
+    writer = csv.writer(buf, lineterminator="\n")
+    writer.writerow(SERIES_CSV_HEADER)
+    writer.writerows(rows)
+    return buf.getvalue()
+
+
+def write_series_csv(out_dir: Path, station_id: str) -> str:
+    """`data/<id>/series.csv` — the lead-magnet export, recomputed from the
+    station's on-disk `history.json` (empty history -> header-only file, not
+    an error: `daily.run()` calls this for every published station right
+    after `write_extremes`, whether or not that station has history yet).
+    Hors contrat JSON (voir docstring de module) : le site le télécharge tel
+    quel, il ne le désérialise pas comme les autres fichiers d'ici.
+    """
+    history = _read(out_dir / station_id / "history.json")
+    text = compute_series_csv(history["days"] if history else [])
+    _atomic_write_text(out_dir / station_id / "series.csv", text)
+    return text

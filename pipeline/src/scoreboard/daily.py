@@ -639,6 +639,11 @@ def run(
     # that also gained a peak day would leave extremes.json stale until the
     # next daily run — an acceptable lag, extremes are not backfill's job.
     publish.write_extremes(out_dir, [s.id for s in published], issued)
+    # Lead magnet CSV, same "not backfill's job" reasoning as `write_extremes`
+    # above (see its comment) — one per published station, from the same
+    # on-disk history just updated.
+    for st in published:
+        publish.write_series_csv(out_dir, st.id)
     if published and not any(result["status"] == "ok" for result in summary.values()):
         raise DailyRunError(run_date, summary)
     return summary
