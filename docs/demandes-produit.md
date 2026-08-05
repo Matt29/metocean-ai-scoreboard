@@ -6,10 +6,18 @@ même chose — ce que les données autorisent aujourd'hui à affirmer.
 
 ---
 
-## 1. Graphiques enrichis : séries temporelles, prévisions, écart IA / physique
+## 1. Graphiques enrichis : séries temporelles, prévisions, écart IA / physique — ✅ soldée le 2026-08-05
 
 **Demande.** « De beaux graphiques qui montrent les séries temporelles, les
 prévisions, et l'écart entre IA et modèle, et comment ça améliore. »
+
+**Cette section décrivait le pipeline d'avant le 2026-08-04 (analyse MFWAM +
+vent ERA5 de réanalyse pour les jours reconstitués) et n'a pas été recalée à
+temps.** C'est la cause directe de deux explications fausses données le
+2026-08-05 en s'appuyant dessus. Le paragraphe « Le blocage » ci-dessous reste
+pour mémoire, barré, plutôt que réécrit sans trace — le mécanisme réel et à
+jour est documenté dans
+[`docs/biais-forcage-jours-reconstitues.html`](biais-forcage-jours-reconstitues.html).
 
 ### Ce qui existe déjà
 
@@ -24,11 +32,21 @@ opérationnels — trame diagonale sur les périodes reconstituées dans
 sur la fenêtre affichée (7/30/90 j). Le badge « Reconstitué » du tableau
 quotidien existait déjà.
 
-Il manque encore : une vue d'ensemble multi-stations, et une lecture de la
-distribution de l'erreur plutôt que de sa seule moyenne. §1 n'est donc **pas**
-soldée — deux des trois sous-features restent à faire.
+**Livré le 2026-08-05 (T1)** : les deux sous-features restantes.
+`compute_lead_breakdown` (pipeline) émet désormais `p50_ia`/`p90_ia`/
+`p50_baseline`/`p90_baseline` par tranche d'échéance (quantiles de l'erreur
+absolue, `np.quantile` method="linear") — moustaches p50→p90 sur
+`LeadTimeChart.jsx`, forme et non couleur seule. `compute_scores` émet
+`daily_30d` (MAE quotidienne sur 30 j par station) — nouvelle colonne
+« Tendance 30 j » avec `Sparkline.jsx` dans `ScoreboardTable.jsx`, vue
+d'ensemble multi-stations sans charger un `history.json` par station. Champs
+additifs, `schema_version` inchangé. La mention « reconstitué » est propagée
+aux deux, au même seuil que `causalNotes.backfill-ceiling`.
 
-### Le blocage, à lire avant de dessiner quoi que ce soit
+**§1 est soldée** : les trois sous-features (distinction reconstitué/
+opérationnel, dispersion de l'erreur, vue multi-stations) sont livrées.
+
+### ~~Le blocage, à lire avant de dessiner quoi que ce soit~~ (périmé, voir ci-dessus)
 
 Au 2026-08-03, **les 29 jours d'historique sont tous reconstitués**
 (`backfilled: true`) : produits avec l'analyse MFWAM et le vent ERA5 de réanalyse,
@@ -44,6 +62,15 @@ modélisation ont déjà été passées à débusquer des gains qui n'en étaien
 n'était que du débiaisage ; une feature pression retirée après mesure).
 L'honnêteté de la mesure **est** l'argument du produit.
 
+**Ce qui a changé depuis :** la voie ERA5 a été supprimée le 2026-08-04 (le
+modèle ne s'entraîne plus jamais sur une réanalyse) et la voie marée est passée
+à un forçage stratifié par âge de run (Previous Runs API). Les voies houle et
+vent restent volontairement sur l'archive « runs frais » — pas un oubli, une
+mesure : le gain publié est un rapport, et le biais y tombe des deux côtés
+(numérateur et dénominateur), donc il s'annule presque. Mécanisme et mesure
+complets : `docs/biais-forcage-jours-reconstitues.html`. Le reste de ce
+paragraphe (chiffres MFWAM/ERA5 du 2026-08-03) ne décrit plus le pipeline actuel.
+
 ### Préalable
 
 Attendre d'avoir des jours scorés à partir de prévisions réellement émises la
@@ -55,8 +82,8 @@ dizaine de jours avant qu'une courbe d'écart veuille dire quelque chose.
 - ~~Distinguer visuellement les jours reconstitués des jours opérationnels.~~
   **Fait (T4a, 2026-08-05).** Les mélanger dans une même courbe était le piège
   principal : la partie reconstituée est systématiquement plus flatteuse.
-- Montrer la dispersion, pas seulement la moyenne : la MAE seule masque les
-  épisodes où l'IA dégrade la prévision.
+- ~~Montrer la dispersion, pas seulement la moyenne.~~ **Fait (T1, 2026-08-05)** —
+  `p50_ia`/`p90_ia`/`p50_baseline`/`p90_baseline` dans `by_lead`.
 - Le gain **hors biais** est le chiffre à mettre en avant, pas le gain brut (voir
   `docs/model-eval.md` : sur 4 stations sur 6, plus de la moitié de l'écart
   disparaît si l'on retire à la baseline son seul biais moyen).
@@ -109,22 +136,30 @@ préalable de la section 1 : des jours scorés non reconstitués, en nombre.
 
 ### Le vrai levier, une fois là
 
-Le handoff est explicite : le levier le plus fort n'est pas l'algorithme mais le
-**ré-entraînement sur les prévisions archivées**. Le modèle actuel est entraîné
-sur du vent de réanalyse ERA5 et servi avec du vent prévu ARPEGE — les chiffres
-sont donc optimistes par construction. La collecte a démarré le 2026-08-03
-(`pipeline/data_forecast_archive/`, un Parquet par jour, colonne `source`).
+**Périmé depuis le 2026-08-04, voir `docs/biais-forcage-jours-reconstitues.html`
+pour l'état réel.** Ce paragraphe (2026-08-03) décrivait un skew ERA5-train /
+ARPEGE-serve sur le vent. Ce skew n'existe plus : la voie ERA5 a été supprimée
+le 2026-08-04, plutôt que corrigée — le modèle ne s'entraîne plus jamais sur
+une réanalyse, houle et vent comme marée. Le levier qui reste n'est donc plus
+« sortir de la réanalyse » mais l'axe déjà tranché ailleurs dans ce document :
+attendre des jours scorés à partir de prévisions réellement émises la veille
+(`backfilled: false`, préalable de § 1) pour que les métriques publiées
+cessent de reproduire le plafond d'entraînement.
 
-À rejouer au même moment (déjà analysé, voir le handoff) :
-- Tester d'autres modèles : une ridge comme plancher honnête, un modèle par lead.
-- La bascule vers `~/Documents/DEV/meteodata_hub` (AROME 1,3 km) pour le
-  téléchargement quotidien. Conclusion actuelle : le hub n'a aucune réanalyse donc
-  ne remplace pas ERA5 à l'entraînement, et télécharger des GRIB entiers pour
-  6 points est disproportionné.
+Ridge comme plancher honnête et modèle par lead : **fait, mesuré le
+2026-08-05** — voir `docs/plan-dev-modele.md` § Ridge comme plancher honnête.
 
-Reste aussi ouverte une dette non expliquée : **la régression de brest sous la
-feature vent** (l'hypothèse « maille ERA5 contaminée par la terre » a été testée
-et infirmée).
+Reste ouverte : la bascule vers `~/Documents/DEV/meteodata_hub` (AROME 1,3 km)
+pour le téléchargement quotidien. Conclusion à la date de sa dernière mesure :
+le hub n'a aucune réanalyse et télécharger des GRIB entiers pour 6 points est
+disproportionné — non réévaluée depuis la suppression de la voie ERA5, qui
+change la prémisse (il n'y a plus de réanalyse à remplacer).
+
+La dette « régression de brest sous la feature vent » (l'hypothèse « maille
+ERA5 contaminée par la terre » avait été testée et infirmée) est **close le
+2026-08-04** — voir `docs/plan-dev-modele.md` § Réserves ouvertes : le vent
+apporte désormais +3,4 pts hors biais à brest, la cause était la baseline
+dérivante, pas le vent.
 
 ---
 
@@ -369,9 +404,12 @@ Zéro LLM, zéro nouveau champ pipeline — exactement la matière que
    par sondage, station Brest). Limites vérifiées le même jour : leads courts
    seulement (concaténation des runs les plus frais), et la Previous Runs API
    (leads stratifiés 1–7 j) n'a **pas** ARPEGE — seulement `ecmwf_ifs025`.
-   Reste ouvert pour le **vent** (skew ERA5-train/ARPEGE-serve toujours actif,
-   voir § 2 ci-dessus) : auto-hébergement possible pour lever les quotas si le
-   volume l'exige.
+   **Mise à jour 2026-08-04** : le skew ERA5-train/ARPEGE-serve du vent est
+   fermé par suppression de la voie ERA5 (plus de réanalyse à l'entraînement,
+   sur aucun `kind`) — voir § 2 ci-dessus et
+   `docs/biais-forcage-jours-reconstitues.html`. Auto-hébergement du vent
+   reste une option pour lever les quotas si le volume l'exige, indépendamment
+   de ce point.
 4. Alors seulement : les graphiques (1) sur des chiffres opérationnels et la
    décision d'horizon (2) sur un modèle dont on connaît le skill réel.
 5. **Les stations de vent (3) sont sorties de cette file le 2026-08-04** : leur

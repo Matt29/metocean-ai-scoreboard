@@ -26,7 +26,28 @@ Le Scoreboard Metocean IA répond à un enjeu clé du secteur maritime : la tran
 
 ### 2. Plan d'action technique
 
-- **Migration vers un Rendu Statique / Incrémental (SSG / ISR)** : Compiler le HTML final lors du run quotidien (GitHub Actions + Astro/Next.js/Static Engine). Temps de chargement < 50ms, résilience à 100%, lisibilité garantie pour les crawlers.
+- ~~**Migration vers un Rendu Statique / Incrémental (SSG / ISR)**~~ **Livré —
+  le SSG, pas l'ISR.** `npm run build` = `vite build` puis `scripts/prerender.mjs`
+  (dépôt du site), qui charge chaque route dans un Chrome headless local et fige
+  le HTML rendu dans `dist/<route>/index.html` (+ `404.html`, sitemap complété).
+  Le site est statique, plus un SPA à `index.html` unique. Astro/Next.js
+  **écartée** : le pré-rendu maison suffit et évite une réécriture. Ce qui
+  reste ouvert n'est pas le rendu mais la **fraîcheur** : le pré-rendu coupe
+  volontairement les fichiers de mesures du pipeline (`PIPELINE_ALLOW` n'admet
+  que `stations.json`, qui ne décrit que des lieux) — les chiffres ne sont donc
+  jamais dans le HTML statique, la page les charge côté client à chaque visite.
+  Un rebuild quotidien automatique supposerait un build distant sans Chrome
+  local (`@sparticuz/chromium`, ~150 Mo, invérifiable hors Vercel), un deploy
+  hook, et une alerte sur `updated` périmé. **Décision du 2026-08-05 : statu
+  quo assumé**, documenté dans le README du site — le déploiement reste manuel
+  (`vercel build --prod && vercel deploy --prebuilt --prod`). Durci le même
+  jour : le garde-fou qui interrompait le build sans Chrome ne se déclenchait
+  auparavant que sur `VERCEL`/`CI`, alors que le déploiement recommandé est un
+  `vercel build --prod` **local** — un Chrome déplacé aurait rejoué l'incident
+  du 2026-08-03 (build distant sans pré-rendu, site réduit à sa page d'accueil
+  en prod). Chrome manquant fait désormais échouer le build partout (opt-out
+  explicite `PRERENDER_SKIP=1`), et toute page rendant moins de 400 caractères
+  dans `#root` interrompt aussi le build.
 - **SEO Structuré & Open Graph Dynamique** : Générer automatiquement pour chaque station une image d'illustration dynamique (score du jour, graphique résumé) et des méta-données optimisées.
 - **Monitor & Badge de Fraîcheur** : Affichage explicite de l'horodatage UTC de la dernière exécution du pipeline et du statut des flux de données.
 
@@ -137,11 +158,11 @@ Méthode : quatre sous-agents en parallèle (données, homepage, page station,
 docs) + une passe de vérification adversariale avant commit — règle inscrite
 au CLAUDE.md du projet.
 
-Restent du plan, non couverts : migration SSG/ISR, Open Graph dynamique et
-canonical par station (AXE 1) ; carte MapLibre vectorielle (AXE 2.1 — la
-carte actuelle est du SVG maison) ; filtres temporels 7/30/90 j (AXE 2.2 —
-demande d'abord une fenêtre 90 j côté pipeline) ; widget intégrable,
-baromètre, capture de leads (AXE 3) ; offres B2B (AXE 4).
+Restent du plan, non couverts : carte MapLibre vectorielle (AXE 2.1 — décision
+2026-08-04, non retenue, le SVG maison suffit à 8 stations) ; baromètre,
+capture de leads (AXE 3) ; offres B2B (AXE 4). Migration SSG, Open Graph
+dynamique, canonical par station et filtres temporels 7/30/90 j sont livrés
+depuis (voir la section AXE 1 ci-dessus et le § « AVANCEMENT » plus bas).
 
 ---
 
@@ -162,11 +183,15 @@ AVANCEMENT), pas entre deux visions divergentes.
   (AXE 1, AXE 2.1, AXE 2.2, AXE 3), preuve d'un suivi discipliné du plan d'origine.
 
 **Divergences / points d'attention** :
-- Le plan prévoit une **Migration SSG/ISR** (AXE 1) et une **carte interactive
-  MapLibre/Leaflet** (AXE 2.1) comme jalons Q3/Q4 2026 ; l'AVANCEMENT ne couvre que
-  le *contrat de données* (JSON), pas le rendu front. Le texte le confirme lui-même :
-  « Reste côté site (WEB/ODC_WEBSITE) : consommer… ». Le travail front (SSG, carte,
-  Open Graph dynamique) reste donc entièrement à faire malgré l'avancement data.
+- ~~Le plan prévoit une **Migration SSG/ISR** (AXE 1)… le travail front (SSG,
+  carte, Open Graph dynamique) reste donc entièrement à faire malgré
+  l'avancement data.~~ **Périmé, voir la section AXE 1 en tête de ce
+  fichier.** Ce paragraphe date d'avant que l'écart entre le texte et le code
+  soit vérifié : le SSG existait déjà côté site (pré-rendu Chrome headless,
+  commit `9522fc4`), et l'Open Graph dynamique par station a été complété le
+  2026-08-05 (`c54726d`). Seule la **carte interactive MapLibre/Leaflet**
+  (AXE 2.1) reste un écart réel, et par décision assumée (SVG maison, non
+  retenue le 2026-08-04), pas par travail non fait.
 - AXE 3 (Widget intégrable, Baromètre, capture de leads par email) et AXE 4 (offres
   B2B, pilote Private Scoreboard) n'ont aucun avancement rapporté — cohérent avec le
   planning qui les place en Q1/Q2 2027, plus tard que les items déjà traités.

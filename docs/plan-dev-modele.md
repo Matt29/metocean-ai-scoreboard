@@ -404,7 +404,7 @@ jour, ×2 stations.
 ⚠️ Un chiffre a été retiré ici : « le `daily --dry-run` complet tombe de ~50 s à
 2,4 s ». Il ne résiste pas à la vérification — le run complet mesuré après coup a
 pris **8 min**, dominé par Candhis et Open-Meteo pour les 8 stations, que ce
-chantier ne touche pas. L'économie est réelle mais elle est sur la jambe marée,
+chantier ne touche pas. L'économie est réelle mais elle est sur la voie marée,
 pas sur le run entier. Même erreur de forme que la cadence choisie sur la
 baseline seule : mesurer précisément la portion qu'on a changée, et ne pas
 extrapoler au tout.
@@ -479,7 +479,7 @@ pente de marée revenait silencieusement divisée par deux sur la dernière heur
 de l'horizon (le voisin le plus proche de « +1 h » y était l'heure elle-même,
 dans la tolérance d'alignement d'une heure) ; et la tendance de pression, prise
 sur un nombre de lignes plutôt que sur des heures écoulées, n'aurait valu trois
-heures que tant que la jambe reste horaire. À noter pour la prochaine fois : la
+heures que tant que la voie reste horaire. À noter pour la prochaine fois : la
 suite est repassée au vert dès les *fixtures* mises à jour — 33 tests cassés par
 la même cause mécanique — et ce vert-là ne testait aucune des trois features.
 
@@ -563,7 +563,7 @@ apprendre — et rapporte en conséquence.
 Deux choix d'implémentation, tous deux dictés par le fait qu'une pente est une
 quantité plus fragile qu'une valeur :
 
-- **Lue à ±1 h par alignement, pas par `.diff()`.** Les deux jambes sont
+- **Lue à ±1 h par alignement, pas par `.diff()`.** Les deux voies sont
   horaires aujourd'hui (`waterlevel.fetch_tide_obs` ré-échantillonne REFMAR à
   1 h avant l'ajustement), donc `.diff()` marcherait — mais il voudrait dire
   « une ligne », et une ligne ne vaut une heure que tant que ce resample reste
@@ -611,12 +611,15 @@ production). Aucun effet de bord : rien n'est promu dans `models/`, et
 cd pipeline && UV_CACHE_DIR=.uv-cache uv run python scripts/compare_ridge.py
 ```
 
-**Périmètre — partiel, et volontairement dit comme tel.** Seules les
-**5 stations dont le jeu d'entraînement est présent** dans `pipeline/data_train/`
-sont mesurées : `brest`, `saint-malo` (marée) et `ouessant`, `dieppe`,
-`cherbourg-vent` (vent). Les 4 stations `wave` (`pierres-noires`, `belle-ile`,
-`anglet`, `cherbourg`) n'ont plus leur `*_raw.parquet` sur disque et sont
-ignorées par le protocole ; **la conclusion ci-dessous ne les couvre pas.**
+**Périmètre — les 9 stations, depuis le 2026-08-05.** D'abord mesuré sur les
+**5 stations dont le jeu d'entraînement était présent** dans
+`pipeline/data_train/` (`brest`, `saint-malo` côté marée, `ouessant`, `dieppe`,
+`cherbourg-vent` côté vent) — les 4 stations `wave` (`pierres-noires`,
+`belle-ile`, `anglet`, `cherbourg`) manquaient alors de `*_raw.parquet` (bug
+Candhis, voir `docs/data-sources.md` § 1). Le bug corrigé et les datasets
+houle régénérés (2023-08-06 → 2026-08-05), la réserve de périmètre est
+**levée** : les 4 stations houle sont mesurées ci-dessous, sur les mêmes
+folds de test scellés régénérés le 2026-08-05.
 
 ### Par candidat, sur les folds de test scellés
 
@@ -691,10 +694,101 @@ Nuances qui restent vraies :
   de regarder. Les chiffres ci-dessus sont sur le **test**, et ne s'y
   substituent pas.
 
-**Réserve de périmètre.** Les 4 stations `wave` ne sont pas couvertes. Le
-protocole d'évaluation les ignore faute de `*_raw.parquet` ; leur `gate.json`
-date d'un run antérieur. La mesure ridge devra être rejouée sur elles dès que
-leur dataset sera reconstruit — la commande est la même.
+---
+
+## Ridge sur les 4 stations houle — mesuré le 2026-08-05, réserve de périmètre levée
+
+**Rejoué avec `pipeline/scripts/compare_ridge.py --station pierres-noires,belle-ile,cherbourg,anglet`**
+sur les datasets régénérés le 2026-08-05 (bug Candhis corrigé, voir
+`docs/data-sources.md` § 1). Même protocole que ci-dessus, mêmes garanties
+(rien n'est promu dans `models/`, `docs/model-eval.md` n'est pas touché).
+
+**Toutes les 4 stations sont en holdout dégradé** (1 à 3 folds sur 4 au lieu
+des 4 attendus — l'historique houle n'a pas encore 730 j de profondeur, voir
+`docs/review_codex_2026-08-05.md` § 6), donc `evaluation_ready = false` :
+**aucune n'est publiable dans ce protocole en l'état**, y compris belle-ile
+et son +25,7 %. Ceci est indépendant de la question ridge/boosting posée ici.
+
+### Par candidat, sur les folds de test scellés (dégradés)
+
+| Station | Type | Candidat | MAE modèle | Gain hors biais | IC95 % gain | Protocole | Coût protocole (s) | Artefact |
+|---|---|---|---|---|---|---|---|---|
+| pierres-noires | wave | `ridge` | 0.2136 | +19.8 % | [+16.1 ; +22.9] | holdout dégradé (3×90 j) | 51.3 | 2 ko |
+| pierres-noires | wave | `hgb` | 0.2233 | +16.1 % | [+9.2 ; +21.4] | holdout dégradé (3×90 j) | 67.7 | 1 091 ko |
+| pierres-noires | wave | `hgb-per-lead` | 0.2306 | +13.4 % | [+5.8 ; +19.6] | holdout dégradé (3×90 j) | 70.3 | 2 611 ko |
+| pierres-noires | wave | auto (production) → `hgb` | 0.2079 | +21.9 % | [+18.0 ; +25.2] | holdout dégradé (3×90 j) | 223.9 | 1 091 ko |
+| belle-ile | wave | `ridge` | 0.1258 | +25.7 % | [+22.8 ; +28.3] | holdout dégradé (3×90 j) | 72.5 | 2 ko |
+| belle-ile | wave | `hgb` | 0.1435 | +15.2 % | [+9.2 ; +20.4] | holdout dégradé (3×90 j) | 79.0 | 1 090 ko |
+| belle-ile | wave | `hgb-per-lead` | 0.1545 | +8.8 % | [+1.0 ; +15.2] | holdout dégradé (3×90 j) | 96.4 | 2 840 ko |
+| belle-ile | wave | auto (production) → `ridge` | 0.1258 | +25.7 % | [+22.8 ; +28.3] | holdout dégradé (3×90 j) | 91.4 | 2 ko |
+| anglet | wave | `ridge` | 0.0989 | +6.4 % | [+1.2 ; +10.9] | holdout dégradé (**1×90 j**) | 78.1 | 2 ko |
+| anglet | wave | `hgb` | 0.1062 | −0.5 % | [−6.4 ; +4.8] | holdout dégradé (**1×90 j**) | 94.0 | 1 089 ko |
+| anglet | wave | `hgb-per-lead` | 0.1109 | −4.9 % | [−11.6 ; +1.1] | holdout dégradé (**1×90 j**) | 93.4 | 2 565 ko |
+| anglet | wave | auto (production) → `ridge` | 0.0989 | +6.4 % | [+1.2 ; +10.9] | holdout dégradé (**1×90 j**) | 92.3 | 2 ko |
+| cherbourg | wave | `ridge` | 0.0971 | +21.7 % | [+16.8 ; +26.4] | holdout dégradé (2×90 j) | 72.8 | 2 ko |
+| cherbourg | wave | `hgb` | 0.1077 | +13.1 % | [+7.2 ; +18.1] | holdout dégradé (2×90 j) | 80.7 | 1 091 ko |
+| cherbourg | wave | `hgb-per-lead` | 0.1126 | +9.1 % | [+2.6 ; +14.5] | holdout dégradé (2×90 j) | 96.0 | 3 265 ko |
+| cherbourg | wave | auto (production) → `ridge` | 0.0971 | +21.7 % | [+16.8 ; +26.4] | holdout dégradé (2×90 j) | 93.0 | 2 ko |
+
+Anglet ne tient qu'**une seule origine exploitable** (`train 12484 / test 4260
+rows, 1 origin(s)`) : les trois autres origines sont écartées avant même
+d'atteindre le test (train/test dégénéré ou validation interne trop courte).
+Pierres-noires est le seul cas où `auto` bat tous les candidats forcés pris
+individuellement (+21,9 % contre +19,8/+16,1/+13,4 %) — la sélection choisit
+le meilleur candidat *par origine*, ce qu'aucun candidat unique forcé sur
+toutes les origines ne peut reproduire.
+
+### L'écart, avec sa barre d'erreur
+
+| Station | Type | Incumbent | Gain `ridge` | Gain incumbent | Δ (incumbent − ridge) | IC95 % de l'écart | Conclusion |
+|---|---|---|---|---|---|---|---|
+| pierres-noires | wave | `hgb` | +19.8 % | +21.9 % | +2.1 pt | [+1.3 ; +3.1] pt | boosting payé |
+| belle-ile | wave | `ridge` | +25.7 % | +25.7 % | +0.0 pt | [+0.0 ; +0.0] pt | boosting **non** payé |
+| cherbourg | wave | `ridge` | +21.7 % | +21.7 % | +0.0 pt | [+0.0 ; +0.0] pt | boosting **non** payé |
+| anglet | wave | `ridge` | +6.4 % | +6.4 % | +0.0 pt | [+0.0 ; +0.0] pt | **indéterminé** |
+
+Belle-ile et cherbourg : l'incumbent **est** `ridge` — la sélection
+automatique a déjà rejeté le boosting sur validation, l'écart nul sur test le
+confirme sans le trancher une seconde fois. Anglet : l'IC95 % à largeur nulle
+[+0,0 ; +0,0] est l'artefact d'un bootstrap par jour d'émission mené sur **un
+seul groupe rééchantillonnable** (1 origine) — un intervalle qui ne peut pas
+varier n'est pas une mesure de zéro, c'est l'absence de mesure. **Indéterminé,
+pas nul** : conclure demande ~9 mois de mesure continue de plus pour qu'une
+2ᵉ origine atteigne les 90 j de train requis. Baisser `VAL_DAYS_CAP` pour y
+arriver artificiellement est explicitement refusé (déplacer les poteaux).
+
+### Conclusion — le résultat s'inverse par rapport aux tide/wind
+
+Sur `tide`/`wind`, le boosting est payé aux **5** stations mesurées (borne
+IC95 % basse toujours strictement positive). **Sur `wave`, il n'est payé qu'à
+une station sur quatre** (pierres-noires) : sur belle-ile et cherbourg, la
+sélection automatique retient déjà `ridge` — le boosting avait perdu un étage
+plus tôt, à la validation, pas seulement sur ce test. **Sur la houle, le
+plancher linéaire EST le modèle servi**, aux deux tiers des stations
+mesurables. Anglet reste hors conclusion, faute de mesure possible.
+
+**Aucun chiffre publié ne bouge.** Ce chantier mesure, il ne promeut rien :
+`models/` et `gate.json` restent ceux du run daily en cours ; les 9
+`model_name` publiés le 2026-08-05 (voir plus haut) sont ceux déjà en
+production, pas ceux de cette table.
+
+### Bug corrigé pour rendre cette mesure possible : asymétrie de `train.evaluate`
+
+La découpe de validation interne ne vivait que dans `if len(model_names) > 1`
+: une origine dégénérée n'était donc jetée que lors de la sélection
+automatique (`auto`), jamais quand un seul candidat était forcé — deux
+protocoles différents pour `auto` et pour `ridge` forcé, sur des lignes de
+test différentes, rendant tout bootstrap **apparié** entre les deux invalide.
+Sans ce correctif, le tableau « L'écart » ci-dessus n'aurait mesuré rien de
+cohérent. Cause : les premières origines des stations houle n'ont que
+~60-80 j d'émission assemblables, moins que la fenêtre de validation de 90 j
+— jamais déclenché sur `tide`/`wind` (~550-820 j d'historique). Correctif :
+la décision (garder/jeter une origine) sort du bloc conditionnel — une
+origine inutilisable l'est désormais pour **tous** les candidats — et elle
+est nommée (`skipped_origins` dans la sortie de `evaluate`, jamais propagé à
+`gate.json`, un contrat publié). Non-régression prouvée par dump avant/après
+sur brest, ouessant, cherbourg-vent : seule différence, `"skipped_origins": []`
+— tout le reste identique bit à bit.
 
 ---
 
@@ -725,7 +819,55 @@ leur dataset sera reconstruit — la commande est la même.
   skill, et ne pas s'alarmer d'un écart val/test de facteur 5 : c'est la valeur
   attendue de ce protocole.
 
-- **Plafond propre à saint-malo** (MAE modèle 0,112 m contre 0,056 à brest) —
+- ~~**Plafond propre à saint-malo**~~ **Fermée le 2026-08-05 — sans piste,
+  diagnostic exploratoire épuisé.** Script `pipeline/scripts/diag_saint_malo_ceiling.py`
+  (déterministe, IC95 bootstrap par jour d'émission, 2000 réplications,
+  candidat figé a priori à `hgb-per-lead` — le test scellé est décrit, jamais
+  sélectionné dessus). Quatre pistes, toutes éliminées :
+
+  1. **Le secteur « flot début » n'existe pas.** Pire secteur de saint-malo =
+     flot plein (ratio 0,722) ; pire secteur de brest, station sans plafond =
+     flot début (0,503) ; dispersion max/min identique aux deux stations
+     (×1,14 contre ×1,16) ; l'ordre s'inverse sur le pli antérieur (contrôle
+     hors test scellé). Tous les IC95 par secteur recouvrent celui de « TOUS ».
+  2. **Non-stationnarité saisonnière et en amplitude, pas en phase.**
+     ⟨|Z|⟩ = 16,53 cm à saint-malo (brest 4,63 cm), partie stationnaire
+     |⟨Z⟩| = 1,37 cm → rapport 0,083 : aucune raie stationnaire à extraire.
+     ⟨|Z|⟩ passe de 13,1 cm (juin) à 20,2 cm (mars) — c'est saisonnier, pas
+     calé sur un état de marée qu'une feature pourrait lire.
+  3. **Ce n'est pas la baseline.** Décalage temporel optimal δ* = 0 min aux
+     deux stations (y compris restreint au secteur « flot début ») ; gain
+     d'amplitude ajusté α = 0,9989, la baseline n'est pas mal calibrée en
+     amplitude. Correction de phase de marée hors échantillon (ajustée sur le
+     passé du test, appliquée dessus) : −0,14 % [−0,78 % ; +0,48 %], à cheval
+     sur zéro — aucun gain à en attendre.
+  4. **Le plafond est structuré, pas du bruit d'observation.** Plancher de
+     bruit (obs+baseline) : MAE 2,5 à 4,8 cm, très en dessous des 9,97 cm de
+     MAE du modèle publié — il reste donc un signal réel à côté du bruit.
+     Mais un oracle **parfait** (qui connaîtrait la composante semi-diurne
+     exacte du cycle courant) ne vaudrait que +33,5 %, et un oracle **causal**
+     (qui n'utilise que le dernier cycle complet avant l'instant courant,
+     amorti) vaut **−3,6 % [−6,2 % ; −1,2 %]** : négatif. L'information
+     causalement exploitable est déjà captée par `mean_err_3h`/`mean_err_6h`
+     — il n'y a rien de plus à aller chercher dans le résidu passé.
+
+  **Conclusion : réserve fermée, sans piste.** Les trois candidats de feature
+  qu'un futur chantier pourrait être tenté de rouvrir — dérivée de la marée,
+  mémoire du résidu, marnage — sont chacun épuisés par un point ci-dessus
+  (respectivement 3, 4, et le point 1/Q2 pour le marnage). **Ne pas rouvrir ce
+  point sur une feature dérivée de la marée, de la mémoire du résidu ou du
+  marnage.** Un nouveau diagnostic, pas une feature de plus, serait le seul
+  chemin valide.
+
+  Seule feature à espérance positive sortie de ce diagnostic : concerne
+  **brest**, pas saint-malo — l'oracle causal y vaut **+1,8 %** (IC95
+  [+1,2 % ; +2,4 %]), soit 0,10 cm. Trop petit pour justifier une colonne de
+  plus, noté pour mémoire seulement.
+
+  ---
+
+  **Historique du diagnostic (2026-08-04, avant fermeture) :**
+
   *ouverte, mais pour la première fois avec une piste mesurée*. Éliminés le
   2026-08-04 : la vitesse de marée `|dh/dt|` (gain plat sur les quintiles,
   corr +0,04), le marnage vives-eaux/mortes-eaux (corr +0,04, gain plat de 4,4

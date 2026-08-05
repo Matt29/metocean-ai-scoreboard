@@ -76,6 +76,38 @@ consommer le quota). Cette session a utilisé : 1× `getCampListe`,
 `getCampInfos` = 11 appels. Rester frugal en usage quotidien (1 appel TR par
 bouée par jour dans le pipeline).
 
+### Correction du 2026-08-05 — le plafond réel d'une requête TR
+
+**L'affirmation ci-dessus (« TR sert au moins 365 jours d'historique en
+continu ») était trompeuse par construction de son propre test** : le spike du
+2026-07-30 avait interrogé `dateDeb=J-365`, donc une fenêtre qui se terminait
+tout juste à « aujourd'hui » — impossible d'y voir un plafond qui coupe *avant*
+aujourd'hui.
+
+Constaté en vrai le 2026-08-05, en reconstruisant les datasets d'entraînement
+(`build_dataset.py`, fenêtre 2023-08-06 → 2026-08-05) : `getCampTR.php?dateDeb=2021-08-06`
+renvoie des lignes de **2021-08-25 à 2022-08-05** et rien de plus récent, alors
+que la requête est faite en 2026. Chaque réponse est plafonnée à **~365 jours à
+partir de `dateDeb`**, jamais jusqu'à « maintenant » — quel que soit l'âge de
+`dateDeb`. Silencieux : `success=true`, pas d'erreur, pas de champ signalant la
+troncature. C'est ce qui expliquait l'absence des `*_raw.parquet` houle avant ce
+correctif.
+
+**Chaînage mis en place** (`sources/candhis.fetch_wave_obs`, même motif que
+`waterlevel.fetch_tide_obs` pour SHOM/REFMAR, limitée elle à 31 jours par
+appel) : une nouvelle requête est envoyée, ancrée juste après la dernière
+observation reçue, **uniquement quand la réponse précédente a réellement buté
+sur le plafond** (dernière date à moins de 2 jours de `dateDeb + 365 j`). Une
+fenêtre courte — l'usage quotidien réel du pipeline, `daily.py`/`backfill.py`,
+qui ne remonte que de quelques jours — ne déclenche jamais de second appel et
+coûte donc toujours exactement 1 requête, comme documenté ci-dessus.
+
+**Garde-fou ajouté dans `build_dataset.py`** : si les observations d'une
+station s'arrêtent plus de 7 jours avant la fin de la fenêtre demandée, le
+script échoue bruyamment (`RuntimeError`) plutôt que d'écrire un dataset
+silencieusement amputé de ses mois les plus récents — c'est exactement le mode
+de panne que ce plafond provoque sans lui.
+
 ## 2. SHOM REFMAR — niveau d'eau, source primaire "tide" (remplace IOC)
 
 Source changée en cours de tâche sur instruction du coordinateur : REFMAR

@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Biais de forçage des jours reconstitués — Metocean AI Scoreboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b1622;
+    --bg-panel: #11202f;
+    --bg-panel-2: #0e1b28;
+    --border: #1f3345;
+    --text: #dce7ef;
+    --text-dim: #8fa6b8;
+    --text-faint: #7c93a3;
+    --accent: #4fb0c6;
+    --green: #4caf7d;
+    --amber: #d6a94b;
+    --red: #dd8a84;
+    --grey: #93a2ae;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+  body {
+    margin: 0;
+    background: linear-gradient(180deg, #0a1420 0%, #0b1622 400px, #0b1622 100%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    padding: 0 0 80px;
+  }
+  header, main { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+  header { padding-top: 40px; padding-bottom: 8px; }
+  h1 { margin: 0 0 6px; font-size: 1.55rem; font-weight: 650; letter-spacing: -0.01em; }
+  h2 {
+    margin: 46px 0 4px; font-size: 1.12rem; font-weight: 620;
+    border-top: 1px solid var(--border); padding-top: 22px;
+  }
+  h2 .num { color: var(--accent); font-variant-numeric: tabular-nums; margin-right: 8px; }
+  h3 { margin: 26px 0 6px; font-size: 0.98rem; font-weight: 600; color: var(--text); }
+  p { margin: 10px 0; }
+  .subtitle { color: var(--text-dim); font-size: 0.9rem; }
+  .meta {
+    margin-top: 18px; padding: 12px 16px; background: var(--bg-panel-2);
+    border: 1px solid var(--border);
+    border-radius: 4px; font-size: 0.86rem; color: var(--text-dim);
+  }
+  .meta b { color: var(--text); font-weight: 600; }
+  code, .mono { font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 0.85em; }
+  code { background: #0d1a26; border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; color: #b7d4e0; }
+  pre {
+    background: #0d1a26; border: 1px solid var(--border); border-radius: 5px;
+    padding: 12px 14px; overflow-x: auto; font-size: 0.8rem; color: #b7d4e0; margin: 12px 0;
+  }
+  pre code { background: none; border: none; padding: 0; }
+  .tag {
+    display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; padding: 2px 7px; border-radius: 3px; vertical-align: 2px;
+    margin-right: 8px; border: 1px solid;
+  }
+  .t-mes { color: var(--green); border-color: #275c44; background: #10281e; }
+  .t-rai { color: var(--amber); border-color: #5c4a20; background: #251e0f; }
+  .t-inc { color: var(--red); border-color: #5c2f2c; background: #261414; }
+  figure {
+    margin: 22px 0; background: var(--bg-panel); border: 1px solid var(--border);
+    border-radius: 6px; padding: 16px 18px 10px;
+  }
+  figcaption { color: var(--text-dim); font-size: 0.83rem; margin-top: 8px; line-height: 1.45; }
+  figcaption b { color: var(--text); font-weight: 600; }
+  svg { display: block; width: 100%; height: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 0.85rem; }
+  th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; font-variant-numeric: normal; }
+  th { color: var(--text-dim); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  tbody tr:hover { background: #0e1b28; }
+  .callout {
+    margin: 18px 0; padding: 13px 16px; background: var(--bg-panel-2);
+    border: 1px solid var(--amber); border-radius: 4px;
+    font-size: 0.9rem;
+  }
+  .callout.key { border-color: var(--accent); }
+  .callout.warn { border-color: var(--red); }
+  ul { margin: 10px 0; padding-left: 20px; }
+  li { margin: 5px 0; }
+  .src { color: var(--text-faint); font-size: 0.8rem; }
+  .lede { font-size: 1rem; color: var(--text); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Le biais de forçage des jours reconstitués</h1>
+  <div class="subtitle">Pourquoi un jour rejoué n'est pas un jour vécu, et pourquoi on ne l'a corrigé que sur la marée.</div>
+  <div class="meta">
+    <b>Note interne, 2026-08-05.</b> Porte sur l'état du code au commit <code>c90abf6</code>, c'est-à-dire
+    <i>après</i> les correctifs du 2026-08-04 (suppression de la voie ERA5, passage de la voie marée à la
+    Previous Runs API). Le code bouge le jour même de la rédaction : si <code>pipeline/src/scoreboard/sources/wind.py</code>
+    a changé, son docstring de module reste la source de vérité, pas cette page.<br>
+    <span class="src">Chiffres publiés : <code>data/scores.json</code>, généré le 2026-08-05T09:30:19Z.</span>
+  </div>
+</header>
+
+<main>
+
+<!-- ============================================================= 1 -->
+<h2><span class="num">1</span>Ce qu'est mécaniquement un jour reconstitué</h2>
+
+<p>Un jour du scoreboard marqué <code>"backfilled": true</code> n'a jamais été calculé le jour même. On <b>rejoue</b>
+l'émission de ce jour-là : on prend l'émission de J à 00 UTC, on demande au modèle sa correction pour les 48 h qui
+suivent, on la note contre l'observation. La question n'est pas <i>quand</i> on rejoue, elle est <b>avec quelles
+entrées</b>.</p>
+
+<p>Le rejeu ne peut pas récupérer les fichiers que le pipeline aurait vraiment reçus ce matin-là : ils n'ont pas été
+gardés. Il va donc les chercher dans une archive. Et selon la voie, cette archive ne contient pas la même chose.</p>
+
+<figure>
+<svg viewBox="0 0 900 300" role="img" aria-label="Frise de l'âge du forçage servi en backfill">
+  <defs>
+    <linearGradient id="wedge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4caf7d" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#dd8a84" stop-opacity="0.85"/>
+    </linearGradient>
+    <marker id="ar" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <polygon points="0,0 7,3.5 0,7" fill="#8fa6b8"/>
+    </marker>
+  </defs>
+
+  <!-- axis -->
+  <line x1="230" y1="266" x2="866" y2="266" stroke="#1f3345" stroke-width="1.5" marker-end="url(#ar)"/>
+  <g fill="#7c93a3" font-size="12" text-anchor="middle" font-family="monospace">
+    <text x="230" y="285">H+0</text>
+    <text x="389" y="285">H+12</text>
+    <text x="548" y="285">H+24</text>
+    <text x="866" y="285">H+48</text>
+  </g>
+  <g stroke="#1f3345" stroke-dasharray="2 4">
+    <line x1="230" y1="30" x2="230" y2="262"/>
+    <line x1="389" y1="30" x2="389" y2="262"/>
+    <line x1="548" y1="30" x2="548" y2="262"/>
+    <line x1="866" y1="30" x2="866" y2="262"/>
+  </g>
+  <text x="548" y="18" fill="#8fa6b8" font-size="12" text-anchor="middle">heure valide, à partir de l'émission de J 00 UTC</text>
+
+  <!-- row 1 : ce qu'on aurait vraiment eu -->
+  <text x="10" y="52" fill="#dce7ef" font-size="13" font-weight="600">Ce qu'une vraie émission</text>
+  <text x="10" y="69" fill="#dce7ef" font-size="13" font-weight="600">de J 00 UTC a devant elle</text>
+  <rect x="230" y="42" width="636" height="26" rx="3" fill="url(#wedge)"/>
+  <text x="548" y="60" fill="#0b1622" font-size="12" font-weight="700" text-anchor="middle">un seul run — échéance qui grandit de 0 à 48 h</text>
+  <text x="10" y="88" fill="#7c93a3" font-size="11">↑ l'erreur du forçage grandit avec lui</text>
+
+  <!-- row 2 : houle / vent -->
+  <text x="10" y="140" fill="#dd8a84" font-size="13" font-weight="600">Ce que le backfill sert</text>
+  <text x="10" y="157" fill="#dd8a84" font-size="13" font-weight="600">HOULE et VENT</text>
+  <text x="10" y="174" fill="#7c93a3" font-size="11">Historical Forecast API</text>
+  <text x="10" y="189" fill="#7c93a3" font-size="11">+ archive Marine</text>
+  <g>
+    <rect x="230" y="130" width="76" height="26" rx="3" fill="#4caf7d" fill-opacity="0.85"/>
+    <rect x="310" y="130" width="76" height="26" rx="3" fill="#4caf7d" fill-opacity="0.85"/>
+    <rect x="390" y="130" width="76" height="26" rx="3" fill="#4caf7d" fill-opacity="0.85"/>
+    <rect x="470" y="130" width="76" height="26" rx="3" fill="#4caf7d" fill-opacity="0.85"/>
+    <rect x="550" y="130" width="76" height="26" rx="3" fill="#4caf7d" fill-opacity="0.85"/>
+    <rect x="630" y="130" width="76" height="26" rx="3" fill="#4caf7d" fill-opacity="0.85"/>
+    <rect x="710" y="130" width="76" height="26" rx="3" fill="#4caf7d" fill-opacity="0.85"/>
+    <rect x="790" y="130" width="76" height="26" rx="3" fill="#4caf7d" fill-opacity="0.85"/>
+  </g>
+  <text x="548" y="148" fill="#0b1622" font-size="12" font-weight="700" text-anchor="middle">une mosaïque de runs, tous frais</text>
+  <text x="230" y="176" fill="#7c93a3" font-size="11">↑ l'erreur du forçage reste celle de « quelques heures d'échéance », partout, y compris dans le bac H+48</text>
+
+  <!-- row 3 : marée -->
+  <text x="10" y="228" fill="#4fb0c6" font-size="13" font-weight="600">Ce que le backfill sert</text>
+  <text x="10" y="245" fill="#4fb0c6" font-size="13" font-weight="600">MARÉE (depuis 2026-08-04)</text>
+  <text x="10" y="262" fill="#7c93a3" font-size="11">Previous Runs API</text>
+  <rect x="230" y="218" width="636" height="26" rx="3" fill="url(#wedge)"/>
+  <text x="548" y="236" fill="#0b1622" font-size="12" font-weight="700" text-anchor="middle">runs stratifiés par âge — le run qu'on aurait vraiment eu</text>
+</svg>
+<figcaption><b>Schéma 1.</b> Sur la marée, le rejeu sert désormais le run de la bonne ancienneté. Sur la houle et le
+vent, il sert une concaténation de runs frais : à H+48, le forçage archivé a l'âge d'un H+3, pas d'un H+48.
+Source : <code>pipeline/src/scoreboard/backfill.py</code> (<code>_deep_inputs</code>) et
+<code>pipeline/src/scoreboard/sources/wind.py</code>.</figcaption>
+</figure>
+
+<!-- ============================================================= 2 -->
+<h2><span class="num">2</span>Ce que sert réellement l'Historical Forecast API</h2>
+
+<p>Cette API ne rend pas « la prévision qu'on avait ». Elle <b>concatène les runs les plus frais</b> : à chaque heure
+valide, elle sert le run émis le plus récemment avant cette heure. Une « prévision » passée y a donc été émise quelques
+heures avant son échéance — jamais 24 ni 48 h. C'est une quasi-analyse déguisée en prévision.</p>
+
+<p><span class="tag t-mes">mesuré</span>Sondé le 2026-08-05 sur les trois stations de vent publiées, ECMWF IFS 0,25°,
+2026-07-04 → 2026-08-04 : l'archive Historical Forecast est <b>identique bit à bit</b> à la colonne « run le plus
+frais » (<code>day0</code>) de la Previous Runs API. Pas « proche » : <b>0,0000 m/s d'écart moyen</b> sur 768 heures.</p>
+
+<table>
+  <thead><tr>
+    <th>Station de vent</th><th>n heures</th>
+    <th>archive − run frais</th>
+    <th>MAE / obs, archive</th><th>run +24-48 h</th><th>run +48-72 h</th>
+  </tr></thead>
+  <tbody>
+    <tr><td>ouessant</td><td>743</td><td>0,0000</td><td>1,038</td><td>1,184</td><td>1,268</td></tr>
+    <tr><td>dieppe</td><td>744</td><td>0,0000</td><td>1,379</td><td>1,389</td><td>1,471</td></tr>
+    <tr><td>cherbourg-vent</td><td>742</td><td>0,0000</td><td>1,456</td><td>1,503</td><td>1,536</td></tr>
+  </tbody>
+</table>
+<p class="src">m/s. Observation : <code>pipeline/data_train/&lt;station&gt;_raw.parquet</code>, colonne <code>wind_speed</code>.
+Prévisions : <code>historical-forecast-api.open-meteo.com</code> et <code>previous-runs-api.open-meteo.com</code>,
+<code>models=ecmwf_ifs025</code>. Cette mesure porte sur la voie ECMWF, pas nécessairement sur le modèle que
+<code>baseline = "wind-best"</code> retient un jour donné.</p>
+
+<div class="callout key">
+  <b>Deux faits à tenir ensemble.</b> (a) L'identité est exacte : la baseline notée sur un jour reconstitué <i>est</i>
+  le run le plus frais, à tous les horizons. (b) Ce que ça cache est <b>modeste</b> : un vrai run de +24-48 h ne serait
+  que <b>+14 %</b> (ouessant), <b>+0,7 %</b> (dieppe), <b>+3,2 %</b> (cherbourg-vent) de MAE au-dessus. Le mécanisme
+  est certain, son amplitude est petite. La page ne dira jamais l'inverse.
+</div>
+
+<p>Face à ça, la <b>Previous Runs API</b> sert les runs <b>stratifiés par âge</b> : à heure valide égale, une colonne
+par ancienneté de run. C'est cette API que la voie marée utilise depuis le 2026-08-04, sur <code>ecmwf_ifs025</code> —
+le seul modèle qu'elle stratifie (ARPEGE renvoie 0 % de couverture sur toutes les colonnes <code>previous_day</code>,
+sondé le 2026-08-04).</p>
+
+<p><span class="tag t-mes">mesuré</span>Le même jour, mesuré contre ERA5 sur 1440 h à Brest : la pression de l'archive
+Historical Forecast corrèle <b>0,9997</b> avec la réanalyse, 0,25 hPa d'écart moyen pour un signal d'écart-type 13 hPa.
+<span class="src">(<code>docs/plan-dev-modele.md</code>, « Le forçage de prévision, mesuré ».)</span></p>
+
+<!-- ============================================================= 3 -->
+<h2><span class="num">3</span>Pourquoi la marée était la plus touchée</h2>
+
+<p>Le gain publié est un <b>rapport</b> : <span class="mono">gain = 1 − erreur_modèle / erreur_baseline</span>. Ce qui
+compte n'est donc pas de quel côté le biais tombe en valeur absolue, mais s'il tombe <b>des deux côtés à la fois</b>.</p>
+
+<p>Sur une station de marée, la baseline est la prédiction harmonique : purement astronomique, calculée depuis les
+constantes de la station. Elle ne consomme aucune prévision météo, donc <b>elle ne se dégrade pas avec l'échéance</b>.
+<span class="tag t-mes" style="margin-left:6px">mesuré</span> sa MAE va de 0,120 à 0,124 m entre 1 h et 48 h d'échéance
+(<code>docs/plan-dev-modele.md</code>). Toute l'optimisation apportée par un forçage trop frais tombait donc du seul
+côté du modèle — et gonflait mécaniquement le rapport.</p>
+
+<figure>
+<svg viewBox="0 0 900 250" role="img" aria-label="Où tombe le biais : marée contre houle et vent">
+  <g font-size="12" fill="#7c93a3">
+    <!-- LEFT : marée -->
+    <text x="20" y="20" fill="#dce7ef" font-size="13.5" font-weight="650">MARÉE — baseline harmonique</text>
+    <line x1="60" y1="215" x2="420" y2="215" stroke="#1f3345" stroke-width="1.5"/>
+    <line x1="60" y1="40" x2="60" y2="215" stroke="#1f3345" stroke-width="1.5"/>
+    <text x="60" y="234" text-anchor="middle">H+0</text>
+    <text x="420" y="234" text-anchor="middle">H+48</text>
+    <text x="30" y="46" text-anchor="middle" fill="#7c93a3">err.</text>
+
+    <line x1="60" y1="70" x2="420" y2="70" stroke="#4fb0c6" stroke-width="2.5"/>
+    <text x="410" y="62" text-anchor="end" fill="#4fb0c6" font-weight="600">baseline harmonique — plate par construction</text>
+
+    <path d="M60,185 C180,178 300,160 420,140" fill="none" stroke="#dd8a84" stroke-width="2.5"/>
+    <line x1="60" y1="185" x2="420" y2="185" stroke="#dd8a84" stroke-width="2.5" stroke-dasharray="6 4"/>
+    <path d="M60,185 C180,178 300,160 420,140 L420,185 Z" fill="#dd8a84" fill-opacity="0.16"/>
+    <text x="418" y="134" text-anchor="end" fill="#dd8a84" font-weight="600">modèle, forçage réel</text>
+    <text x="418" y="201" text-anchor="end" fill="#dd8a84">modèle, forçage d'archive</text>
+    <text x="240" y="171" text-anchor="middle" fill="#d6a94b" font-weight="600">tout le biais est ici</text>
+
+    <!-- RIGHT : houle / vent -->
+    <text x="490" y="20" fill="#dce7ef" font-size="13.5" font-weight="650">HOULE / VENT — baseline = prévision physique</text>
+    <line x1="530" y1="215" x2="880" y2="215" stroke="#1f3345" stroke-width="1.5"/>
+    <line x1="530" y1="40" x2="530" y2="215" stroke="#1f3345" stroke-width="1.5"/>
+    <text x="530" y="234" text-anchor="middle">H+0</text>
+    <text x="880" y="234" text-anchor="middle">H+48</text>
+
+    <path d="M530,80 C640,74 770,62 880,52" fill="none" stroke="#4fb0c6" stroke-width="2.5"/>
+    <line x1="530" y1="80" x2="880" y2="80" stroke="#4fb0c6" stroke-width="2.5" stroke-dasharray="6 4"/>
+    <path d="M530,80 C640,74 770,62 880,52 L880,80 Z" fill="#4fb0c6" fill-opacity="0.16"/>
+    <text x="876" y="46" text-anchor="end" fill="#4fb0c6" font-weight="600">baseline, échéance réelle</text>
+    <text x="876" y="96" text-anchor="end" fill="#4fb0c6">baseline d'archive (plate)</text>
+
+    <path d="M530,190 C640,184 770,170 880,158" fill="none" stroke="#dd8a84" stroke-width="2.5"/>
+    <line x1="530" y1="190" x2="880" y2="190" stroke="#dd8a84" stroke-width="2.5" stroke-dasharray="6 4"/>
+    <path d="M530,190 C640,184 770,170 880,158 L880,190 Z" fill="#dd8a84" fill-opacity="0.16"/>
+    <text x="876" y="152" text-anchor="end" fill="#dd8a84" font-weight="600">modèle, forçage réel</text>
+    <text x="876" y="206" text-anchor="end" fill="#dd8a84">modèle, forçage d'archive</text>
+    <text x="705" y="128" text-anchor="middle" fill="#d6a94b" font-weight="600">le biais est des deux côtés</text>
+  </g>
+</svg>
+<figcaption><b>Schéma 2.</b> Schéma de principe (pas de valeurs mesurées sur les axes). À gauche, la ligne bleue est
+plate <i>en réalité</i> : rien ne peut la faire descendre. Le trait plein rouge est l'erreur qu'aurait vraiment le
+modèle ; le pointillé, celle que produit un forçage trop frais. À droite, le même trou existe, mais il existe aussi
+sur la baseline.</figcaption>
+</figure>
+
+<!-- ============================================================= 4 -->
+<h2><span class="num">4</span>Pourquoi houle et vent restent délibérément sur l'archive « runs frais »</h2>
+
+<p class="lede">C'est ici que la démonstration se joue. Le gain est un rapport. Si le forçage trop frais réduit
+l'erreur du modèle <i>et</i> celle de la baseline à peu près du même facteur, alors le numérateur et le dénominateur
+bougent ensemble — <b>et le rapport ne bouge presque pas</b>.</p>
+
+<figure>
+<svg viewBox="0 0 900 350" role="img" aria-label="Le gain est un rapport : le biais s'annule quand il touche les deux termes">
+  <defs>
+    <marker id="ar2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <polygon points="0,0 8,4 0,8" fill="#d6a94b"/>
+    </marker>
+  </defs>
+
+  <!-- ======= LEFT BLOCK : marée ======= -->
+  <text x="20" y="24" fill="#dce7ef" font-size="14" font-weight="650">MARÉE — seul le numérateur bouge</text>
+  <line x1="440" y1="10" x2="440" y2="340" stroke="#1f3345"/>
+
+  <!-- réel -->
+  <text x="80" y="52" fill="#8fa6b8" font-size="12" text-anchor="middle">échéance réelle</text>
+  <rect x="40" y="66" width="80" height="55" rx="3" fill="#dd8a84" fill-opacity="0.85"/>
+  <text x="80" y="99" fill="#0b1622" font-size="15" font-weight="700" text-anchor="middle">5,5</text>
+  <line x1="28" y1="132" x2="132" y2="132" stroke="#dce7ef" stroke-width="2"/>
+  <rect x="40" y="143" width="80" height="100" rx="3" fill="#4fb0c6" fill-opacity="0.85"/>
+  <text x="80" y="200" fill="#0b1622" font-size="15" font-weight="700" text-anchor="middle">10,0</text>
+  <text x="80" y="266" fill="#8fa6b8" font-size="12" text-anchor="middle">rapport 0,55</text>
+  <text x="80" y="292" fill="#dce7ef" font-size="17" font-weight="700" text-anchor="middle">gain 45 %</text>
+
+  <!-- arrow -->
+  <line x1="152" y1="180" x2="212" y2="180" stroke="#d6a94b" stroke-width="2" marker-end="url(#ar2)"/>
+  <text x="182" y="168" fill="#d6a94b" font-size="11" text-anchor="middle">forçage</text>
+  <text x="182" y="204" fill="#d6a94b" font-size="11" text-anchor="middle">trop frais</text>
+
+  <!-- archive -->
+  <text x="290" y="52" fill="#8fa6b8" font-size="12" text-anchor="middle">forçage d'archive</text>
+  <rect x="250" y="80" width="80" height="41" rx="3" fill="#dd8a84" fill-opacity="0.85"/>
+  <text x="290" y="106" fill="#0b1622" font-size="15" font-weight="700" text-anchor="middle">4,4</text>
+  <text x="290" y="72" fill="#4caf7d" font-size="11" text-anchor="middle">× 0,8 ↓</text>
+  <line x1="238" y1="132" x2="342" y2="132" stroke="#dce7ef" stroke-width="2"/>
+  <rect x="250" y="143" width="80" height="100" rx="3" fill="#4fb0c6" fill-opacity="0.85"/>
+  <text x="290" y="200" fill="#0b1622" font-size="15" font-weight="700" text-anchor="middle">10,0</text>
+  <text x="290" y="266" fill="#8fa6b8" font-size="11" text-anchor="middle">dénominateur inchangé : astronomique</text>
+  <text x="290" y="292" fill="#d6a94b" font-size="17" font-weight="700" text-anchor="middle">gain 56 %</text>
+  <text x="185" y="322" fill="#d6a94b" font-size="13.5" font-weight="650" text-anchor="middle">+ 11 points fabriqués</text>
+
+  <!-- ======= RIGHT BLOCK : houle / vent ======= -->
+  <text x="465" y="24" fill="#dce7ef" font-size="14" font-weight="650">HOULE / VENT — les deux termes bougent</text>
+
+  <text x="525" y="52" fill="#8fa6b8" font-size="12" text-anchor="middle">échéance réelle</text>
+  <rect x="485" y="66" width="80" height="55" rx="3" fill="#dd8a84" fill-opacity="0.85"/>
+  <text x="525" y="99" fill="#0b1622" font-size="15" font-weight="700" text-anchor="middle">5,5</text>
+  <line x1="473" y1="132" x2="577" y2="132" stroke="#dce7ef" stroke-width="2"/>
+  <rect x="485" y="143" width="80" height="100" rx="3" fill="#4fb0c6" fill-opacity="0.85"/>
+  <text x="525" y="200" fill="#0b1622" font-size="15" font-weight="700" text-anchor="middle">10,0</text>
+  <text x="525" y="266" fill="#8fa6b8" font-size="12" text-anchor="middle">rapport 0,55</text>
+  <text x="525" y="292" fill="#dce7ef" font-size="17" font-weight="700" text-anchor="middle">gain 45 %</text>
+
+  <line x1="597" y1="180" x2="657" y2="180" stroke="#d6a94b" stroke-width="2" marker-end="url(#ar2)"/>
+  <text x="627" y="168" fill="#d6a94b" font-size="11" text-anchor="middle">forçage</text>
+  <text x="627" y="204" fill="#d6a94b" font-size="11" text-anchor="middle">trop frais</text>
+
+  <text x="735" y="52" fill="#8fa6b8" font-size="12" text-anchor="middle">forçage d'archive</text>
+  <rect x="695" y="80" width="80" height="41" rx="3" fill="#dd8a84" fill-opacity="0.85"/>
+  <text x="735" y="106" fill="#0b1622" font-size="15" font-weight="700" text-anchor="middle">4,4</text>
+  <text x="735" y="72" fill="#4caf7d" font-size="11" text-anchor="middle">× 0,8 ↓</text>
+  <line x1="683" y1="132" x2="787" y2="132" stroke="#dce7ef" stroke-width="2"/>
+  <rect x="695" y="163" width="80" height="80" rx="3" fill="#4fb0c6" fill-opacity="0.85"/>
+  <text x="735" y="210" fill="#0b1622" font-size="15" font-weight="700" text-anchor="middle">8,0</text>
+  <text x="735" y="157" fill="#4caf7d" font-size="11" text-anchor="middle">× 0,8 ↓ aussi</text>
+  <text x="735" y="266" fill="#8fa6b8" font-size="12" text-anchor="middle">rapport 0,55</text>
+  <text x="735" y="292" fill="#4caf7d" font-size="17" font-weight="700" text-anchor="middle">gain 45 %</text>
+  <text x="630" y="322" fill="#4caf7d" font-size="13.5" font-weight="650" text-anchor="middle">+ 0 point — le rapport a absorbé le biais</text>
+</svg>
+<figcaption><b>Schéma 3 — le point central.</b> Valeurs illustratives, arithmétique exacte : le même facteur 0,8
+appliqué au numérateur seul donne 4,4/10,0 = 0,44 (gain 56 %, soit 11 points de trop) ; appliqué aux deux termes il
+donne 4,4/8,0 = 0,55, exactement le rapport de départ. C'est <b>la seule raison</b> pour laquelle la correction du
+2026-08-04 a visé la marée et pas la houle ni le vent.</figcaption>
+</figure>
+
+<div class="callout">
+  <b>Une nuance qui compte, et qui n'est pas dans le schéma.</b>
+  <span class="tag t-mes">mesuré</span>Quand la voie marée a effectivement été rejouée sur du forçage stratifié
+  (2026-08-04), l'inflation redoutée s'est révélée <b>bien plus petite que le mécanisme ne le laissait craindre</b> :
+  brest +53,1 % → +53,3 %, saint-malo +30,0 % → +28,0 %. La pente gain/échéance ne s'est pas raidie
+  (brest 1-6 h → 37-48 h : 63 % → 50 % dans les deux régimes). Le mécanisme du schéma 3 est juste ; son amplitude,
+  sur ces stations et cette fenêtre, vaut 0 à 2 points, pas 11.
+  <span class="src">(<code>docs/plan-dev-modele.md</code>.)</span>
+</div>
+
+<p><span class="tag t-rai">raisonné</span>Il y a une seconde raison, purement matérielle, de ne pas avoir bougé la
+houle : <b>l'API stratifiée n'existe pas pour la mer</b>. Sondé le 2026-08-05,
+<code>previous-runs-api.open-meteo.com/v1/marine</code> répond <b>HTTP 404</b> sur <code>wave_height</code> comme sur
+<code>wave_height_previous_day2</code>, alors que <code>marine-api.open-meteo.com/v1/marine</code> répond 200 sur la
+même requête. La voie houle ne peut pas être corrigée de la même manière, même si on le voulait.</p>
+
+<!-- ============================================================= 5 -->
+<h2><span class="num">5</span>Ce qui reste biaisé : la décomposition par échéance</h2>
+
+<p>Le gain global de la houle et du vent souffre peu, pour la raison du schéma 3. Mais un chiffre en souffre pour de
+bon : la <b>décomposition par échéance</b> publiée dans <code>by_lead</code>. Le bac H+48 d'un jour reconstitué n'a
+jamais vécu une échéance de 48 h — les deux camps y voient une prévision de qualité « quelques heures ».</p>
+
+<h3>Le test</h3>
+<p>Si l'hypothèse est vraie, alors sur ces jours reconstitués la <b>MAE de la baseline ne doit pas croître avec
+l'échéance</b>, alors qu'une vraie prévision physique se dégrade toujours. Sur la fenêtre 30 j publiée, les 8 stations
+sont à 30 ou 31 jours reconstitués sur 32.</p>
+
+<figure>
+<svg viewBox="0 0 900 320" role="img" aria-label="MAE baseline par échéance sur jours reconstitués contre dégradation réelle par âge de run">
+  <g font-size="11" fill="#7c93a3" font-family="monospace">
+    <!-- grid + axes LEFT -->
+    <g stroke="#1f3345" stroke-dasharray="2 4">
+      <line x1="60" y1="211.8" x2="430" y2="211.8"/>
+      <line x1="60" y1="135.5" x2="430" y2="135.5"/>
+      <line x1="60" y1="97.3"  x2="430" y2="97.3"/>
+      <line x1="60" y1="59.1"  x2="430" y2="59.1"/>
+    </g>
+    <line x1="60" y1="173.6" x2="430" y2="173.6" stroke="#4a6275" stroke-width="1.5"/>
+    <line x1="60" y1="40" x2="60" y2="250" stroke="#1f3345" stroke-width="1.5"/>
+    <line x1="60" y1="250" x2="430" y2="250" stroke="#1f3345" stroke-width="1.5"/>
+    <g text-anchor="end" fill="#7c93a3">
+      <text x="54" y="215">0,8</text><text x="54" y="177">1,0</text>
+      <text x="54" y="139">1,2</text><text x="54" y="101">1,4</text><text x="54" y="62">1,6</text>
+    </g>
+    <g text-anchor="middle"><text x="100" y="268">h06</text><text x="205" y="268">h12</text><text x="310" y="268">h24</text><text x="415" y="268">h48</text></g>
+  </g>
+  <text x="60" y="24" fill="#dce7ef" font-size="13" font-weight="650">MESURÉ — MAE baseline publiée, par tranche d'échéance</text>
+  <text x="60" y="38" fill="#7c93a3" font-size="11">8 stations, fenêtre 30 j, normalisée à h06 (data/scores.json)</text>
+
+  <g fill="none" stroke-width="2" stroke-linejoin="round">
+    <polyline points="100,173.6 205,55.3 310,120.2 415,112.5" stroke="#dd8a84"/>
+    <polyline points="100,173.6 205,200.4 310,167.9 415,181.3" stroke="#4fb0c6"/>
+    <polyline points="100,173.6 205,169.8 310,166.0 415,167.9" stroke="#4caf7d"/>
+    <polyline points="100,173.6 205,190.8 310,183.2 415,156.5" stroke="#d6a94b"/>
+    <polyline points="100,173.6 205,185.1 310,192.7 415,158.4" stroke="#93a2ae"/>
+    <polyline points="100,173.6 205,162.2 310,188.9 415,177.5" stroke="#7fb3d5"/>
+    <polyline points="100,173.6 205,175.5 310,160.3 415,167.9" stroke="#b98fd0"/>
+    <polyline points="100,173.6 205,209.9 310,227.1 415,208.0" stroke="#c9b06a"/>
+  </g>
+  <text x="215" y="50" fill="#dd8a84" font-size="10.5">pierres-noires (h12 aberrant, non monotone)</text>
+  <text x="418" y="240" fill="#7c93a3" font-size="10.5" text-anchor="end">rapport h48/h06 : médiane 1,03 — étendue 0,82 à 1,32</text>
+
+  <!-- RIGHT panel -->
+  <g font-size="11" fill="#7c93a3" font-family="monospace">
+    <g stroke="#1f3345" stroke-dasharray="2 4">
+      <line x1="530" y1="211.8" x2="870" y2="211.8"/>
+      <line x1="530" y1="135.5" x2="870" y2="135.5"/>
+      <line x1="530" y1="97.3"  x2="870" y2="97.3"/>
+      <line x1="530" y1="59.1"  x2="870" y2="59.1"/>
+    </g>
+    <line x1="530" y1="173.6" x2="870" y2="173.6" stroke="#4a6275" stroke-width="1.5"/>
+    <line x1="530" y1="40" x2="530" y2="250" stroke="#1f3345" stroke-width="1.5"/>
+    <line x1="530" y1="250" x2="870" y2="250" stroke="#1f3345" stroke-width="1.5"/>
+    <g text-anchor="middle"><text x="565" y="268">run frais</text><text x="700" y="268">run +24 h</text><text x="835" y="268">run +48 h</text></g>
+  </g>
+  <text x="530" y="24" fill="#dce7ef" font-size="13" font-weight="650">MESURÉ — MAE réelle du même modèle, contre l'obs</text>
+  <text x="530" y="38" fill="#7c93a3" font-size="11">ECMWF IFS 0,25°, 3 stations vent, mêmes 30 j, normalisée</text>
+  <g fill="none" stroke-width="2.5" stroke-linejoin="round">
+    <polyline points="565,173.6 700,146.7 835,131.4" stroke="#7fb3d5"/>
+    <polyline points="565,173.6 700,172.3 835,160.8" stroke="#b98fd0"/>
+    <polyline points="565,173.6 700,167.5 835,163.1" stroke="#c9b06a"/>
+  </g>
+  <text x="843" y="127" fill="#7fb3d5" font-size="10.5" text-anchor="end">ouessant +22 %</text>
+  <text x="843" y="156" fill="#b98fd0" font-size="10.5" text-anchor="end">dieppe +6,7 %</text>
+  <text x="843" y="180" fill="#c9b06a" font-size="10.5" text-anchor="end">cherbourg-vent +5,5 %</text>
+
+  <text x="450" y="300" fill="#8fa6b8" font-size="12" text-anchor="middle">à gauche : rien ne monte — à droite : tout monte, un peu</text>
+</svg>
+<figcaption><b>Schéma 4 — le test empirique.</b> Panneau gauche : les 8 courbes de <code>by_lead.mae_baseline</code>
+divisées par leur valeur à h06. Aucune ne croît de façon monotone ; deux <i>décroissent</i>. Panneau droit : la même
+grandeur physique, mais calculée contre l'observation en faisant vraiment vieillir le run — elle croît, systématiquement,
+sur les trois stations.</figcaption>
+</figure>
+
+<div class="callout key">
+  <b>Verdict du test : hypothèse vérifiée, mais l'effet caché est petit.</b><br>
+  <span class="tag t-mes">mesuré</span>La MAE de la baseline <b>ne croît pas</b> avec l'échéance sur les jours
+  reconstitués : rapport h48/h06 de 1,32 · 0,96 · 1,03 · 1,09 · 1,08 · 0,98 · 1,03 · 0,82, médiane <b>1,03</b>, et
+  aucune progression monotone. Le seul rapport supérieur à 1,1 (pierres-noires, 1,32) vient d'un h12 aberrant
+  (0,2456 contre 0,1944 à h24) : c'est de la structure, pas de l'échéance. Le contrôle négatif tient aussi : les deux
+  stations de marée, dont la baseline est plate par construction, sont à 1,09 et 1,08 — <b>indiscernables</b> des
+  stations houle et vent, ce qui est exactement le symptôme.<br><br>
+  <b>Mais</b> la vraie dégradation qu'on ne voit pas vaut +5,5 % à +22 % de MAE sur 48 h d'âge de run (panneau droit).
+  La décomposition par échéance est donc <b>optimiste de cet ordre-là au bac h48</b>, pas d'un facteur 2. Un
+  <code>by_lead</code> honnête serait légèrement plus pentu, pas d'une autre nature.
+</div>
+
+<p><span class="tag t-mes">mesuré</span>Un dernier signal, dans le même fichier : la MAE <b>du modèle IA</b>, elle,
+croît avec l'échéance — h48/h06 = <b>1,67</b> à brest et 1,15 à saint-malo, contre 1,02 à 1,21 partout ailleurs. Brest
+et saint-malo sont précisément les deux stations dont le forçage de rejeu a été corrigé le 2026-08-04. C'est cohérent
+avec tout ce qui précède : là où le forçage vieillit vraiment, la courbe monte.</p>
+
+<!-- ============================================================= 6 -->
+<h2><span class="num">6</span>Ce qui n'est pas su</h2>
+
+<p><span class="tag t-inc">inconnu</span>La preuve historique la plus citée du dépôt — « les gains reconstitués
+reproduisent presque exactement les gains d'entraînement » — date du <b>2026-08-03</b> :</p>
+
+<table>
+  <thead><tr><th>Station</th><th>Gain reconstitué</th><th>Gain d'entraînement</th><th>Écart</th></tr></thead>
+  <tbody>
+    <tr><td>pierres-noires</td><td>+65,1 %</td><td>+65,8 %</td><td>−0,7</td></tr>
+    <tr><td>belle-ile</td><td>+49,2 %</td><td>+50,1 %</td><td>−0,9</td></tr>
+    <tr><td>brest</td><td>+18,9 %</td><td>+22,9 %</td><td>−4,0</td></tr>
+    <tr><td>anglet</td><td>+3,8 %</td><td>+5,7 %</td><td>−1,9</td></tr>
+  </tbody>
+</table>
+<p class="src">Source : <code>docs/demandes-produit.md</code> §1.</p>
+
+<div class="callout warn">
+  <b>Ces chiffres sont d'avant les correctifs.</b> Ils ont été produits le 2026-08-03, c'est-à-dire avant la suppression
+  de la voie ERA5 et avant le passage de la marée à la Previous Runs API (tous deux du 2026-08-04). Les §1 et §2 de
+  <code>docs/demandes-produit.md</code> datent du même jour et décrivent un pipeline qui n'existe plus : elles parlent
+  encore de « l'analyse MFWAM et le vent ERA5 de réanalyse ». <b>Le rejeu n'a pas été refait contre le code actuel.</b>
+  <br><br>
+  Ce tableau ne dit donc <i>rien</i> de l'état du 2026-08-05. L'écart entre le plafond reconstitué et la performance
+  réellement opérationnelle est aujourd'hui une <b>question ouverte et mesurable</b> — pas un fait acquis, dans un sens
+  ni dans l'autre.
+</div>
+
+<p>Ce qui la rendra mesurable, et qui n'a rien à voir avec un rejeu :
+<code>pipeline/data_forecast_archive/</code>, démarré le 2026-08-03, un Parquet par jour de prévisions réellement
+servies. C'est la seule mesure véritablement vraie. Elle est à des mois d'échéance.</p>
+
+<h3>Reproduire les chiffres de cette page</h3>
+<pre><code># Panneau gauche du schéma 4, et tous les rapports h48/h06
+python3 -c "import json;d=json.load(open('data/scores.json'));
+[print(s['id'], [s['by_lead'][l]['mae_baseline'] for l in ('h06','h12','h24','h48')]) for s in d['stations']]"
+
+# Panneau droit du schéma 4, l'identité archive == run frais, et le 404 marine
+cd pipeline && UV_CACHE_DIR=.uv-cache uv run python &lt;script de sondage&gt;
+#   -&gt; previous-runs-api.open-meteo.com/v1/forecast, hourly=wind_speed_10m[_previous_day1|_previous_day2]
+#   -&gt; historical-forecast-api.open-meteo.com/v1/forecast, hourly=wind_speed_10m
+#   -&gt; obs : data_train/&lt;station&gt;_raw.parquet, colonne wind_speed
+#   modele=ecmwf_ifs025, 2026-07-04 -&gt; 2026-08-04, wind_speed_unit=ms, timezone=UTC</code></pre>
+<p class="src">Le script de sondage est jetable et n'a pas été versionné : les quatre lignes ci-dessus le décrivent
+entièrement. Sondage exécuté le 2026-08-05.</p>
+
+</main>
+</body>
+</html>

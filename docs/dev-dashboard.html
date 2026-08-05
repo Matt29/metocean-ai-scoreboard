@@ -217,10 +217,10 @@
 
 <header>
   <h1>Dashboard de management — Metocean AI Scoreboard</h1>
-  <div class="subtitle">Généré le 2026-08-05 · croise 5 plans de développement avec l'état réel du dépôt (git log, code, docs/review_codex_2026-08-05.md)</div>
+  <div class="subtitle">Mis à jour le 2026-08-05 (clôture du chantier du jour) · croise 5 plans de développement avec l'état réel du dépôt (git log, code, docs/review_codex_2026-08-05.md)</div>
   <div class="global-bar-row">
-    <div class="bar-track"><div class="bar-fill" style="width:72%"></div></div>
-    <div class="bar-label">≈72 % des items planifiés faits ou en cours (50/69)</div>
+    <div class="bar-track"><div class="bar-fill" style="width:77%"></div></div>
+    <div class="bar-label">≈77 % des items planifiés faits ou en cours (56/73)</div>
   </div>
   <div class="legend">
     <span><span class="dot" style="background:var(--green)"></span>fait</span>
@@ -239,14 +239,14 @@
     <span class="plan-source">docs/plan_dev_gemini.md</span>
   </div>
   <div class="plan-bar-row">
-    <div class="bar-track"><div class="bar-fill" style="width:56%"></div></div>
-    <div class="bar-label">≈56 %</div>
+    <div class="bar-track"><div class="bar-fill" style="width:58%"></div></div>
+    <div class="bar-label">≈58 %</div>
   </div>
   <p class="plan-note">Export identique du PDF interne (plan_developpement_scoreboard_metocean.pdf). Axe 1 = SEO/technique, Axe 2 = UX/métriques, Axe 3 = diffusion/inbound, Axe 4 = offres B2B. Le fichier porte lui-même une section « Avancement » à jour au 2026-08-05, reprise ici.</p>
 
   <ul class="tasks">
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 1 — Monitor &amp; badge de fraîcheur (horodatage UTC du run + statut par station)</span><span class="task-note">commit 934a15a — contrat ; consommé site ODC commit 602584a</span></div></li>
-    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 1 — Migration SSG/ISR du rendu (aujourd'hui SPA React côté site ODC)</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 1 — Rendu statique (SSG) du site — l'item du plan disait « SSG/ISR », c'est le SSG qui est livré, pas l'ISR</span><span class="task-note">site ODC : `scripts/prerender.mjs` (Chrome headless, commit d'origine 9522fc4), pages station pré-rendues + OG par station le 2026-08-05 (c54726d). Reste ouvert : la fraîcheur des mesures (coupées au pré-rendu, `PIPELINE_ALLOW`) — statu quo assumé le 2026-08-05, documenté dans le README du site, Next.js écartée, déploiement manuel. Garde-fou durci le même jour : Chrome manquant fait échouer le build partout (avant : seulement VERCEL/CI), page &lt;400 caractères dans #root interrompt aussi le build</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 1 — Open Graph dynamique par station (image 1200×630)</span><span class="task-note">pipeline/src/scoreboard/og.py, étape "og images" dans .github/workflows/daily.yml</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 1 — Canonical distinct par sous-page station (SEO)</span><span class="task-note">livré 2026-08-05 — Seo par station (canonical /scoreboard/&lt;id&gt;, méta, og:image, JSON-LD Dataset), commit ee89ff2 côté site</span></div></li>
 
@@ -258,6 +258,7 @@
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 2.2 — Filtres temporels interactifs 7/30/90 j</span><span class="task-note">bascule 7/30/90 livrée côté site ODC — vérifiée</span></div></li>
 
     <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 3 — Baromètre trimestriel / mensuel (posts LinkedIn d'impact)</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 3 — Post LinkedIn de méthode (premier post)</span><span class="task-note">angle retenu : la méthode, pas le chiffre — 30-31 j sur 32 sont reconstitués, un post de performance serait démenti par le site lui-même. Trois preuves non copiables : cherbourg publiée comme non-publiée (gate débiaisé +3,0 % &lt; 5 %), saint-malo à +8,4 % avec plafond assumé et diagnostiqué (docs/plan-dev-modele.md § Réserves), distinction reconstitué/opérationnel affichée sur les graphes (T4a). Post n°2 plus tard, quand des jours opérationnels existeront : cherbourg-vent (1,48 → 1,12 m/s) et les fenêtres de transfert CTV en éolien offshore</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 3 — Widget intégrable « Verified by »</span><span class="task-note">ScoreboardWidgetPage.jsx routé (/scoreboard/widget/:stationId), snippet documenté sur la page méthode — vérifié</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">AXE 3 — Export CSV des séries par station</span><span class="task-note">series.csv — commit e4f342c</span></div></li>
     <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">AXE 3 — Capture de leads qualifiés (email pro contre export/API)</span></div></li>
@@ -276,10 +277,10 @@
     <span class="plan-source">docs/plan-dev-modele.md</span>
   </div>
   <div class="plan-bar-row">
-    <div class="bar-track"><div class="bar-fill" style="width:92%"></div></div>
-    <div class="bar-label">≈92 %</div>
+    <div class="bar-track"><div class="bar-fill" style="width:100%"></div></div>
+    <div class="bar-label">100 %</div>
   </div>
-  <p class="plan-note">Backlog quasi soldé le 2026-08-04 : baseline harmonique, protocole d'évaluation et les trois dernières features candidates sont tous mesurés et tranchés.</p>
+  <p class="plan-note">Backlog soldé le 2026-08-05 : baseline harmonique, protocole d'évaluation, les trois dernières features candidates et la dernière réserve ouverte (plafond saint-malo, fermée sans piste) sont tous mesurés et tranchés.</p>
 
   <ul class="tasks">
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Baseline harmonique 90 j → 730 j glissants</span><span class="task-note">−29 % MAE brest, −11 % saint-malo, causal ; FIT_LOOKBACK_DAYS=730</span></div></li>
@@ -292,9 +293,10 @@
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Mémoire plus longue du résidu (mean_err_3h/6h)</span><span class="task-note">commit bf60c04, saint-malo +3,5 pts</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Dette « régression brest sous la feature vent »</span><span class="task-note">close le 2026-08-04 : le vent apporte désormais +3,4 pts, ce n'était pas le vent mais la baseline dérivante</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Skew ERA5 restant dans backfill.py</span><span class="task-note">résolu — forçage stratifié partagé</span></div></li>
-    <li><input type="checkbox"><div class="task-body"><span class="task-label wip">Réserve — plafond propre à saint-malo (résidu semi-diurne non stationnaire)</span><span class="badge wip">diagnostic ouvert</span><span class="task-note">axe « interaction marée-surcote » épuisé, pas seulement joué ; aucun nouveau candidat identifié, un secteur « flot début » non expliqué</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Réserve — plafond propre à saint-malo (résidu semi-diurne non stationnaire)</span><span class="task-note">fermée le 2026-08-05, sans piste — `diag_saint_malo_ceiling.py`. Le secteur « flot début » n'existe pas (pire secteur = flot plein, l'ordre s'inverse sur le pli antérieur) ; non-stationnarité saisonnière et en amplitude, aucune raie (rapport 0,083) ; ce n'est pas la baseline (δ*=0, α=0,9989, correction hors échantillon −0,14 % à cheval sur zéro) ; oracle causal −3,6 % [−6,2 ; −1,2] : l'info exploitable est déjà dans mean_err_3h/6h. Ne pas rouvrir sur marée/mémoire du résidu/marnage</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Arbitrage trend=False re-mesuré à 30 j de péremption — réserve fermée</span><span class="task-note">tranché 2026-08-05 : les 2,6 pts étaient un effet de dénominateur ; sur la MAE publiée ΔMAE −0,74 mm brest (IC95 à cheval sur zéro), +0,22 mm saint-malo ; trend=False gardé, biais 1,3–6× meilleur</span></div></li>
-    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Ridge comme plancher honnête — écart au gradient boosting mesuré sur folds de test scellés</span><span class="task-note">mesuré 2026-08-05, pipeline/scripts/compare_ridge.py : boosting payé aux 5 stations tide/wind (IC95 basse &gt; 0 partout, +2,1 à +12,9 pt) ; 4 stations wave non couvertes (*_raw.parquet absent)</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Ridge comme plancher honnête — écart au gradient boosting mesuré sur folds de test scellés, 9/9 stations</span><span class="task-note">mesuré 2026-08-05, pipeline/scripts/compare_ridge.py, reproduit indépendamment lors de cette passe doc. tide/wind (5 stations) : boosting payé partout, IC95 basse &gt; 0, +2,1 à +12,9 pt. wave (4 stations, réserve de périmètre levée) : le résultat s'inverse — boosting payé à 1 station/4 (pierres-noires +2,1 pt [+1,3;+3,1]), non payé à belle-ile et cherbourg (Δ nul, `ridge` déjà retenu par la sélection auto), indéterminé à anglet (1 seule origine exploitable, IC à largeur nulle = absence de mesure, pas un zéro). Les 4 stations wave restent en holdout dégradé (`evaluation_ready = false`), aucun chiffre publié ne bouge</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Modèle ML publié par station — `model_name` dans `stations.json`</span><span class="task-note">`model.infer_model_name` déduit le candidat de la structure de l'artefact (mapping dérivé de `MODEL_NAMES`, jamais recopié), publié sans réentraînement dès le prochain run daily. `hgb-per-lead` : pierres-noires, belle-ile, brest, saint-malo, dieppe, cherbourg-vent · `hgb` : cherbourg, ouessant · `ridge` : anglet. Nommé côté site sur la page station et la page méthode</span></div></li>
   </ul>
 </section>
 
@@ -331,10 +333,10 @@
   <p class="plan-note">4 demandes de Matthieu (2026-08-03), chacune conditionnée par des préalables de données mesurés au fil de l'eau plutôt qu'implémentées directement.</p>
 
   <ul class="tasks">
-    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label wip">1. Graphiques enrichis — distinction jours reconstitués/opérationnels faite ; restent la vue multi-stations et la dispersion de l'erreur</span><span class="badge wip">en cours</span><span class="task-note">T4a livré 2026-08-05 : trame diagonale + légende sur les périodes reconstituées dans StationChart.jsx, libellé factuel sur la fenêtre 7/30/90 j — §1 pas soldée, 2 sous-features restantes</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">1. Graphiques enrichis — distinction reconstitué/opérationnel, dispersion de l'erreur, vue multi-stations</span><span class="task-note">§1 soldée le 2026-08-05. T4a : trame diagonale + légende sur les périodes reconstituées dans StationChart.jsx. T1 : `by_lead` porte désormais p50/p90 de l'erreur absolue (moustaches, LeadTimeChart.jsx) et `daily_30d` alimente une sparkline par station (Sparkline.jsx, ScoreboardTable.jsx) — champs additifs, schema_version inchangé. §1 et §2 de demandes-produit.md décrivaient encore le pipeline d'avant les correctifs du 2026-08-04 (voie ERA5, voie marée) : recalées le 2026-08-05, voir docs/biais-forcage-jours-reconstitues.html pour le mécanisme</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">2. Prévision +48 h — déjà publiée et affichée (pas une demande de front)</span><span class="task-note">latest.json, StationChart.jsx</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">2. Scoring étendu jusqu'à 48 h (mécanisme pending / _rescore_pending)</span><span class="task-note">résolu 2026-08-03</span></div></li>
-    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">2. Nowcasting 0–6 h / réentraînement sur prévisions réellement archivées</span><span class="task-note">data_forecast_archive/ collecte depuis 2026-08-03 ; levier identifié comme le plus fort, pas encore rejoué</span></div></li>
+    <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">2. Nowcasting 0–6 h / réentraînement sur prévisions réellement archivées</span><span class="task-note">data_forecast_archive/ collecte depuis 2026-08-03 ; levier identifié comme le plus fort, pas encore rejoué. Voir docs/biais-forcage-jours-reconstitues.html : le skew ERA5 est fermé, ce qui reste ouvert est de sortir les métriques du régime « plafond reconstitué » (30-31 j/32 sont backfilled)</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">3. Stations de vent (kind="wind", 3 stations, baseline wind-best)</span><span class="task-note">livré — 3 stations, gate 3/3 PASS, commit 29b10df</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">4. Archivage des observations bouées MF (cron quotidien)</span><span class="task-note">sources/mfbuoy.py, data_obs_archive/, commit 8bbcd05 ; 8 bouées exploitables confirmées</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">4. Carte interactive du réseau (bouées + stations)</span><span class="task-note">SVG maison, commit 2bb8635 côté site — ne dépend d'aucun modèle</span></div></li>
@@ -380,8 +382,8 @@
     <span class="plan-source">docs/review_codex_2026-08-05.md · docs/model-eval.md</span>
   </div>
   <div class="plan-bar-row">
-    <div class="bar-track"><div class="bar-fill" style="width:67%"></div></div>
-    <div class="bar-label">≈67 %</div>
+    <div class="bar-track"><div class="bar-fill" style="width:73%"></div></div>
+    <div class="bar-label">≈73 %</div>
   </div>
   <p class="plan-note">Pas un plan initial mais une note de revue qui liste ce qui a été corrigé (commits dd5924b, 1a9b8fa) et ce qui reste ouvert. Reprise ici parce qu'elle fixe les invariants de fiabilité que tout futur chantier doit respecter.</p>
   <ul class="tasks">
@@ -391,6 +393,8 @@
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">IC95 % bootstrap par jour d'émission (2000 réplications), gate sur borne basse &gt; 0</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Pondération des scores publics par n_points (une observation = une voix)</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Backfill auto-réparateur : un jour scoré contre une baseline périmée est rejoué</span><span class="task-note">commits ec34e9f + 8ff3f70 — un changement de modèle physique faisait fondre les scores publiés sans trace (29 j de houle tombés à 3, 2026-08-03) ; ces jours restaient « ok » donc aucun backfill ne les récupérait. compute_scores émet n_days_other_baseline quand la clé mord, write_scores le journalise. 29 j rejoués, les 3 stations houle sont revenues à 32 j</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Bug Candhis : chaque réponse TR plafonnée à ~365 j depuis `dateDeb`, jamais jusqu'à « maintenant »</span><span class="task-note">corrigé 2026-08-05 — `getCampTR.php?dateDeb=2021-08-06` renvoyait 2021-08-25 → 2022-08-05 et rien de plus récent, silencieux (`success=true`). C'est ce qui expliquait l'absence des `*_raw.parquet` houle. `sources/candhis.fetch_wave_obs` chaîne désormais les requêtes (motif `waterlevel.fetch_tide_obs`), uniquement quand la réponse précédente a réellement buté sur le plafond ; une fenêtre courte (daily/backfill) coûte toujours 1 appel. `build_dataset.py` échoue bruyamment si les obs s'arrêtent &gt; 7 j avant la fin de fenêtre. Voir docs/data-sources.md § 1</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Bug `train.evaluate` : asymétrie de la découpe de validation interne entre `auto` et un candidat forcé</span><span class="task-note">corrigé 2026-08-05 — la découpe ne vivait que dans `if len(model_names) > 1`, donc une origine dégénérée n'était jetée que pour `auto`, jamais pour un candidat forcé (comptes avant correctif : pierres-noires 4 vs 3, belle-ile 4 vs 3, anglet 2 vs 1, cherbourg 3 vs 2 — bootstrap apparié impossible). La décision sort désormais du bloc conditionnel : une origine inutilisable l'est pour tous les candidats, nommée (`skipped_origins`, non propagé à gate.json). Non-régression prouvée : dump avant/après identique bit à bit sauf `skipped_origins: []`. Jamais déclenché sur tide/wind</span></div></li>
     <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">Accumuler l'historique wave/wind jusqu'à 730 j pour permettre les 4 folds saisonniers partout</span><span class="task-note">stations wind ~914 j déjà couverts ; wave pas encore réentraîné sur ce protocole</span></div></li>
     <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">Inspecter le nouveau docs/model-eval.md (format folds + IC) au prochain retrain</span></div></li>
     <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">Envisager un block bootstrap multi-jours si l'autocorrélation météo inter-journalière l'exige</span></div></li>
@@ -408,26 +412,23 @@
     <div class="bar-label">100 %</div>
   </div>
   <ul class="tasks">
-    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Tester d'autres modèles ML (ridge comme plancher honnête, un modèle par lead)</span><span class="task-note">mesuré 2026-08-05 (plan-dev-modele.md § Ridge) : hgb-per-lead déjà évalué en candidat, ridge chiffré comme plancher sur 5/9 stations — les 4 stations wave restent à couvrir</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Tester d'autres modèles ML (ridge comme plancher honnête, un modèle par lead)</span><span class="task-note">mesuré 2026-08-05 (plan-dev-modele.md § Ridge) : hgb-per-lead déjà évalué en candidat ; ridge chiffré comme plancher sur les 9 stations. Résultat inversé entre tide/wind (boosting payé aux 5) et wave (payé à 1 station/4 seulement, non payé à 2, indéterminé à 1) — voir la section Ridge pour le détail par station</span></div></li>
   </ul>
 </section>
 
 <section class="reste">
   <h2>Reste à faire — agrégé et trié par priorité apparente</h2>
-  <p class="plan-note">Priorité déduite des préalables déjà levés, de l'ordre suggéré dans demandes-produit.md et de ce qui bloque le reste.</p>
+  <p class="plan-note">Réécrite le 2026-08-05 : les items soldés du 2026-08-05 (graphiques enrichis, SSG, réserve saint-malo) sont retirés de cette liste — ils sont cochés dans les sections ci-dessus. Priorité déduite des préalables déjà levés, de l'ordre suggéré dans demandes-produit.md et de ce qui bloque le reste.</p>
   <ol class="reste-list">
-    <li>Réentraîner sur les vraies prévisions archivées (data_forecast_archive/) — le levier identifié comme le plus fort pour sortir les chiffres wave/tide du régime « plafond reconstitué ».<span class="src">demandes-produit.md § 2</span></li>
-    <li>Graphiques enrichis — restent la vue multi-stations et la dispersion de l'erreur ; la distinction jours reconstitués/opérationnels est livrée (T4a, 2026-08-05).<span class="src">demandes-produit.md § 1</span></li>
-    <li>Rejouer la mesure ridge sur les 4 stations wave — leur *_raw.parquet a disparu de data_train/, le protocole les ignore aujourd'hui ; commande identique une fois le dataset reconstruit.<span class="src">plan-dev-modele.md § Ridge comme plancher honnête</span></li>
-    <li>Accumuler l'historique wave jusqu'à 730 j pour le protocole rolling-origin complet (wind déjà à ~914 j).<span class="src">review_codex_2026-08-05.md § 6</span></li>
+    <li>Réentraîner sur les vraies prévisions archivées (data_forecast_archive/) — le levier identifié comme le plus fort pour sortir les métriques du régime « plafond reconstitué » (30-31 j/32 sont `backfilled: true` sur toutes les stations publiées). Voir <a href="biais-forcage-jours-reconstitues.html" style="color:var(--accent)">docs/biais-forcage-jours-reconstitues.html</a> pour le mécanisme exact : le skew ERA5 est fermé (2026-08-04), houle et vent restent volontairement sur l'archive « runs frais » (le gain est un rapport, le biais tombe des deux côtés).<span class="src">demandes-produit.md § 2</span></li>
+    <li>Accumuler l'historique wave jusqu'à 730 j pour le protocole rolling-origin complet (wind déjà à ~914 j) — les 4 stations wave sont en holdout dégradé (1 à 3 folds sur 4), donc `evaluation_ready = false` : aucune n'est publiable dans ce nouveau protocole en l'état.<span class="src">review_codex_2026-08-05.md § 6 · plan-dev-modele.md § Ridge</span></li>
     <li>Inscrire les bouées Météo-France comme stations wave scorées (stations.toml, gate, dispatch de source) — bloqué jusqu'à ~2-3 mois d'obs archivées, entraînement Méditerranée visé 2026-10/11.<span class="src">demandes-produit.md § 4</span></li>
-    <li>Migration SSG/ISR du rendu (le site reste une SPA React côté client).<span class="src">plan_dev_gemini.md § AXE 1</span></li>
+    <li>Post LinkedIn de méthode (angle : la méthode, pas le chiffre) — voir la ligne dédiée sous AXE 3 ci-dessus pour les trois preuves retenues.<span class="src">plan_dev_gemini.md § AXE 3</span></li>
     <li>Widget « Verified by » — livré et vérifié ; reste la mise en avant / prospection pour en faire un canal d'acquisition réel.<span class="src">plan_dev_gemini.md § AXE 3</span></li>
-    <li>Baromètre trimestriel / mensuel (posts LinkedIn d'impact lors d'événements métocéaniques).<span class="src">plan_dev_gemini.md § AXE 3</span></li>
+    <li>Baromètre trimestriel / mensuel (posts LinkedIn d'impact lors d'événements métocéaniques) — après le post de méthode ci-dessus.<span class="src">plan_dev_gemini.md § AXE 3</span></li>
     <li>Capture de leads qualifiés (email professionnel contre export CSV / accès API).<span class="src">plan_dev_gemini.md § AXE 3</span></li>
-    <li>Offres B2B (Private Scoreboard, Forecast API, Risk &amp; Uncertainty Engine, On-Premise) — placées Q1/Q2 2027 dans le planning, aucun avancement rapporté.<span class="src">plan_dev_gemini.md § AXE 4</span></li>
-    <li>Diagnostic du plafond propre à saint-malo (résidu semi-diurne non stationnaire) — axe features épuisé, aucun nouveau candidat identifié ; le secteur « flot début » reste inexpliqué.<span class="src">plan-dev-modele.md § Réserves ouvertes</span></li>
     <li>Envisager un block bootstrap multi-jours pour l'autocorrélation météo inter-journalière, si le besoin se confirme.<span class="src">review_codex_2026-08-05.md § 6</span></li>
+    <li>Offres B2B (Private Scoreboard, Forecast API, Risk &amp; Uncertainty Engine, On-Premise) — placées Q1/Q2 2027 dans le planning, aucun avancement rapporté.<span class="src">plan_dev_gemini.md § AXE 4</span></li>
     <li>Carte MapLibre vectorielle — <strong>non retenue</strong>, le SVG maison suffit à l'échelle actuelle (8 stations). À reconsidérer seulement si le réseau grossit significativement.<span class="src">plan_dev_gemini.md § AXE 2.1 — décision : non retenu</span></li>
   </ol>
 </section>
