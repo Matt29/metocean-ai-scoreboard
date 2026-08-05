@@ -220,7 +220,7 @@
   <div class="subtitle">Généré le 2026-08-05 · croise 5 plans de développement avec l'état réel du dépôt (git log, code, docs/review_codex_2026-08-05.md)</div>
   <div class="global-bar-row">
     <div class="bar-track"><div class="bar-fill" style="width:72%"></div></div>
-    <div class="bar-label">≈72 % des items planifiés faits ou en cours (49/68)</div>
+    <div class="bar-label">≈72 % des items planifiés faits ou en cours (50/69)</div>
   </div>
   <div class="legend">
     <span><span class="dot" style="background:var(--green)"></span>fait</span>
@@ -380,8 +380,8 @@
     <span class="plan-source">docs/review_codex_2026-08-05.md · docs/model-eval.md</span>
   </div>
   <div class="plan-bar-row">
-    <div class="bar-track"><div class="bar-fill" style="width:85%"></div></div>
-    <div class="bar-label">≈85 %</div>
+    <div class="bar-track"><div class="bar-fill" style="width:67%"></div></div>
+    <div class="bar-label">≈67 %</div>
   </div>
   <p class="plan-note">Pas un plan initial mais une note de revue qui liste ce qui a été corrigé (commits dd5924b, 1a9b8fa) et ce qui reste ouvert. Reprise ici parce qu'elle fixe les invariants de fiabilité que tout futur chantier doit respecter.</p>
   <ul class="tasks">
@@ -390,6 +390,7 @@
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Split rolling-origin wave/wind : 4 origines, purge 48 h, sélection modèle jamais sur le test</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">IC95 % bootstrap par jour d'émission (2000 réplications), gate sur borne basse &gt; 0</span></div></li>
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Pondération des scores publics par n_points (une observation = une voix)</span></div></li>
+    <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Backfill auto-réparateur : un jour scoré contre une baseline périmée est rejoué</span><span class="task-note">commits ec34e9f + 8ff3f70 — un changement de modèle physique faisait fondre les scores publiés sans trace (29 j de houle tombés à 3, 2026-08-03) ; ces jours restaient « ok » donc aucun backfill ne les récupérait. compute_scores émet n_days_other_baseline quand la clé mord, write_scores le journalise. 29 j rejoués, les 3 stations houle sont revenues à 32 j</span></div></li>
     <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">Accumuler l'historique wave/wind jusqu'à 730 j pour permettre les 4 folds saisonniers partout</span><span class="task-note">stations wind ~914 j déjà couverts ; wave pas encore réentraîné sur ce protocole</span></div></li>
     <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">Inspecter le nouveau docs/model-eval.md (format folds + IC) au prochain retrain</span></div></li>
     <li><input type="checkbox" disabled><div class="task-body"><span class="task-label todo">Envisager un block bootstrap multi-jours si l'autocorrélation météo inter-journalière l'exige</span></div></li>
