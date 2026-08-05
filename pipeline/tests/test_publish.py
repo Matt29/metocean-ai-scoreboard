@@ -362,6 +362,101 @@ def test_backfilled_count_follows_the_same_window():
     assert row["n_days_backfilled"] == 1  # the legacy backfilled day is out
 
 
+# --- by_lead: point-by-point MAE decomposition by lead time ------------
+
+
+def _series_point(hour_offset, obs=1.0, ia=1.1, baseline=1.2):
+    """A point at lead `hour_offset` after a 2026-07-30 06:00 UTC emission."""
+    from datetime import datetime, timedelta, timezone
+
+    t = datetime(2026, 7, 30, 6, tzinfo=timezone.utc) + timedelta(hours=hour_offset)
+    return {"t": t.isoformat().replace("+00:00", "Z"), "obs": obs, "ia": ia, "baseline": baseline}
+
+
+def test_by_lead_buckets_points_by_known_leads():
+    day = {
+        "date": "2026-07-30",
+        "status": "ok",
+        "mae_ia": 0.1,
+        "mae_baseline": 0.2,
+        "n_points": 4,
+        "series": [
+            _series_point(6, obs=1.0, ia=1.1, baseline=1.3),   # h06: |err|=.1/.3
+            _series_point(12, obs=1.0, ia=1.2, baseline=1.5),  # h12: |err|=.2/.5
+            _series_point(24, obs=1.0, ia=1.4, baseline=1.9),  # h24: |err|=.4/.9
+            _series_point(48, obs=1.0, ia=1.8, baseline=2.9),  # h48: |err|=.8/1.9
+        ],
+    }
+    by_lead = publish.compute_lead_breakdown([day])
+    assert by_lead["h06"] == {"mae_ia": 0.1, "mae_baseline": 0.3, "n_points": 1}
+    assert by_lead["h12"] == {"mae_ia": 0.2, "mae_baseline": 0.5, "n_points": 1}
+    assert by_lead["h24"] == {"mae_ia": pytest.approx(0.4), "mae_baseline": pytest.approx(0.9), "n_points": 1}
+    assert by_lead["h48"] == {"mae_ia": pytest.approx(0.8), "mae_baseline": pytest.approx(1.9), "n_points": 1}
+
+
+def test_by_lead_excludes_a_day_scored_against_an_old_baseline():
+    days = [
+        _ok_day("2026-07-29", 0.9, 1.0, "mfwam") | {
+            "series": [_series_point(6, obs=1.0, ia=1.5, baseline=1.9)]
+        },
+        _ok_day("2026-07-30", 0.1, 0.2, "ewam") | {
+            "series": [_series_point(6, obs=1.0, ia=1.1, baseline=1.2)]
+        },
+    ]
+    # Via `compute_scores`, le chemin de prod : le filtre baseline vit chez
+    # l'appelant depuis que `compute_lead_breakdown` reçoit la fenêtre déjà
+    # filtrée.
+    by_lead = publish.compute_scores(days)["by_lead"]
+    assert by_lead["h06"]["n_points"] == 1
+    assert by_lead["h06"]["mae_ia"] == pytest.approx(0.1)
+
+
+def test_by_lead_ignores_legacy_days_without_series():
+    days = [_ok_day("2026-07-30", 0.1, 0.2)]  # `_ok_day` has an empty `series`
+    by_lead = publish.compute_lead_breakdown(days)
+    for label in publish.LEAD_BUCKETS:
+        assert by_lead[label] == {"mae_ia": None, "mae_baseline": None, "n_points": 0}
+
+
+def test_by_lead_respects_the_30d_window():
+    recent = {
+        "date": "2026-07-30",
+        "status": "ok",
+        "mae_ia": 0.1,
+        "mae_baseline": 0.2,
+        "n_points": 1,
+        "series": [_series_point(6, obs=1.0, ia=1.1, baseline=1.2)],
+    }
+    too_old = {
+        "date": "2026-06-20",  # 40 days before the anchor
+        "status": "ok",
+        "mae_ia": 0.9,
+        "mae_baseline": 1.0,
+        "n_points": 1,
+        "series": [
+            {"t": "2026-06-20T12:00:00Z", "obs": 1.0, "ia": 5.0, "baseline": 6.0}
+        ],
+    }
+    # Via `compute_scores` : le fenêtrage 30d vit chez l'appelant, voir ci-dessus.
+    by_lead = publish.compute_scores([too_old, recent])["by_lead"]
+    assert by_lead["h06"]["n_points"] == 1
+    assert by_lead["h06"]["mae_ia"] == pytest.approx(0.1)
+
+
+def test_compute_scores_carries_by_lead(tmp_path):
+    day = {
+        "date": "2026-07-30",
+        "status": "ok",
+        "mae_ia": 0.1,
+        "mae_baseline": 0.2,
+        "n_points": 1,
+        "series": [_series_point(6, obs=1.0, ia=1.1, baseline=1.2)],
+    }
+    row = publish.compute_scores([day])
+    assert row["by_lead"]["h06"]["n_points"] == 1
+    assert row["by_lead"]["h12"] == {"mae_ia": None, "mae_baseline": None, "n_points": 0}
+
+
 def test_station_entry_publishes_the_unit_of_its_kind(tmp_path):
     """`unit` est une donnée publique : une station de vent servie en mètres est
     une erreur de fait, pas un détail d'affichage."""

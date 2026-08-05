@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from scoreboard import daily
+from scoreboard import daily, publish
 from scoreboard.config import Station
 from scoreboard.features import FEATURE_COLUMNS, WAVE_FEATURE_COLUMNS, WIND_FEATURE_COLUMNS
 from scoreboard.sources import SourceError
@@ -978,3 +978,9 @@ def test_absent_gate_fails_before_any_publication(tmp_path, patched_sources, mon
         daily.run(RUN_DATE, tmp_path, stations=STATIONS, archive_dir=tmp_path / "archive")
 
     assert not (tmp_path / "stations.json").exists()
+
+
+def test_issue_hour_matches_publish_lead_decomposition():
+    """`publish._ISSUE_HOUR` est dupliqué (sens de la dépendance : `daily`
+    importe `publish`, jamais l'inverse) — ce test est le garde anti-dérive."""
+    assert daily.ISSUE_HOUR == publish._ISSUE_HOUR

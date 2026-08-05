@@ -11,7 +11,9 @@ consumer (the website, a separate repo) can detect a breaking change:
                                  "n_points"?}]}   (90d max)
     data/scores.json            {"updated","stations":[{"id","status","n_days",
                                  "mae_ia_7d","mae_baseline_7d","mae_ia_30d",
-                                 "mae_baseline_30d","mae_ia_all","mae_baseline_all"}]}
+                                 "mae_baseline_30d","mae_ia_all","mae_baseline_all",
+                                 "by_lead":{"h06"|"h12"|"h24"|"h48":
+                                 {"mae_ia","mae_baseline","n_points"}}}]}
 
 Plus un cinquième fichier, écrit par une autre commande (`archive-obs`, pas
 `daily`) et volontairement hors du contrat des stations :
@@ -34,7 +36,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -45,6 +47,11 @@ SCHEMA_VERSION = 1
 MAX_HISTORY_DAYS = 90
 # Window sizes in calendar days (not "ok" day counts) — see compute_scores().
 _SCORE_WINDOWS = {"7d": 7, "30d": 30, "all": None}
+# Emission instant of a day's issue, UTC hour — must match daily.ISSUE_HOUR.
+# Duplicated rather than imported: `daily` imports `publish`, not the reverse,
+# and this module has no other reason to depend on the orchestrator.
+_ISSUE_HOUR = 6
+LEAD_BUCKETS = ("h06", "h12", "h24", "h48")  # see compute_lead_breakdown()
 
 
 def score_day(obs, pred_ia, pred_baseline) -> tuple[float, float]:
@@ -242,6 +249,99 @@ def _score_weight(day: dict) -> int:
     return int(number)
 
 
+def _ok_days_current_baseline(days: list[dict]) -> list[dict]:
+    """"ok" days scored against the *current* baseline (see `compute_scores`'s
+    docstring for why an outdated baseline is excluded rather than averaged
+    in). Shared by `compute_scores` and `compute_lead_breakdown` so the two
+    never drift on what counts as a comparable day."""
+    ok = [d for d in days if d.get("status") == "ok"]
+    current = _current_baseline_model(days)
+    if current is not None:
+        ok = [d for d in ok if d.get("baseline_model") == current]
+    return ok
+
+
+def _window_days(ok: list[dict], n: int | None) -> list[dict]:
+    """Calendar-based slice of `ok`, anchored on its own latest date — not
+    wall-clock, so the result stays deterministic from the input alone.
+    `n=None` (or an empty `ok`) returns every day, matching the "all" window."""
+    anchor = max((date.fromisoformat(d["date"]) for d in ok), default=None)
+    if not n or anchor is None:
+        return ok
+    cutoff = anchor - timedelta(days=n)
+    return [d for d in ok if date.fromisoformat(d["date"]) > cutoff]
+
+
+def _lead_bucket(lead_h: float) -> str | None:
+    """Which `LEAD_BUCKETS` slot a point's lead falls in, or `None` outside
+    [0, 48] (a matched obs should never sit there, but a corrupt/legacy point
+    must not be miscounted into an edge bucket)."""
+    if lead_h < 0 or lead_h > 48:
+        return None
+    if lead_h <= 6:
+        return "h06"
+    if lead_h <= 12:
+        return "h12"
+    if lead_h <= 24:
+        return "h24"
+    return "h48"
+
+
+def compute_lead_breakdown(window: list[dict]) -> dict:
+    """`by_lead`: point-by-point MAE decomposition by lead time (h06=0-6h,
+    h12=7-12h, h24=13-24h, h48=25-48h), one bucket set for `scores.json`.
+
+    `window` is the already-filtered, already-windowed day list — the *same
+    list* `compute_scores` builds for its "30d" column (`_ok_days_current_baseline`
+    + `_window_days`), passed through rather than re-derived here, so the two
+    cannot drift on what counts as a comparable day. A single window rather
+    than one bucket set per window size: the station page needs one
+    representative decomposition, and publishing three would triple the
+    contract for a number nobody reads three ways — 30d is the one already
+    used as the site's headline gain, and legibility of the contract wins
+    over exhaustiveness here.
+
+    Un point = une voix, cohérent avec le poids `n_points` des scores
+    agrégés : ce n'est pas une MAE journalière repondérée, c'est une MAE
+    calculée directement sur les points des `series` des jours retenus. Un
+    jour ancien sans `series` détaillée (compat historique) ou un point sans
+    `obs` valide est silencieusement ignoré plutôt que de faire échouer la
+    publication. Une tranche sans aucun point retombe sur
+    `{"mae_ia": None, "mae_baseline": None, "n_points": 0}`.
+
+    Lead d'un point = son `t` moins l'instant d'émission du jour (`date` +
+    `_ISSUE_HOUR` UTC) — pas `max_lead_h`, déjà agrégé et donc impossible à
+    répartir par tranche.
+    """
+    err_ia: dict[str, list[float]] = {label: [] for label in LEAD_BUCKETS}
+    err_baseline: dict[str, list[float]] = {label: [] for label in LEAD_BUCKETS}
+    for day in window:
+        series = day.get("series")
+        if not series:
+            continue
+        issued = datetime.combine(date.fromisoformat(day["date"]), datetime.min.time(), timezone.utc)
+        issued += timedelta(hours=_ISSUE_HOUR)
+        for point in series:
+            if point.get("obs") is None:
+                continue
+            # 3.11+ parses a trailing "Z" natively.
+            lead_h = (datetime.fromisoformat(point["t"]) - issued).total_seconds() / 3600
+            bucket = _lead_bucket(lead_h)
+            if bucket is None:
+                continue
+            err_ia[bucket].append(abs(point["ia"] - point["obs"]))
+            err_baseline[bucket].append(abs(point["baseline"] - point["obs"]))
+
+    return {
+        label: {
+            "mae_ia": round(float(np.mean(err_ia[label])), 4) if err_ia[label] else None,
+            "mae_baseline": round(float(np.mean(err_baseline[label])), 4) if err_baseline[label] else None,
+            "n_points": len(err_ia[label]),
+        }
+        for label in LEAD_BUCKETS
+    }
+
+
 def compute_scores(days: list[dict]) -> dict:
     """MAE aggregates over "ok" days only — a "missing" day must not move them.
 
@@ -265,21 +365,14 @@ def compute_scores(days: list[dict]) -> dict:
     to empty out the day the baseline changes and refill from there; an empty
     window already yields `None`, not a division by zero.
     """
-    ok = [d for d in days if d.get("status") == "ok"]
-    current = _current_baseline_model(days)
-    if current is not None:
-        ok = [d for d in ok if d.get("baseline_model") == current]
+    ok = _ok_days_current_baseline(days)
     # Among the "ok" days, how many were reconstructed a posteriori by
     # `scoreboard backfill` rather than scored the day after a live run — the
     # site surfaces this as "dont N jours reconstitués" (résolution 2).
     row = {"n_days": len(ok), "n_days_backfilled": sum(1 for d in ok if d.get("backfilled"))}
-    anchor = max((date.fromisoformat(d["date"]) for d in ok), default=None)
+    row["by_lead"] = compute_lead_breakdown(_window_days(ok, _SCORE_WINDOWS["30d"]))
     for label, n in _SCORE_WINDOWS.items():
-        if n and anchor is not None:
-            cutoff = anchor - timedelta(days=n)
-            window = [d for d in ok if date.fromisoformat(d["date"]) > cutoff]
-        else:
-            window = ok
+        window = _window_days(ok, n)
         weights = [_score_weight(d) for d in window]
         total_weight = sum(weights)
         row[f"mae_ia_{label}"] = (
