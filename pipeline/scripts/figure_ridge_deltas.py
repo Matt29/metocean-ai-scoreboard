@@ -111,18 +111,36 @@ def main() -> int:
         [f"{LABELS[r['id']]}  ({r['kind']})" for r in rows], fontsize=10
     )
     ax.set_xlabel(
-        "Écart de gain, boosting − régression régularisée (points de %)\n"
-        "bootstrap apparié par jour d'émission, IC95 %",
-        fontsize=10,
+        "écart entre les deux gains (points de %) — IC95 %, "
+        "bootstrap apparié par jour d'émission",
+        fontsize=9.5,
         color=NAVY,
     )
     ax.set_title(
         "Ce que le gradient boosting apporte face à une régression linéaire",
         fontsize=13,
         color=NAVY,
-        pad=14,
+        pad=40,
         loc="left",
     )
+    # Sans ça, « +12,9 » n'a pas d'ancrage : la figure ne montre pas les gains.
+    # Le sens de lecture, lui, est déjà porté par la légende — ne pas le répéter.
+    for i, line in enumerate(
+        [
+            "Gain = erreur (MAE) en moins face au modèle physique ; l'axe montre "
+            "l'écart entre les deux gains.",
+            "Ex. Saint-Malo : régression +21,2 %, boosting +34,1 % → écart de 12,9 pts.",
+        ]
+    ):
+        ax.text(
+            0,
+            1.075 - 0.045 * i,
+            line,
+            transform=ax.transAxes,
+            fontsize=8.5,
+            color=GREY,
+        )
+    ax.set_ylim(-0.8, len(rows) - 0.2)
     # Note accrochée au point d'anglet : c'est lui qu'elle qualifie.
     anglet_y = next(i for i, r in enumerate(rows) if r["id"] == "anglet")
     ax.annotate(
