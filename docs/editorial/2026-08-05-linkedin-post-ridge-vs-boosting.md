@@ -98,9 +98,17 @@ nommé.
 
 ## Figure associée
 
-Aucune, sauf à en produire une qui ne porte pas de chiffre de performance
-publiée. Le tableau du site et la figure de surcote sont exclus ici : ils
-affichent des chiffres issus des jours reconstitués. Si une image est
-souhaitée, le seul contenu défendable est un graphe des écarts Δ avec leurs
-IC95 % (les 9 stations), généré depuis `docs/plan-dev-modele.md` — à créer, il
-n'existe pas.
+[`figure-ecart-boosting-ridge.png`](figure-ecart-boosting-ridge.png) — les 9
+écarts Δ avec leurs IC95 %, produite le 2026-08-06 par
+`pipeline/scripts/figure_ridge_deltas.py`, qui **parse** les deux tableaux
+« L'écart, avec sa barre d'erreur » de `docs/plan-dev-modele.md` : aucune valeur
+n'y est retapée, et un changement de format du tableau fait échouer le script
+plutôt que dessiner un chiffre périmé.
+
+Elle ne porte **aucun chiffre de performance publiée** — que des écarts de
+backtest — donc aucun jour reconstitué. Anglet y est un cercle creux annoté
+« absence de mesure, pas un écart nul », jamais un point à zéro. Verdicts en
+libellé *et* en couleur (`docs/brand.md` : jamais la couleur seule).
+
+Restent exclus : le tableau du site et la figure de surcote, qui affichent des
+chiffres issus des jours reconstitués.
