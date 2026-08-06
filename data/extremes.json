@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-08-05T06:00:00Z",
+  "updated": "2026-08-06T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -9,28 +9,31 @@
           "date": "2026-07-25",
           "obs_peak": 2.2,
           "t_peak": "2026-07-27T06:00:00Z",
-          "ia_at_peak": 1.7429,
-          "baseline_at_peak": 1.92,
-          "peak_error_ia": -0.4571,
-          "peak_error_baseline": -0.28
+          "ia_at_peak": 1.7275,
+          "baseline_at_peak": 1.42,
+          "peak_error_ia": -0.4725,
+          "peak_error_baseline": -0.78,
+          "baseline_model": "ncep_gfswave025"
         },
         {
           "date": "2026-07-26",
           "obs_peak": 2.2,
           "t_peak": "2026-07-27T06:00:00Z",
-          "ia_at_peak": 1.7571,
-          "baseline_at_peak": 1.92,
-          "peak_error_ia": -0.4429,
-          "peak_error_baseline": -0.28
+          "ia_at_peak": 1.7726,
+          "baseline_at_peak": 1.42,
+          "peak_error_ia": -0.4274,
+          "peak_error_baseline": -0.78,
+          "baseline_model": "ncep_gfswave025"
         },
         {
           "date": "2026-07-27",
           "obs_peak": 1.8,
           "t_peak": "2026-07-27T07:00:00Z",
-          "ia_at_peak": 1.9001,
-          "baseline_at_peak": 1.8733,
-          "peak_error_ia": 0.1001,
-          "peak_error_baseline": 0.0733
+          "ia_at_peak": 1.8536,
+          "baseline_at_peak": 1.4,
+          "peak_error_ia": 0.0536,
+          "peak_error_baseline": -0.4,
+          "baseline_model": "ncep_gfswave025"
         }
       ]
     },
@@ -41,28 +44,31 @@
           "date": "2026-07-24",
           "obs_peak": 1.6,
           "t_peak": "2026-07-25T19:00:00Z",
-          "ia_at_peak": 1.2185,
-          "baseline_at_peak": 1.24,
-          "peak_error_ia": -0.3815,
-          "peak_error_baseline": -0.36
+          "ia_at_peak": 1.3492,
+          "baseline_at_peak": 1.8,
+          "peak_error_ia": -0.2508,
+          "peak_error_baseline": 0.2,
+          "baseline_model": "ewam"
         },
         {
           "date": "2026-07-25",
           "obs_peak": 1.6,
           "t_peak": "2026-07-25T19:00:00Z",
-          "ia_at_peak": 1.2395,
-          "baseline_at_peak": 1.24,
-          "peak_error_ia": -0.3605,
-          "peak_error_baseline": -0.36
+          "ia_at_peak": 1.3814,
+          "baseline_at_peak": 1.8,
+          "peak_error_ia": -0.2186,
+          "peak_error_baseline": 0.2,
+          "baseline_model": "ewam"
         },
         {
-          "date": "2026-07-26",
-          "obs_peak": 1.4,
-          "t_peak": "2026-07-26T16:00:00Z",
-          "ia_at_peak": 1.4581,
-          "baseline_at_peak": 1.5367,
-          "peak_error_ia": 0.0581,
-          "peak_error_baseline": 0.1367
+          "date": "2026-08-04",
+          "obs_peak": 1.5,
+          "t_peak": "2026-08-05T20:00:00Z",
+          "ia_at_peak": 1.1773,
+          "baseline_at_peak": 1.44,
+          "peak_error_ia": -0.3227,
+          "peak_error_baseline": -0.06,
+          "baseline_model": "ewam"
         }
       ]
     },
@@ -73,28 +79,31 @@
           "date": "2026-07-24",
           "obs_peak": 2.7,
           "t_peak": "2026-07-25T15:00:00Z",
-          "ia_at_peak": 1.9411,
-          "baseline_at_peak": 1.97,
-          "peak_error_ia": -0.7589,
-          "peak_error_baseline": -0.73
+          "ia_at_peak": 2.0023,
+          "baseline_at_peak": 2.08,
+          "peak_error_ia": -0.6977,
+          "peak_error_baseline": -0.62,
+          "baseline_model": "meteofrance_wave"
         },
         {
           "date": "2026-07-25",
           "obs_peak": 2.7,
           "t_peak": "2026-07-25T15:00:00Z",
-          "ia_at_peak": 2.0818,
-          "baseline_at_peak": 1.97,
-          "peak_error_ia": -0.6182,
-          "peak_error_baseline": -0.73
+          "ia_at_peak": 2.0239,
+          "baseline_at_peak": 2.08,
+          "peak_error_ia": -0.6761,
+          "peak_error_baseline": -0.62,
+          "baseline_model": "meteofrance_wave"
         },
         {
           "date": "2026-07-23",
           "obs_peak": 2.0,
           "t_peak": "2026-07-24T23:00:00Z",
-          "ia_at_peak": 1.3016,
-          "baseline_at_peak": 1.3833,
-          "peak_error_ia": -0.6984,
-          "peak_error_baseline": -0.6167
+          "ia_at_peak": 1.4889,
+          "baseline_at_peak": 1.48,
+          "peak_error_ia": -0.5111,
+          "peak_error_baseline": -0.52,
+          "baseline_model": "meteofrance_wave"
         }
       ]
     },

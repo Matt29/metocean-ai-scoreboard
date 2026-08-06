@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-08-05T06:00:00Z",
+  "updated": "2026-08-06T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -11,7 +11,8 @@
       "unit": "m",
       "published": true,
       "weak": false,
-      "baseline_model": "ncep_gfswave025"
+      "baseline_model": "ncep_gfswave025",
+      "model_name": "hgb-per-lead"
     },
     {
       "id": "belle-ile",
@@ -22,7 +23,8 @@
       "unit": "m",
       "published": true,
       "weak": false,
-      "baseline_model": "ewam"
+      "baseline_model": "ewam",
+      "model_name": "hgb-per-lead"
     },
     {
       "id": "anglet",
@@ -33,7 +35,8 @@
       "unit": "m",
       "published": true,
       "weak": false,
-      "baseline_model": "meteofrance_wave"
+      "baseline_model": "meteofrance_wave",
+      "model_name": "ridge"
     },
     {
       "id": "cherbourg",
@@ -44,7 +47,8 @@
       "unit": "m",
       "published": false,
       "weak": false,
-      "baseline_model": "ewam"
+      "baseline_model": "ewam",
+      "model_name": "hgb"
     },
     {
       "id": "brest",
@@ -54,7 +58,8 @@
       "lon": -4.4950399,
       "unit": "m",
       "published": true,
-      "weak": false
+      "weak": false,
+      "model_name": "hgb-per-lead"
     },
     {
       "id": "saint-malo",
@@ -64,7 +69,8 @@
       "lon": -2.028103,
       "unit": "m",
       "published": true,
-      "weak": false
+      "weak": false,
+      "model_name": "hgb-per-lead"
     },
     {
       "id": "ouessant",
@@ -75,7 +81,8 @@
       "unit": "m/s",
       "published": true,
       "weak": false,
-      "baseline_model": "meteofrance_arpege_europe"
+      "baseline_model": "meteofrance_arpege_europe",
+      "model_name": "hgb"
     },
     {
       "id": "dieppe",
@@ -86,7 +93,8 @@
       "unit": "m/s",
       "published": true,
       "weak": false,
-      "baseline_model": "meteofrance_arpege_europe"
+      "baseline_model": "meteofrance_arpege_europe",
+      "model_name": "hgb-per-lead"
     },
     {
       "id": "cherbourg-vent",
@@ -97,7 +105,8 @@
       "unit": "m/s",
       "published": true,
       "weak": false,
-      "baseline_model": "meteofrance_arpege_europe"
+      "baseline_model": "meteofrance_arpege_europe",
+      "model_name": "hgb-per-lead"
     }
   ]
 }
