@@ -1,7 +1,11 @@
 # Post LinkedIn — « combien vaut vraiment un post-traitement IA ? »
 
-**Date** : 2026-08-05
-**Statut** : **brouillon, non publié** — rien n'est envoyé sans relecture.
+**Date de rédaction** : 2026-08-05
+**Statut** : **publié sur LinkedIn le 2026-08-06**, avec la figure ci-dessous.
+Chiffres revérifiés le matin même contre le run du 2026-08-06 (`6643526`) :
+`gate.json` inchangé, cherbourg toujours à +3,0 % hors biais sous le seuil de
+5 %. Le texte ci-dessous est celui qui a été envoyé — **ne pas le réécrire** ;
+un post publié est une archive, pas un brouillon vivant.
 **Angle** : la mesure du 2026-08-05, contre-intuitive — selon la station, une
 régression linéaire régularisée fait aussi bien qu'un gradient boosting. Le
 sujet est la mesure, pas le modèle, et jamais la production.
@@ -41,8 +45,11 @@ https://oceandataconsulting.fr/scoreboard/cherbourg
 
 ## Les chiffres employés, avec leur source
 
-À revérifier avant envoi. Les chiffres de backtest vieillissent à chaque
-retrain ; `gate.json` et `docs/plan-dev-modele.md` font foi, jamais ce fichier.
+Vérifiés une dernière fois le 2026-08-06 avant envoi, tous conformes. Ce
+tableau est désormais un **relevé d'archive** : il dit ce que le post affirmait
+et sur quel état du dépôt, il ne dit plus ce qui est vrai aujourd'hui. Les
+chiffres de backtest vieillissent à chaque retrain ; `gate.json` et
+`docs/plan-dev-modele.md` font foi, jamais ce fichier.
 
 | Chiffre du post | Valeur exacte | Source |
 |---|---|---|
