@@ -5,7 +5,10 @@ Les valeurs sont lues dans les tableaux « L'écart, avec sa barre d'erreur » d
 ici. Si le tableau change, la figure change avec — et si son format change, le
 parse échoue bruyamment plutôt que de dessiner un chiffre faux.
 
-Run:  cd pipeline && uv run python scripts/figure_ridge_deltas.py
+matplotlib n'est pas une dépendance du pipeline — cette figure est un artefact
+éditorial ponctuel, pas une étape du run quotidien. D'où le `--with` :
+
+Run:  cd pipeline && uv run --with matplotlib python scripts/figure_ridge_deltas.py
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "docs" / "plan-dev-modele.md"
@@ -151,7 +154,7 @@ def main() -> int:
         fontsize=8.5,
         color=AMBER,
         va="center",
-        arrowprops=dict(arrowstyle="-", color=AMBER, alpha=0.6, linewidth=1),
+        arrowprops={"arrowstyle": "-", "color": AMBER, "alpha": 0.6, "linewidth": 1},
     )
     ax.legend(loc="lower right", frameon=False, fontsize=9, borderaxespad=1.2)
     ax.spines[["top", "right"]].set_visible(False)
