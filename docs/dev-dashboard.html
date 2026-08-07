@@ -436,22 +436,22 @@
     <h3 class="plan-title">Data — accumulation aux bouées et aux stations</h3>
     <span class="plan-source">pipeline/scripts/data_coverage.py</span>
   </div>
-  <p class="plan-note">Généré le 2026-08-07 au commit 7474f54. Régénérer : <code>cd pipeline &amp;&amp; uv run python scripts/data_coverage.py</code>. Les trous sont le signal utile — un cron qui glisse ou saute est documenté dans <code>.github/workflows/daily.yml</code>.</p>
+  <p class="plan-note">Généré le 2026-08-07 au commit 5fe318b. Régénérer : <code>cd pipeline &amp;&amp; uv run python scripts/data_coverage.py</code>. Les trous sont le signal utile — un cron qui glisse ou saute est documenté dans <code>.github/workflows/daily.yml</code>.</p>
   <h4>Par station</h4>
   <div style="overflow-x:auto"><table class="data-table">
     <tr><th>station</th><th>publié</th><th>1er jour</th><th>dernier jour</th><th>jours présents</th><th>défaut</th><th>trous</th><th>n_days</th><th>backfilled</th><th>live</th><th>voie prévisions archivées</th></tr>
-    <tr><td>pierres-noires</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>30</td><td>3</td><td>4</td></tr>
-    <tr><td>belle-ile</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>30</td><td>3</td><td>4</td></tr>
-    <tr><td>anglet</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>30</td><td>3</td><td>4</td></tr>
+    <tr><td>pierres-noires</td><td>oui</td><td>2026-07-04</td><td>2026-08-06</td><td>34</td><td>0</td><td>0</td><td>34</td><td>30</td><td>4</td><td>5</td></tr>
+    <tr><td>belle-ile</td><td>oui</td><td>2026-07-04</td><td>2026-08-06</td><td>34</td><td>0</td><td>0</td><td>34</td><td>30</td><td>4</td><td>5</td></tr>
+    <tr><td>anglet</td><td>oui</td><td>2026-07-04</td><td>2026-08-06</td><td>34</td><td>0</td><td>0</td><td>34</td><td>30</td><td>4</td><td>5</td></tr>
     <tr><td>cherbourg</td><td colspan="10">aucune donnée publiée — configurée dans stations.toml, sans data/&lt;id&gt;/history.json</td></tr>
-    <tr><td>brest</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>30</td><td>3</td><td>4</td></tr>
-    <tr><td>saint-malo</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>31</td><td>2</td><td>3</td></tr>
-    <tr><td>ouessant</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>31</td><td>2</td><td>3</td></tr>
-    <tr><td>dieppe</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>31</td><td>2</td><td>3</td></tr>
-    <tr><td>cherbourg-vent</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>31</td><td>2</td><td>3</td></tr>
+    <tr><td>brest</td><td>oui</td><td>2026-07-04</td><td>2026-08-06</td><td>34</td><td>0</td><td>0</td><td>34</td><td>30</td><td>4</td><td>5</td></tr>
+    <tr><td>saint-malo</td><td>oui</td><td>2026-07-04</td><td>2026-08-07</td><td>35</td><td>1</td><td>0</td><td>34</td><td>31</td><td>3</td><td>3</td></tr>
+    <tr><td>ouessant</td><td>oui</td><td>2026-07-04</td><td>2026-08-06</td><td>34</td><td>0</td><td>0</td><td>34</td><td>31</td><td>3</td><td>4</td></tr>
+    <tr><td>dieppe</td><td>oui</td><td>2026-07-04</td><td>2026-08-06</td><td>34</td><td>0</td><td>0</td><td>34</td><td>31</td><td>3</td><td>4</td></tr>
+    <tr><td>cherbourg-vent</td><td>oui</td><td>2026-07-04</td><td>2026-08-06</td><td>34</td><td>0</td><td>0</td><td>34</td><td>31</td><td>3</td><td>4</td></tr>
   </table></div>
   <h4>Archive bouées Météo-France (nationale, irremplaçable)</h4>
-  <p class="plan-note">7 jour(s) archivé(s), du 2026-07-31 au 2026-08-06 (0 jour(s) manquant(s) dans l'intervalle) · 1247 lignes · 9 bouées distinctes (geo_id_wmo). Fenêtre glissante ~96 h côté API Météo-France : aucun jour manqué ici n'est rattrapable après coup.</p>
+  <p class="plan-note">8 jour(s) archivé(s), du 2026-07-31 au 2026-08-07 (0 jour(s) manquant(s) dans l'intervalle) · 1443 lignes · 9 bouées distinctes (geo_id_wmo). Fenêtre glissante ~96 h côté API Météo-France : aucun jour manqué ici n'est rattrapable après coup.</p>
   <h4>Jeux d'entraînement (pipeline/data_train/)</h4>
   <div style="overflow-x:auto"><table class="data-table">
     <tr><th>fichier</th><th>lignes</th><th>première date</th><th>dernière date</th></tr>
