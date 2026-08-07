@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 from scoreboard import cli, daily
 from scoreboard.config import load_env
@@ -60,3 +60,23 @@ def test_backfill_command_returns_nonzero_for_an_invalid_gate(monkeypatch, capsy
 
     assert cli.main(["backfill", "--since", "2026-07-01", "--dry-run"]) == 2
     assert "::error::gate is incomplete" in capsys.readouterr().out
+
+
+def test_backfill_warns_when_since_covers_no_replayable_day(monkeypatch, capsys):
+    """Un `--since` au jour courant ne rejoue rien : le job reste vert, mais il
+    doit le DIRE — sinon le trou qu'on croyait comblé reste ouvert en silence."""
+    monkeypatch.setattr(cli.backfill, "run", lambda *args, **kwargs: {})
+    today = datetime.now(timezone.utc).date()
+
+    assert cli.main(["backfill", "--since", today.isoformat(), "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "::warning::backfill:" in out
+    assert "aucun jour rejouable" in out
+
+
+def test_backfill_stays_quiet_when_since_is_replayable(monkeypatch, capsys):
+    monkeypatch.setattr(cli.backfill, "run", lambda *args, **kwargs: {})
+    yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
+
+    assert cli.main(["backfill", "--since", yesterday.isoformat(), "--dry-run"]) == 0
+    assert "::warning::" not in capsys.readouterr().out

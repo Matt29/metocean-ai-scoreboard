@@ -26,6 +26,9 @@ name: daily
           Optional: replay missing history since this date (format
           YYYY-MM-DD) via `scoreboard backfill --since`, instead of the
           normal `scoreboard daily` run. Leave empty for the usual daily run.
+          Replays up to YESTERDAY only: to fix a `missing` on the current day,
+          leave this empty and re-run — `daily` is idempotent per day. A
+          `--since` past that bound replays nothing and says so (`::warning::`).
         required: false
         type: string
 

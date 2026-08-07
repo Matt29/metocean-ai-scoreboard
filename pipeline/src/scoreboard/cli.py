@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import argparse
 import tempfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from scoreboard import archive, archive_obs, backfill, daily, og
@@ -114,6 +114,19 @@ def main(argv: list[str] | None = None) -> int:
         return status
 
     since = date.fromisoformat(args.since)
+    # `backfill.run` s'arrête à hier. Un `--since` au jour courant rend donc un
+    # job VERT qui n'a rejoué aucun jour : l'opérateur croit avoir comblé le
+    # trou, le trou reste. Même raison que le `::warning::` d'archive-obs — la
+    # panne silencieuse est le mode de défaillance qu'on refuse ici. Mesuré le
+    # 2026-08-07 (run 31168004261, commit 813632f) : `--since 2026-08-07` pour
+    # rattraper un `saint-malo: missing` du jour a rendu « 0 day(s) replayed »
+    # sans un mot. Le jour courant se rattrape par un second `daily`, idempotent.
+    last_replayable = datetime.now(timezone.utc).date() - timedelta(days=1)
+    if since > last_replayable:
+        print(
+            f"::warning::backfill: --since {since} ne couvre aucun jour rejouable "
+            f"(le dernier est {last_replayable}) — relancer `daily` pour le jour courant"
+        )
     try:
         summary = backfill.run(since, out_dir)
     except daily.GateConfigurationError as exc:
