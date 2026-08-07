@@ -1076,22 +1076,22 @@
           "n_points": 360
         },
         "h48": {
-          "mae_ia": 0.1192,
+          "mae_ia": 0.1188,
           "p50_ia": 0.091,
           "p90_ia": 0.2081,
-          "mae_baseline": 0.123,
+          "mae_baseline": 0.1225,
           "p50_baseline": 0.0891,
           "p90_baseline": 0.2239,
           "n_points": 701
         }
       },
       "metrics_30d": {
-        "rmse_ia": 0.1816,
-        "rmse_baseline": 0.1921,
-        "bias_ia": -0.029,
-        "bias_baseline": -0.0114,
+        "rmse_ia": 0.1808,
+        "rmse_baseline": 0.1913,
+        "bias_ia": -0.0292,
+        "bias_baseline": -0.0116,
         "r2_ia": 0.9957,
-        "r2_baseline": 0.9951,
+        "r2_baseline": 0.9952,
         "n_points": 1421
       },
       "by_lead_90d": {
@@ -1123,28 +1123,28 @@
           "n_points": 408
         },
         "h48": {
-          "mae_ia": 0.1145,
+          "mae_ia": 0.1141,
           "p50_ia": 0.087,
           "p90_ia": 0.2005,
-          "mae_baseline": 0.1193,
+          "mae_baseline": 0.1189,
           "p50_baseline": 0.084,
           "p90_baseline": 0.2218,
           "n_points": 797
         }
       },
       "metrics_90d": {
-        "rmse_ia": 0.173,
-        "rmse_baseline": 0.1873,
-        "bias_ia": -0.0295,
-        "bias_baseline": -0.0042,
+        "rmse_ia": 0.1723,
+        "rmse_baseline": 0.1866,
+        "bias_ia": -0.0297,
+        "bias_baseline": -0.0044,
         "r2_ia": 0.996,
         "r2_baseline": 0.9953,
         "n_points": 1613
       },
-      "mae_ia_7d": 0.1208,
-      "mae_baseline_7d": 0.1391,
-      "mae_ia_30d": 0.1034,
-      "mae_baseline_30d": 0.1135,
+      "mae_ia_7d": 0.1199,
+      "mae_baseline_7d": 0.1382,
+      "mae_ia_30d": 0.1032,
+      "mae_baseline_30d": 0.1133,
       "daily_30d": [
         {
           "date": "2026-07-08",
@@ -1293,14 +1293,14 @@
         },
         {
           "date": "2026-08-06",
-          "mae_ia": 0.1383,
-          "mae_baseline": 0.1565
+          "mae_ia": 0.1283,
+          "mae_baseline": 0.1465
         }
       ],
-      "mae_ia_90d": 0.0994,
-      "mae_baseline_90d": 0.1124,
-      "mae_ia_all": 0.0994,
-      "mae_baseline_all": 0.1124
+      "mae_ia_90d": 0.0992,
+      "mae_baseline_90d": 0.1122,
+      "mae_ia_all": 0.0992,
+      "mae_baseline_all": 0.1122
     },
     {
       "id": "ouessant",
