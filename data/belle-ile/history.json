@@ -10070,18 +10070,19 @@
           "obs": 0.5,
           "ia": 0.379,
           "baseline": 0.56
-        }
-      ],
-      "mae_ia": 0.084,
-      "mae_baseline": 0.1729,
-      "n_points": 28,
-      "max_lead_h": 28,
-      "pending": [
+        },
         {
           "t": "2026-08-07T11:00:00Z",
+          "obs": 0.5,
           "ia": 0.39,
           "baseline": 0.52
-        },
+        }
+      ],
+      "mae_ia": 0.0849,
+      "mae_baseline": 0.1676,
+      "n_points": 29,
+      "max_lead_h": 29,
+      "pending": [
         {
           "t": "2026-08-07T12:00:00Z",
           "ia": 0.3679,
