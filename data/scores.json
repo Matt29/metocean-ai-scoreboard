@@ -1044,7 +1044,7 @@
     },
     {
       "id": "saint-malo",
-      "status": "missing",
+      "status": "ok",
       "n_days": 34,
       "n_days_backfilled": 31,
       "by_lead": {
@@ -1076,20 +1076,20 @@
           "n_points": 360
         },
         "h48": {
-          "mae_ia": 0.1188,
+          "mae_ia": 0.1185,
           "p50_ia": 0.091,
-          "p90_ia": 0.2081,
-          "mae_baseline": 0.1225,
+          "p90_ia": 0.2075,
+          "mae_baseline": 0.1222,
           "p50_baseline": 0.0891,
-          "p90_baseline": 0.2239,
+          "p90_baseline": 0.2223,
           "n_points": 701
         }
       },
       "metrics_30d": {
-        "rmse_ia": 0.1808,
-        "rmse_baseline": 0.1913,
-        "bias_ia": -0.0292,
-        "bias_baseline": -0.0116,
+        "rmse_ia": 0.1803,
+        "rmse_baseline": 0.1907,
+        "bias_ia": -0.0294,
+        "bias_baseline": -0.0117,
         "r2_ia": 0.9957,
         "r2_baseline": 0.9952,
         "n_points": 1421
@@ -1123,28 +1123,28 @@
           "n_points": 408
         },
         "h48": {
-          "mae_ia": 0.1141,
+          "mae_ia": 0.1138,
           "p50_ia": 0.087,
-          "p90_ia": 0.2005,
-          "mae_baseline": 0.1189,
+          "p90_ia": 0.1998,
+          "mae_baseline": 0.1186,
           "p50_baseline": 0.084,
-          "p90_baseline": 0.2218,
+          "p90_baseline": 0.2213,
           "n_points": 797
         }
       },
       "metrics_90d": {
-        "rmse_ia": 0.1723,
-        "rmse_baseline": 0.1866,
-        "bias_ia": -0.0297,
-        "bias_baseline": -0.0044,
+        "rmse_ia": 0.1718,
+        "rmse_baseline": 0.1861,
+        "bias_ia": -0.0298,
+        "bias_baseline": -0.0045,
         "r2_ia": 0.996,
         "r2_baseline": 0.9953,
         "n_points": 1613
       },
-      "mae_ia_7d": 0.1199,
-      "mae_baseline_7d": 0.1382,
-      "mae_ia_30d": 0.1032,
-      "mae_baseline_30d": 0.1133,
+      "mae_ia_7d": 0.1191,
+      "mae_baseline_7d": 0.1374,
+      "mae_ia_30d": 0.103,
+      "mae_baseline_30d": 0.1131,
       "daily_30d": [
         {
           "date": "2026-07-08",
@@ -1293,14 +1293,14 @@
         },
         {
           "date": "2026-08-06",
-          "mae_ia": 0.1283,
-          "mae_baseline": 0.1465
+          "mae_ia": 0.1199,
+          "mae_baseline": 0.1381
         }
       ],
-      "mae_ia_90d": 0.0992,
-      "mae_baseline_90d": 0.1122,
-      "mae_ia_all": 0.0992,
-      "mae_baseline_all": 0.1122
+      "mae_ia_90d": 0.099,
+      "mae_baseline_90d": 0.112,
+      "mae_ia_all": 0.099,
+      "mae_baseline_all": 0.112
     },
     {
       "id": "ouessant",
