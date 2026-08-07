@@ -211,6 +211,19 @@
     font-size: 0.78rem;
   }
   code { color: var(--accent); }
+  table.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    margin-bottom: 14px;
+  }
+  table.data-table th, table.data-table td {
+    text-align: left;
+    padding: 5px 10px;
+    border-top: 1px solid #142433;
+    white-space: nowrap;
+  }
+  table.data-table th { color: var(--text-faint); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -416,6 +429,48 @@
     <li><input type="checkbox" checked disabled><div class="task-body"><span class="task-label done">Tester d'autres modèles ML (ridge comme plancher honnête, un modèle par lead)</span><span class="task-note">mesuré 2026-08-05 (plan-dev-modele.md § Ridge) : hgb-per-lead déjà évalué en candidat ; ridge chiffré comme plancher sur les 9 stations. Résultat inversé entre tide/wind (boosting payé aux 5) et wave (payé à 1 station/4 seulement, non payé à 2, indéterminé à 1) — voir la section Ridge pour le détail par station</span></div></li>
   </ul>
 </section>
+
+<!-- DATA:START — généré par pipeline/scripts/data_coverage.py, ne pas éditer à la main -->
+<section class="plan">
+  <div class="plan-head">
+    <h3 class="plan-title">Data — accumulation aux bouées et aux stations</h3>
+    <span class="plan-source">pipeline/scripts/data_coverage.py</span>
+  </div>
+  <p class="plan-note">Généré le 2026-08-07 au commit 7474f54. Régénérer : <code>cd pipeline &amp;&amp; uv run python scripts/data_coverage.py</code>. Les trous sont le signal utile — un cron qui glisse ou saute est documenté dans <code>.github/workflows/daily.yml</code>.</p>
+  <h4>Par station</h4>
+  <div style="overflow-x:auto"><table class="data-table">
+    <tr><th>station</th><th>publié</th><th>1er jour</th><th>dernier jour</th><th>jours présents</th><th>défaut</th><th>trous</th><th>n_days</th><th>backfilled</th><th>live</th><th>voie prévisions archivées</th></tr>
+    <tr><td>pierres-noires</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>30</td><td>3</td><td>4</td></tr>
+    <tr><td>belle-ile</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>30</td><td>3</td><td>4</td></tr>
+    <tr><td>anglet</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>30</td><td>3</td><td>4</td></tr>
+    <tr><td>cherbourg</td><td colspan="10">aucune donnée publiée — configurée dans stations.toml, sans data/&lt;id&gt;/history.json</td></tr>
+    <tr><td>brest</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>30</td><td>3</td><td>4</td></tr>
+    <tr><td>saint-malo</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>31</td><td>2</td><td>3</td></tr>
+    <tr><td>ouessant</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>31</td><td>2</td><td>3</td></tr>
+    <tr><td>dieppe</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>31</td><td>2</td><td>3</td></tr>
+    <tr><td>cherbourg-vent</td><td>oui</td><td>2026-07-04</td><td>2026-08-05</td><td>33</td><td>0</td><td>0</td><td>33</td><td>31</td><td>2</td><td>3</td></tr>
+  </table></div>
+  <h4>Archive bouées Météo-France (nationale, irremplaçable)</h4>
+  <p class="plan-note">7 jour(s) archivé(s), du 2026-07-31 au 2026-08-06 (0 jour(s) manquant(s) dans l'intervalle) · 1247 lignes · 9 bouées distinctes (geo_id_wmo). Fenêtre glissante ~96 h côté API Météo-France : aucun jour manqué ici n'est rattrapable après coup.</p>
+  <h4>Jeux d'entraînement (pipeline/data_train/)</h4>
+  <div style="overflow-x:auto"><table class="data-table">
+    <tr><th>fichier</th><th>lignes</th><th>première date</th><th>dernière date</th></tr>
+    <tr><td>anglet.parquet</td><td>12362</td><td>2025-11-18 11:00:00+00:00</td><td>2026-08-02 23:00:00+00:00</td></tr>
+    <tr><td>anglet_raw.parquet</td><td>26304</td><td>2023-08-06 00:00:00+00:00</td><td>2026-08-05 23:00:00+00:00</td></tr>
+    <tr><td>belle-ile.parquet</td><td>17212</td><td>2025-08-03 07:00:00+00:00</td><td>2026-08-02 23:00:00+00:00</td></tr>
+    <tr><td>belle-ile_raw.parquet</td><td>26304</td><td>2023-08-06 00:00:00+00:00</td><td>2026-08-05 23:00:00+00:00</td></tr>
+    <tr><td>brest.parquet</td><td>42084</td><td>2024-02-07 07:00:00+00:00</td><td>2026-08-04 00:00:00+00:00</td></tr>
+    <tr><td>cherbourg-vent_raw.parquet</td><td>21936</td><td>2024-02-03 00:00:00+00:00</td><td>2026-08-04 23:00:00+00:00</td></tr>
+    <tr><td>cherbourg.parquet</td><td>15614</td><td>2025-08-03 07:00:00+00:00</td><td>2026-08-02 23:00:00+00:00</td></tr>
+    <tr><td>cherbourg_raw.parquet</td><td>26304</td><td>2023-08-06 00:00:00+00:00</td><td>2026-08-05 23:00:00+00:00</td></tr>
+    <tr><td>dieppe_raw.parquet</td><td>21936</td><td>2024-02-03 00:00:00+00:00</td><td>2026-08-04 23:00:00+00:00</td></tr>
+    <tr><td>ouessant_raw.parquet</td><td>21936</td><td>2024-02-03 00:00:00+00:00</td><td>2026-08-04 23:00:00+00:00</td></tr>
+    <tr><td>pierres-noires.parquet</td><td>16688</td><td>2025-08-03 07:00:00+00:00</td><td>2026-08-02 23:00:00+00:00</td></tr>
+    <tr><td>pierres-noires_raw.parquet</td><td>26304</td><td>2023-08-06 00:00:00+00:00</td><td>2026-08-05 23:00:00+00:00</td></tr>
+    <tr><td>saint-malo.parquet</td><td>43596</td><td>2024-02-07 07:00:00+00:00</td><td>2026-08-04 00:00:00+00:00</td></tr>
+  </table></div>
+</section>
+<!-- DATA:END -->
 
 <section class="reste">
   <h2>Reste à faire — agrégé et trié par priorité apparente</h2>

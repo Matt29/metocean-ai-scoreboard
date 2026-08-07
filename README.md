@@ -135,6 +135,11 @@ uv sync
 uv run scoreboard daily [--date YYYY-MM-DD] [--dry-run]
 uv run scoreboard backfill --since YYYY-MM-DD [--dry-run]
 uv run pytest
+
+# régénère la section « Data » de docs/dev-dashboard.html (couverture par
+# station, archive bouées Météo-France, jeux d'entraînement) — lecture seule
+# ailleurs, réécrit uniquement le bloc balisé DATA:START/DATA:END
+uv run python scripts/data_coverage.py
 ```
 
 `--dry-run` écrit dans un répertoire temporaire — jamais dans `data/` ni
