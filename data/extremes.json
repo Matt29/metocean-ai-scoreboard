@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-08-13T06:00:00Z",
+  "updated": "2026-08-14T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -129,13 +129,13 @@
           "peak_error_baseline": -0.0991
         },
         {
-          "date": "2026-07-14",
-          "obs_peak": 7.3043,
-          "t_peak": "2026-07-15T16:00:00Z",
-          "ia_at_peak": 7.2226,
-          "baseline_at_peak": 7.2748,
-          "peak_error_ia": -0.0817,
-          "peak_error_baseline": -0.0295
+          "date": "2026-08-12",
+          "obs_peak": 7.3815,
+          "t_peak": "2026-08-13T16:00:00Z",
+          "ia_at_peak": 7.3158,
+          "baseline_at_peak": 7.4474,
+          "peak_error_ia": -0.0657,
+          "peak_error_baseline": 0.0659
         }
       ]
     },
@@ -161,13 +161,13 @@
           "peak_error_baseline": -0.1707
         },
         {
-          "date": "2026-07-17",
-          "obs_peak": 12.4272,
-          "t_peak": "2026-07-17T20:00:00Z",
-          "ia_at_peak": 12.2121,
-          "baseline_at_peak": 12.269,
-          "peak_error_ia": -0.2151,
-          "peak_error_baseline": -0.1582
+          "date": "2026-08-12",
+          "obs_peak": 12.5255,
+          "t_peak": "2026-08-13T18:00:00Z",
+          "ia_at_peak": 12.4826,
+          "baseline_at_peak": 12.5515,
+          "peak_error_ia": -0.0429,
+          "peak_error_baseline": 0.026
         }
       ]
     },
