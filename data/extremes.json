@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-08-14T06:00:00Z",
+  "updated": "2026-08-15T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -129,19 +129,37 @@
           "peak_error_baseline": -0.0991
         },
         {
-          "date": "2026-08-12",
-          "obs_peak": 7.3815,
-          "t_peak": "2026-08-13T16:00:00Z",
-          "ia_at_peak": 7.3158,
-          "baseline_at_peak": 7.4474,
-          "peak_error_ia": -0.0657,
-          "peak_error_baseline": 0.0659
+          "date": "2026-08-13",
+          "obs_peak": 7.4064,
+          "t_peak": "2026-08-14T17:00:00Z",
+          "ia_at_peak": 7.3393,
+          "baseline_at_peak": 7.4528,
+          "peak_error_ia": -0.0671,
+          "peak_error_baseline": 0.0464
         }
       ]
     },
     {
       "id": "saint-malo",
       "episodes": [
+        {
+          "date": "2026-08-13",
+          "obs_peak": 12.7537,
+          "t_peak": "2026-08-14T19:00:00Z",
+          "ia_at_peak": 12.7237,
+          "baseline_at_peak": 12.7988,
+          "peak_error_ia": -0.03,
+          "peak_error_baseline": 0.0451
+        },
+        {
+          "date": "2026-08-14",
+          "obs_peak": 12.7537,
+          "t_peak": "2026-08-14T19:00:00Z",
+          "ia_at_peak": 12.7352,
+          "baseline_at_peak": 12.7988,
+          "peak_error_ia": -0.0185,
+          "peak_error_baseline": 0.0451
+        },
         {
           "date": "2026-07-15",
           "obs_peak": 12.5372,
@@ -150,24 +168,6 @@
           "baseline_at_peak": 12.3665,
           "peak_error_ia": -0.1912,
           "peak_error_baseline": -0.1707
-        },
-        {
-          "date": "2026-07-16",
-          "obs_peak": 12.5372,
-          "t_peak": "2026-07-16T19:00:00Z",
-          "ia_at_peak": 12.3722,
-          "baseline_at_peak": 12.3665,
-          "peak_error_ia": -0.165,
-          "peak_error_baseline": -0.1707
-        },
-        {
-          "date": "2026-08-12",
-          "obs_peak": 12.5255,
-          "t_peak": "2026-08-13T18:00:00Z",
-          "ia_at_peak": 12.4826,
-          "baseline_at_peak": 12.5515,
-          "peak_error_ia": -0.0429,
-          "peak_error_baseline": 0.026
         }
       ]
     },
