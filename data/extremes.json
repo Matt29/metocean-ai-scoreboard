@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-08-19T06:00:00Z",
+  "updated": "2026-08-20T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -26,13 +26,13 @@
           "baseline_model": "ncep_gfswave025"
         },
         {
-          "date": "2026-07-27",
-          "obs_peak": 1.8,
-          "t_peak": "2026-07-27T07:00:00Z",
-          "ia_at_peak": 1.8536,
-          "baseline_at_peak": 1.4,
-          "peak_error_ia": 0.0536,
-          "peak_error_baseline": -0.4,
+          "date": "2026-08-19",
+          "obs_peak": 2.2,
+          "t_peak": "2026-08-20T07:00:00Z",
+          "ia_at_peak": 2.1846,
+          "baseline_at_peak": 2.08,
+          "peak_error_ia": -0.0154,
+          "peak_error_baseline": -0.12,
           "baseline_model": "ncep_gfswave025"
         }
       ]
