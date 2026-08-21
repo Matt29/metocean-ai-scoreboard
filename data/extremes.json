@@ -1,10 +1,30 @@
 {
   "schema_version": 1,
-  "updated": "2026-08-20T06:00:00Z",
+  "updated": "2026-08-21T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
       "episodes": [
+        {
+          "date": "2026-08-19",
+          "obs_peak": 2.5,
+          "t_peak": "2026-08-20T14:00:00Z",
+          "ia_at_peak": 2.1333,
+          "baseline_at_peak": 2.02,
+          "peak_error_ia": -0.3667,
+          "peak_error_baseline": -0.48,
+          "baseline_model": "ncep_gfswave025"
+        },
+        {
+          "date": "2026-08-20",
+          "obs_peak": 2.5,
+          "t_peak": "2026-08-20T14:00:00Z",
+          "ia_at_peak": 1.8137,
+          "baseline_at_peak": 1.92,
+          "peak_error_ia": -0.6863,
+          "peak_error_baseline": -0.58,
+          "baseline_model": "ncep_gfswave025"
+        },
         {
           "date": "2026-07-25",
           "obs_peak": 2.2,
@@ -13,26 +33,6 @@
           "baseline_at_peak": 1.42,
           "peak_error_ia": -0.4725,
           "peak_error_baseline": -0.78,
-          "baseline_model": "ncep_gfswave025"
-        },
-        {
-          "date": "2026-07-26",
-          "obs_peak": 2.2,
-          "t_peak": "2026-07-27T06:00:00Z",
-          "ia_at_peak": 1.7726,
-          "baseline_at_peak": 1.42,
-          "peak_error_ia": -0.4274,
-          "peak_error_baseline": -0.78,
-          "baseline_model": "ncep_gfswave025"
-        },
-        {
-          "date": "2026-08-19",
-          "obs_peak": 2.2,
-          "t_peak": "2026-08-20T07:00:00Z",
-          "ia_at_peak": 2.1846,
-          "baseline_at_peak": 2.08,
-          "peak_error_ia": -0.0154,
-          "peak_error_baseline": -0.12,
           "baseline_model": "ncep_gfswave025"
         }
       ]
@@ -61,12 +61,12 @@
           "baseline_model": "ewam"
         },
         {
-          "date": "2026-08-04",
-          "obs_peak": 1.5,
-          "t_peak": "2026-08-05T20:00:00Z",
-          "ia_at_peak": 1.1773,
-          "baseline_at_peak": 1.44,
-          "peak_error_ia": -0.3227,
+          "date": "2026-08-19",
+          "obs_peak": 1.6,
+          "t_peak": "2026-08-20T11:00:00Z",
+          "ia_at_peak": 1.4775,
+          "baseline_at_peak": 1.54,
+          "peak_error_ia": -0.1225,
           "peak_error_baseline": -0.06,
           "baseline_model": "ewam"
         }
