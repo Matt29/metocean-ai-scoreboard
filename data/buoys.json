@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-08-22T07:00:00Z",
+  "updated": "2026-08-22T09:00:00Z",
   "since": "2026-07-31",
   "buoys": [
     {
@@ -49,21 +49,21 @@
       "id": "6101035",
       "name": "BOUEE_SARDAIGNE",
       "lat": 40.49,
-      "lon": 6.71,
+      "lon": 6.72,
       "wave": false
     },
     {
       "id": "6101036",
       "name": "BOUEE_PACA",
       "lat": 42.33,
-      "lon": 6.72,
+      "lon": 6.71,
       "wave": true
     },
     {
       "id": "6200001",
       "name": "BOUEE_GASCOGNE",
       "lat": 45.22,
-      "lon": -4.99,
+      "lon": -4.98,
       "wave": true
     }
   ]
