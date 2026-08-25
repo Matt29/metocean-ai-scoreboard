@@ -1,69 +1,69 @@
 {
   "schema_version": 1,
-  "updated": "2026-08-24T10:00:00Z",
+  "updated": "2026-08-25T07:12:00Z",
   "since": "2026-07-31",
   "buoys": [
     {
       "id": "6100001",
       "name": "BOUEE_AZUR",
-      "lat": 43.37,
-      "lon": 7.84,
+      "lat": 43.36,
+      "lon": 7.85,
       "wave": true
     },
     {
       "id": "6100002",
       "name": "BOUEE_LION",
-      "lat": 42.07,
+      "lat": 42.06,
       "lon": 4.66,
       "wave": true
     },
     {
       "id": "6101031",
       "name": "BOUEE_AJACCIO",
-      "lat": 41.76,
+      "lat": 41.75,
       "lon": 7.6,
       "wave": true
     },
     {
       "id": "6101032",
       "name": "BOUEE_VECCHIO",
-      "lat": 41.61,
+      "lat": 41.6,
       "lon": 10.2,
       "wave": true
     },
     {
       "id": "6101033",
       "name": "BOUEE_CALVI",
-      "lat": 42.81,
-      "lon": 8.42,
+      "lat": 42.8,
+      "lon": 8.43,
       "wave": true
     },
     {
       "id": "6101034",
       "name": "BOUEE_PROVENCE",
-      "lat": 41.59,
-      "lon": 5.52,
+      "lat": 41.57,
+      "lon": 5.51,
       "wave": true
     },
     {
       "id": "6101035",
       "name": "BOUEE_SARDAIGNE",
-      "lat": 40.51,
+      "lat": 40.5,
       "lon": 6.71,
       "wave": false
     },
     {
       "id": "6101036",
       "name": "BOUEE_PACA",
-      "lat": 42.35,
-      "lon": 6.71,
+      "lat": 42.33,
+      "lon": 6.72,
       "wave": true
     },
     {
       "id": "6200001",
       "name": "BOUEE_GASCOGNE",
-      "lat": 45.22,
-      "lon": -4.98,
+      "lat": 45.21,
+      "lon": -4.99,
       "wave": true
     }
   ]
