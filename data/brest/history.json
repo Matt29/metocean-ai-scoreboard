@@ -16617,18 +16617,19 @@
           "obs": 3.3598,
           "ia": 5.4202,
           "baseline": 5.3634
-        }
-      ],
-      "mae_ia": 0.1156,
-      "mae_baseline": 0.2074,
-      "n_points": 32,
-      "max_lead_h": 32,
-      "pending": [
+        },
         {
           "t": "2026-08-29T15:00:00Z",
+          "obs": 4.9331,
           "ia": 6.584,
           "baseline": 6.551
-        },
+        }
+      ],
+      "mae_ia": 0.1621,
+      "mae_baseline": 0.2501,
+      "n_points": 33,
+      "max_lead_h": 33,
+      "pending": [
         {
           "t": "2026-08-29T16:00:00Z",
           "ia": 7.1726,
