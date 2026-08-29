@@ -57,9 +57,12 @@ QUALITY_WINDOW = pd.Timedelta(hours=24)
 
 @dataclass(frozen=True)
 class BuoyQuality:
-    """Complétude de hauteur significative pour une bouée capable d'en fournir."""
+    """Fraîcheur et complétude Hs d'une bouée capable d'en fournir."""
 
     buoy_id: str
+    latest_timestamp: pd.Timestamp | None
+    freshness: pd.Timedelta | None
+    is_fresh: bool
     hs_hours: int
     expected_hours: int
     hs_completeness: float
@@ -82,12 +85,21 @@ class QualityReport:
         )
 
     @property
+    def failing_freshness_buoy_ids(self) -> tuple[str, ...]:
+        return tuple(buoy.buoy_id for buoy in self.buoys if not buoy.is_fresh)
+
+    @property
     def has_collective_hs_failure(self) -> bool:
         return bool(self.buoys) and len(self.failing_buoy_ids) == len(self.buoys)
 
     @property
     def is_healthy(self) -> bool:
-        return self.is_fresh and bool(self.buoys) and not self.failing_buoy_ids
+        return (
+            self.is_fresh
+            and bool(self.buoys)
+            and not self.failing_freshness_buoy_ids
+            and not self.failing_buoy_ids
+        )
 
 
 def quality_report(
@@ -120,11 +132,25 @@ def quality_report(
 
     buoys = []
     for buoy_id in sorted(str(value) for value in wave_ids):
+        buoy_mask = obs["geo_id_wmo"].astype(str) == buoy_id
+        buoy_timestamps = timestamps.loc[buoy_mask]
+        buoy_latest = buoy_timestamps.max() if not buoy_timestamps.empty else None
+        buoy_freshness = (
+            checked_at - buoy_latest
+            if buoy_latest is not None and not pd.isna(buoy_latest)
+            else None
+        )
+        buoy_is_fresh = (
+            buoy_freshness is not None and pd.Timedelta(0) <= buoy_freshness <= FRESHNESS_THRESHOLD
+        )
         rows = in_window.loc[in_window["geo_id_wmo"].astype(str) == buoy_id]
         hs_hours = rows.loc[rows["haut_vag"].notna(), "_quality_timestamp"].nunique()
         buoys.append(
             BuoyQuality(
                 buoy_id=buoy_id,
+                latest_timestamp=buoy_latest,
+                freshness=buoy_freshness,
+                is_fresh=buoy_is_fresh,
                 hs_hours=int(hs_hours),
                 expected_hours=expected_hours,
                 hs_completeness=min(1.0, hs_hours / expected_hours),
@@ -163,6 +189,11 @@ def quality_warnings(report: QualityReport) -> list[str]:
             f"sont sous le seuil {HS_COMPLETENESS_THRESHOLD:.0%}"
         )
     for buoy in report.buoys:
+        if not buoy.is_fresh:
+            warnings.append(
+                f"{prefix}{buoy.buoy_id} fraîcheur {_format_duration(buoy.freshness)} "
+                f"(seuil {_format_duration(FRESHNESS_THRESHOLD)})"
+            )
         if buoy.hs_completeness < HS_COMPLETENESS_THRESHOLD:
             warnings.append(
                 f"{prefix}{buoy.buoy_id} Hs {buoy.hs_completeness:.1%} "
@@ -185,17 +216,18 @@ def quality_summary(report: QualityReport) -> str:
         f"Seuil fraîcheur : {_format_duration(FRESHNESS_THRESHOLD)}. "
         f"Seuil Hs : {HS_COMPLETENESS_THRESHOLD:.0%} sur les dernières 24h.",
         "",
-        "| Bouée WMO | Hs disponibles | Complétude | État |",
-        "|---|---:|---:|:---:|",
+        "| Bouée WMO | Fraîcheur | Hs disponibles | Complétude | État |",
+        "|---|---:|---:|---:|:---:|",
     ]
     lines.extend(
-        f"| {buoy.buoy_id} | {buoy.hs_hours}/{buoy.expected_hours} | "
+        f"| {buoy.buoy_id} | {_format_duration(buoy.freshness)} | "
+        f"{buoy.hs_hours}/{buoy.expected_hours} | "
         f"{buoy.hs_completeness:.1%} | "
-        f"{'✅' if buoy.hs_completeness >= HS_COMPLETENESS_THRESHOLD else '⚠️'} |"
+        f"{'✅' if buoy.is_fresh and buoy.hs_completeness >= HS_COMPLETENESS_THRESHOLD else '⚠️'} |"
         for buoy in report.buoys
     )
     if not report.buoys:
-        lines.append("| — | 0/24 | — | ⚠️ |")
+        lines.append("| — | inconnue | 0/24 | — | ⚠️ |")
     return "\n".join(lines) + "\n"
 
 

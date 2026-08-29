@@ -142,9 +142,12 @@ uv run scoreboard daily [--date YYYY-MM-DD] [--dry-run]
 uv run scoreboard backfill --since YYYY-MM-DD [--dry-run]
 uv run pytest
 
-# Construit aussi les pilotes inactifs ; Gascogne lit l'archive bouées locale,
-# sans refaire une requête `/bouees` par station.
-uv run python scripts/build_dataset.py --kind wave --include-pilots --days 90
+# Construit uniquement le pilote inactif Gascogne depuis l'archive bouées locale,
+# sans refaire une requête `/bouees` ni consommer le quota Candhis des stations actives.
+uv run python scripts/build_dataset.py --kind wave --station gascogne-bouee --include-pilots --days 90
+
+# Quand son historique sera suffisant, l'entraîne explicitement sans l'activer.
+uv run python scripts/train.py --station gascogne-bouee --include-pilots
 
 # régénère la section « Data » de docs/dev-dashboard.html (couverture par
 # station, archive bouées Météo-France, jeux d'entraînement) — lecture seule

@@ -545,6 +545,58 @@ def test_full_training_can_rebuild_a_complete_gate_from_scratch(tmp_path, monkey
     assert released[0][1][STATION.id]["pass"] is True
 
 
+def test_inactive_pilot_training_requires_explicit_station_and_keeps_active_scope(
+    tmp_path, monkeypatch
+):
+    pilot = Station(
+        id="gascogne-bouee",
+        name="Bouée Gascogne",
+        kind="wave",
+        lat=45.22,
+        lon=-5.0,
+        source="mfbuoy",
+        source_id="6200001",
+        baseline="marine-best",
+        active=False,
+    )
+    gate_path = tmp_path / "gate.json"
+    gate_path.write_text(json.dumps({STATION.id: {"pass": True, "weak": False}}))
+    evaluated = []
+    released = []
+
+    monkeypatch.setattr(train, "GATE_PATH", gate_path)
+    monkeypatch.setattr(train, "load_env", lambda: None)
+    monkeypatch.setattr(
+        train,
+        "load_stations",
+        lambda include_inactive=False: [STATION, pilot] if include_inactive else [STATION],
+    )
+    monkeypatch.setattr(
+        train,
+        "evaluate_all",
+        lambda stations, *_args: evaluated.extend(stations) or [_gate_row(pilot.id, False)],
+    )
+    monkeypatch.setattr(train, "release", lambda rows, gate: released.append((rows, gate)))
+    monkeypatch.setattr(train, "write_report", lambda *_args: None)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["train.py", "--station", pilot.id, "--include-pilots"],
+    )
+
+    assert train.main() == 0
+    assert [station.id for station in evaluated] == [pilot.id]
+    assert evaluated[0].active is False
+    assert set(released[0][1]) == {STATION.id, pilot.id}
+
+
+def test_pilot_opt_in_requires_an_explicit_station(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["train.py", "--include-pilots"])
+
+    with pytest.raises(SystemExit, match="2"):
+        train.main()
+
+
 def test_release_gate_requires_at_least_one_passing_station():
     previous = {
         "first": {"pass": False, "weak": False},

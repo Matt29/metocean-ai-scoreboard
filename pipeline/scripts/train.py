@@ -1133,6 +1133,11 @@ def main() -> int:
         "leur artefact et leur verdict `gate.json` — `merge_gate` les préserve déjà.",
     )
     ap.add_argument(
+        "--include-pilots",
+        action="store_true",
+        help="allow explicitly selected inactive pilots; requires --station and never activates them",
+    )
+    ap.add_argument(
         "--ablate",
         default="",
         metavar="COLS",
@@ -1140,6 +1145,10 @@ def main() -> int:
         f"(e.g. 'wind_u10,wind_v10'). Choices: {','.join(ABLATABLE)}",
     )
     args = ap.parse_args()
+
+    only = {s.strip() for s in args.station.split(",") if s.strip()}
+    if args.include_pilots and not only:
+        ap.error("--include-pilots requires an explicit --station")
 
     ablate = tuple(c.strip() for c in args.ablate.split(",") if c.strip())
     if unknown := [c for c in ablate if c not in ABLATABLE]:
@@ -1156,11 +1165,12 @@ def main() -> int:
     # `gate.json` le verdict de toute station non entraînée ici — c'est-à-dire
     # dépublier une station en marge d'un entraînement ciblé.
     configured = load_stations()
+    selectable = load_stations(include_inactive=True) if args.include_pilots else configured
     stations = configured
-    if only := {s.strip() for s in args.station.split(",") if s.strip()}:
-        if unknown := only - {s.id for s in configured}:
+    if only:
+        if unknown := only - {s.id for s in selectable}:
             ap.error(f"unknown station id(s) {sorted(unknown)}")
-        stations = [s for s in configured if s.id in only]
+        stations = [s for s in selectable if s.id in only]
     rows = evaluate_all(stations, args.test_days, ablate, model_names)
     if not rows:
         print("nothing trained")

@@ -62,4 +62,5 @@ def test_inactive_pilot_is_explicitly_opted_into_from_real_config():
     gascogne = next(s for s in with_pilots if s.id == "gascogne-bouee")
     assert gascogne.source == "mfbuoy"
     assert gascogne.source_id == "6200001"
+    assert (gascogne.lat, gascogne.lon) == (45.21, -4.99)
     assert gascogne.active is False

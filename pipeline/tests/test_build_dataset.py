@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from scoreboard.config import Station
 from scoreboard.sources.marine import MODEL_COLUMNS
@@ -138,9 +139,32 @@ def test_cli_only_selects_inactive_pilot_with_explicit_flag(tmp_path, monkeypatc
     monkeypatch.setattr(
         sys,
         "argv",
-        ["build_dataset.py", "--kind", "wave", "--days", "1", "--include-pilots"],
+        [
+            "build_dataset.py",
+            "--kind",
+            "wave",
+            "--days",
+            "1",
+            "--station",
+            "gascogne-bouee",
+            "--include-pilots",
+        ],
     )
     assert bd.main() == 0
 
     assert "gascogne-bouee" not in selected[0]
-    assert "gascogne-bouee" in selected[1]
+    assert selected[1] == {"gascogne-bouee"}
+
+
+def test_cli_rejects_inactive_station_without_pilot_opt_in(tmp_path, monkeypatch):
+    bd = _load_build_dataset()
+    bd.OUT_DIR = tmp_path
+    monkeypatch.setattr(bd, "load_env", lambda: None)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["build_dataset.py", "--kind", "wave", "--station", "gascogne-bouee"],
+    )
+
+    with pytest.raises(SystemExit, match="2"):
+        bd.main()

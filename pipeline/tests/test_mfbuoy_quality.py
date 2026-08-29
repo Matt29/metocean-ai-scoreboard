@@ -110,9 +110,39 @@ def test_quality_report_keeps_missing_known_wave_buoys_and_excludes_non_wave_buo
     assert set(by_id) == WAVE_IDS
     assert by_id["6101001"].hs_completeness == 19 / 24
     assert by_id["6101002"].hs_completeness == 0.0
+    assert by_id["6101001"].latest_timestamp == NOW
+    assert by_id["6101001"].freshness == pd.Timedelta(0)
+    assert by_id["6101001"].is_fresh is True
+    assert by_id["6101002"].latest_timestamp is None
+    assert by_id["6101002"].freshness is None
+    assert by_id["6101002"].is_fresh is False
     assert report.failing_buoy_ids == ("6101001", "6101002")
     assert report.has_collective_hs_failure is True
     assert report.is_healthy is False
+
+
+def test_quality_report_checks_freshness_for_each_wave_buoy_not_only_globally():
+    rows = _hourly_rows("6101001", end=NOW - pd.Timedelta(hours=4))
+    rows += _hourly_rows("6101002", end=NOW)
+    obs = pd.DataFrame(rows)
+
+    report = mfbuoy.quality_report(obs, now=NOW, wave_ids=WAVE_IDS)
+
+    by_id = {item.buoy_id: item for item in report.buoys}
+    assert report.is_fresh is True  # métrique globale historique préservée
+    assert by_id["6101001"].freshness == pd.Timedelta(hours=4)
+    assert by_id["6101001"].is_fresh is False
+    assert by_id["6101002"].freshness == pd.Timedelta(0)
+    assert by_id["6101002"].is_fresh is True
+    assert report.failing_freshness_buoy_ids == ("6101001",)
+    assert report.is_healthy is False
+
+    warnings = mfbuoy.quality_warnings(report)
+    summary = mfbuoy.quality_summary(report)
+    assert any("6101001 fraîcheur 4h" in warning for warning in warnings)
+    assert not any("6101002 fraîcheur" in warning for warning in warnings)
+    assert "| 6101001 | 4h | 20/24 | 83.3% | ⚠️ |" in summary
+    assert "| 6101002 | 0h | 24/24 | 100.0% | ✅ |" in summary
 
 
 def test_quality_report_rejects_a_timestamp_from_the_future():
@@ -139,7 +169,7 @@ def test_quality_rendering_warns_without_raising_and_produces_a_job_summary():
     assert "## Qualité des bouées Météo-France" in summary
     assert "Seuil fraîcheur : 3h" in summary
     assert "Seuil Hs : 80%" in summary
-    assert "| 6101002 | 0/24 | 0.0% | ⚠️ |" in summary
+    assert "| 6101002 | inconnue | 0/24 | 0.0% | ⚠️ |" in summary
 
 
 def test_quality_command_emits_annotations_and_appends_github_summary(tmp_path, capsys):

@@ -233,16 +233,23 @@ def main() -> int:
         action="store_true",
         help="include inactive pilot stations (never enabled implicitly)",
     )
+    ap.add_argument(
+        "--station",
+        default="",
+        metavar="IDS",
+        help="comma-separated station ids to build (default: all eligible stations)",
+    )
     args = ap.parse_args()
     load_env()
 
     end = date.today()
     start = end - timedelta(days=args.days)
-    stations = [
-        s
-        for s in load_stations(include_inactive=args.include_pilots)
-        if args.kind in (None, s.kind)
-    ]
+    selectable = load_stations(include_inactive=args.include_pilots)
+    if only := {station_id.strip() for station_id in args.station.split(",") if station_id.strip()}:
+        if unknown := only - {s.id for s in selectable}:
+            ap.error(f"unknown or inactive station id(s) {sorted(unknown)}")
+        selectable = [s for s in selectable if s.id in only]
+    stations = [s for s in selectable if args.kind in (None, s.kind)]
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"Window {start} -> {end}")

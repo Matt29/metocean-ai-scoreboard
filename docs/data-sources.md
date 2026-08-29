@@ -401,6 +401,12 @@ qu'une panne ultérieure ne fasse jamais perdre la fenêtre périssable. Sorties
 2026-08-29, `data/buoys/<wmo>/latest.json` + `history.json` (30 jours compacts),
 committés ensemble puisque Actions est sans état.
 
+`data/buoys.json` est un snapshot des positions renvoyées par l'API au dernier
+collectage : une bouée peut donc bouger. La position du pilote Gascogne dans
+`stations.toml` est alignée sur ce snapshot (45,21° N, 4,99° O) et reste une
+référence explicite du dataset/modèle ; tout déplacement opérationnel notable
+doit être revu avant de modifier cette référence, plutôt que propagé silencieusement.
+
 **Ce que ça fait, et ce que ça ne fait pas.** Ça archive et publie les
 observations pour que le compteur des ~2-3 mois d'historique nécessaires au
 premier entraînement Méditerranée démarre (demande produit 4). Gascogne est
