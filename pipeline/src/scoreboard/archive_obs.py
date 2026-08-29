@@ -18,8 +18,24 @@ from scoreboard import archive, publish
 from scoreboard.sources import mfbuoy
 
 
+def publish_archive(archive_dir: Path, out_dir: Path) -> dict[str, dict]:
+    """Publish buoy series from every committed raw observation day.
+
+    Kept as a public, fetch-free seam so an existing archive can be republished
+    after a contract change without calling the short-retention upstream API.
+    """
+    day_files = sorted(archive_dir.glob("*.parquet"))
+    if not day_files:
+        return {}
+    observations = pd.concat(
+        [pd.read_parquet(path) for path in day_files],
+        ignore_index=True,
+    )
+    return publish.write_buoy_series(out_dir, observations)
+
+
 def run(archive_dir: Path, out_dir: Path) -> tuple[pd.DataFrame, list[Path]]:
-    """Récupère la fenêtre glissante, la fusionne dans l'archive jour, publie `buoys.json`.
+    """Collecte, fusionne, puis publie catalogue et séries depuis l'archive complète.
 
     `buoys.json` est réécrit à chaque run à partir de la fenêtre qui vient
     d'arriver, pas d'une liste tenue à la main : une bouée déplacée, renommée ou
@@ -36,4 +52,5 @@ def run(archive_dir: Path, out_dir: Path) -> tuple[pd.DataFrame, list[Path]]:
         # si un fichier jour est ajouté a posteriori ou retiré.
         since=min((p.stem for p in archive_dir.glob("*.parquet")), default=None),
     )
+    publish_archive(archive_dir, out_dir)
     return obs, written

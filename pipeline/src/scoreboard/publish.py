@@ -40,6 +40,16 @@ Plus un cinquième fichier, écrit par une autre commande (`archive-obs`, pas
     data/buoys.json             {"updated","since","buoys":[{"id","name",
                                  "lat","lon","wave"}]}
 
+Le même run publie, depuis les Parquet fusionnés et non depuis la seule fenêtre
+API, deux fichiers versionnés par bouée. Les mesures manquantes restent des
+`null` explicites afin de conserver l'axe horaire ; l'historique est borné aux
+30 dernières périodes de 24 h :
+
+    data/buoys/<wmo>/latest.json  {"buoy","updated","series":[
+                                  {"t","hs","period","direction"}]}
+    data/buoys/<wmo>/history.json {"buoy","updated","since","series":[
+                                  {"t","hs","period","direction"}]}
+
 Et un sixième, écrit par `daily` juste après `scores.json` mais délibérément
 séparé de lui (pas question de gonfler `scores.json` avec des séries) :
 
@@ -78,6 +88,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from scoreboard import model
 from scoreboard.config import Station
@@ -86,6 +97,7 @@ log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
 MAX_HISTORY_DAYS = 90
+MAX_BUOY_HISTORY_DAYS = 30
 # Window sizes in calendar days (not "ok" day counts) — see compute_scores().
 _SCORE_WINDOWS = {"7d": 7, "30d": 30, "90d": 90, "all": None}
 # Windows getting a point-by-point `by_lead`/`metrics` breakdown, and the
@@ -239,6 +251,67 @@ def write_buoys(out_dir: Path, buoys: list[dict], *, updated: str, since: str | 
     }
     _atomic_write(out_dir / "buoys.json", payload)
     return payload
+
+
+def _buoy_point(row: pd.Series) -> dict:
+    """Compact public wave point; missing measurements stay explicit JSON nulls."""
+    timestamp = pd.Timestamp(row["validity_time"])
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.tz_localize("UTC")
+    else:
+        timestamp = timestamp.tz_convert("UTC")
+
+    def value(column: str) -> float | None:
+        raw = row[column]
+        return None if pd.isna(raw) else float(raw)
+
+    return {
+        "t": timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "hs": value("haut_vag"),
+        "period": value("per_moy_vag"),
+        "direction": value("dir_vag"),
+    }
+
+
+def write_buoy_series(out_dir: Path, observations: pd.DataFrame) -> dict[str, dict]:
+    """Publish one versioned compact observation series per WMO buoy.
+
+    Wave values are always present; an unavailable measurement is JSON ``null``
+    so consumers retain the hourly time axis. ``latest.json`` contains exactly
+    the newest archived observation. ``history.json`` contains the trailing 30
+    times 24 hours, including both endpoints when an observation falls exactly
+    on the cutoff.
+    """
+    payloads = {}
+    for wmo, rows in observations.groupby("geo_id_wmo", sort=True):
+        rows = rows.copy()
+        rows["_published_time"] = pd.to_datetime(rows["validity_time"], utc=True)
+        rows = rows.drop_duplicates("_published_time", keep="last").sort_values(
+            "_published_time"
+        )
+        buoy_id = str(wmo)
+        point = _buoy_point(rows.iloc[-1])
+        latest = {
+            "schema_version": SCHEMA_VERSION,
+            "buoy": buoy_id,
+            "updated": point["t"],
+            "series": [point],
+        }
+        cutoff = rows["_published_time"].iloc[-1] - pd.Timedelta(days=MAX_BUOY_HISTORY_DAYS)
+        history_rows = rows[rows["_published_time"] >= cutoff]
+        series = [_buoy_point(row) for _, row in history_rows.iterrows()]
+        history = {
+            "schema_version": SCHEMA_VERSION,
+            "buoy": buoy_id,
+            "updated": point["t"],
+            "since": series[0]["t"],
+            "series": series,
+        }
+        buoy_dir = out_dir / "buoys" / buoy_id
+        _atomic_write(buoy_dir / "latest.json", latest)
+        _atomic_write(buoy_dir / "history.json", history)
+        payloads[buoy_id] = {"latest": latest, "history": history}
+    return payloads
 
 
 def write_latest(
