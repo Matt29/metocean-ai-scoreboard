@@ -223,9 +223,7 @@ def write_stations(
     payload = {"schema_version": SCHEMA_VERSION}
     if updated:
         payload["updated"] = updated
-    payload["stations"] = [
-        _station_entry(s, gate.get(s.id, {}), models_dir) for s in stations
-    ]
+    payload["stations"] = [_station_entry(s, gate.get(s.id, {}), models_dir) for s in stations]
     _atomic_write(path, payload)
     return payload
 
@@ -286,9 +284,7 @@ def write_buoy_series(out_dir: Path, observations: pd.DataFrame) -> dict[str, di
     for wmo, rows in observations.groupby("geo_id_wmo", sort=True):
         rows = rows.copy()
         rows["_published_time"] = pd.to_datetime(rows["validity_time"], utc=True)
-        rows = rows.drop_duplicates("_published_time", keep="last").sort_values(
-            "_published_time"
-        )
+        rows = rows.drop_duplicates("_published_time", keep="last").sort_values("_published_time")
         buoy_id = str(wmo)
         point = _buoy_point(rows.iloc[-1])
         latest = {
@@ -403,7 +399,7 @@ def _score_weight(day: dict) -> int:
 
 
 def _ok_days_current_baseline(days: list[dict]) -> list[dict]:
-    """"ok" days scored against the *current* baseline (see `compute_scores`'s
+    """ "ok" days scored against the *current* baseline (see `compute_scores`'s
     docstring for why an outdated baseline is excluded rather than averaged
     in). Shared by `compute_scores` and `compute_lead_breakdown` so the two
     never drift on what counts as a comparable day."""
@@ -510,7 +506,9 @@ def compute_lead_breakdown(window: list[dict]) -> dict:
         series = day.get("series")
         if not series:
             continue
-        issued = datetime.combine(date.fromisoformat(day["date"]), datetime.min.time(), timezone.utc)
+        issued = datetime.combine(
+            date.fromisoformat(day["date"]), datetime.min.time(), timezone.utc
+        )
         issued += timedelta(hours=_ISSUE_HOUR)
         for point in series:
             if point.get("obs") is None:
@@ -668,8 +666,7 @@ def compute_scores(days: list[dict]) -> dict:
         total_weight = sum(weights)
         row[f"mae_ia_{label}"] = (
             round(
-                sum(day["mae_ia"] * weight for day, weight in zip(window, weights))
-                / total_weight,
+                sum(day["mae_ia"] * weight for day, weight in zip(window, weights)) / total_weight,
                 4,
             )
             if window
@@ -789,7 +786,12 @@ def write_extremes(out_dir: Path, station_ids: list[str], updated: str) -> dict:
     rows = []
     for station_id in station_ids:
         history = _read(out_dir / station_id / "history.json")
-        rows.append({"id": station_id, "episodes": compute_extreme_episodes(history["days"] if history else [])})
+        rows.append(
+            {
+                "id": station_id,
+                "episodes": compute_extreme_episodes(history["days"] if history else []),
+            }
+        )
     payload = {"schema_version": SCHEMA_VERSION, "updated": updated, "stations": rows}
     _atomic_write(out_dir / "extremes.json", payload)
     return payload
@@ -815,13 +817,23 @@ def compute_series_csv(days: list[dict]) -> str:
     for day in days:
         if day.get("status") != "ok":
             continue
-        issued = datetime.combine(date.fromisoformat(day["date"]), datetime.min.time(), timezone.utc)
+        issued = datetime.combine(
+            date.fromisoformat(day["date"]), datetime.min.time(), timezone.utc
+        )
         issued += timedelta(hours=_ISSUE_HOUR)
         baseline_model = day.get("baseline_model", "")
         for point in day.get("series") or []:
             lead_h = round((datetime.fromisoformat(point["t"]) - issued).total_seconds() / 3600)
             rows.append(
-                (day["date"], point["t"], lead_h, point.get("obs"), point["ia"], point["baseline"], baseline_model)
+                (
+                    day["date"],
+                    point["t"],
+                    lead_h,
+                    point.get("obs"),
+                    point["ia"],
+                    point["baseline"],
+                    baseline_model,
+                )
             )
     rows.sort(key=lambda r: r[1])
 

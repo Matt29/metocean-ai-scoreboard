@@ -306,27 +306,27 @@ comptage ultérieur la voit émettre.
 levé : aucune bouée n'est disqualifiée par la donnée d'entrée. Méthode :
 `scripts/probe_coverage.py` transposé aux positions lues dans l'archive d'obs.
 
-### ⛔ L'inscription ne peut rien produire avant le premier entraînement
+### ✅ Pilote Gascogne préparé sans faux verdict (2026-08-29)
 
-Le cadrage ci-dessous supposait un service « baseline seule » en attendant le
-modèle. **Ce mode n'existe pas** : `daily.run` ne fait tourner que les stations
-dont le gate passe (`published = [s for s in stations if gate[s.id]["pass"]]`).
-Une bouée inscrite sans artefact n'est donc ni scorée, ni archivée — elle
-n'apparaît que comme une ligne « en attente » dans `stations.json`.
+Le mode « baseline seule » n'existe toujours pas : `daily.run` ne fait tourner
+que les stations dont le gate passe. Pour préparer le chemin sans fabriquer un
+verdict, Gascogne (`6200001`) est inscrite dans `stations.toml` avec
+`active = false`. `load_stations()` l'exclut par défaut du gate, du scoreboard
+et de `stations.json`; les outils hors ligne peuvent l'inclure explicitement.
 
-Et rien dans le corpus d'entraînement n'en dépend : `scripts/build_dataset.py`
-lit les features dans les archives *historiques* Open-Meteo (100 % dispo,
-mesuré ci-dessus), pas dans `data_forecast_archive/`. Le seul compteur qui
-tourne est celui des obs, et il tourne déjà.
+Le dispatch `mfbuoy` lit l'archive Parquet committée, jamais une requête API par
+station. Le builder choisit la source d'observation configurée, joint Hs aux
+historiques multi-modèles Open-Meteo et inclut Gascogne seulement avec
+`--include-pilots`. Le compteur d'obs reste donc la seule limite scientifique.
 
-**Conclusion : inscrire les bouées en `stations.toml` est à faire au moment de
-l'entraînement Med (2026-10/11), pas avant.** Le travail restant d'ici là est
-la carte (volet 2), qui ne dépend d'aucun modèle.
+**Conclusion : le chemin technique est prêt, l'activation reste reportée au
+premier entraînement honnête (2026-10/11).** Aucun artefact ni entrée de gate
+n'est créé avant cette mesure.
 
-Reste à faire pour cette demande : la carte maintenant ; l'inscription des
-bouées comme stations scorées (`stations.toml`, dispatch de source dans
-`daily._fetch_obs`, obs d'entraînement lues dans `data_obs_archive/`, gate,
-verdict, publication) avec l'entraînement d'octobre.
+Livré côté données : catalogue, séries publiques compactes par WMO, QC
+fraîcheur/complétude, pilote Gascogne inactif, dispatch et builder. Reste à faire
+au moment de l'entraînement : modèle, gate, verdict et activation ; la carte du
+site externe peut désormais consommer directement les JSON publics.
 
 ### Le chemin imposé par la rétention de `/bouees`
 

@@ -136,9 +136,11 @@ def build_wave(
         if st.source == "candhis":
             obs = fetch_wave_obs(st, start)[["hs"]].resample("1h").mean()
         elif st.source == "mfbuoy":
-            obs = read_archived_buoy_obs(
-                obs_archive_dir, st.source_id, start, end
-            )[["hs"]].resample("1h").mean()
+            obs = (
+                read_archived_buoy_obs(obs_archive_dir, st.source_id, start, end)[["hs"]]
+                .resample("1h")
+                .mean()
+            )
         else:
             raise ValueError(f"{st.id}: unsupported wave source {st.source!r}")
         waves = fetch_wave_models_history(st, start, end)  # single request
@@ -171,7 +173,9 @@ def build_tide(
         obs = fetch_tide_obs(st, start, date_end=end)
         level = obs["level"].dropna()
         if not harmonic.enough_for_fit(level):
-            print(f"  {st.id}: only {len(level)}h of obs — too short to fit a tide", file=sys.stderr)
+            print(
+                f"  {st.id}: only {len(level)}h of obs — too short to fit a tide", file=sys.stderr
+            )
             out[st.id] = (pd.DataFrame(), pd.Series(dtype=float))
             continue
 
@@ -188,7 +192,11 @@ def build_tide(
             pd.Timestamp(TIDE_FORCING_START, tz="UTC"),
         )
         baseline_s = harmonic.causal_predict(
-            level, st.lat, obs.index, first_cutoff=split, refit_days=refit_days,
+            level,
+            st.lat,
+            obs.index,
+            first_cutoff=split,
+            refit_days=refit_days,
             horizon_hours=HORIZON_H,
         )
         eval_obs = obs.loc[baseline_s.index]
@@ -219,9 +227,7 @@ def main() -> int:
         help="harmonic refit cadence (tide stations) — doit rester celle servie",
     )
     # Candhis has a daily quota: `--kind tide` reruns the tide half without re-fetching waves.
-    ap.add_argument(
-        "--kind", choices=["wave", "tide", "wind"], help="build only this station kind"
-    )
+    ap.add_argument("--kind", choices=["wave", "tide", "wind"], help="build only this station kind")
     ap.add_argument(
         "--include-pilots",
         action="store_true",
@@ -233,7 +239,8 @@ def main() -> int:
     end = date.today()
     start = end - timedelta(days=args.days)
     stations = [
-        s for s in load_stations(include_inactive=args.include_pilots)
+        s
+        for s in load_stations(include_inactive=args.include_pilots)
         if args.kind in (None, s.kind)
     ]
     OUT_DIR.mkdir(parents=True, exist_ok=True)

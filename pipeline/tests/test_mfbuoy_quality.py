@@ -49,15 +49,35 @@ def test_quality_report_is_healthy_for_fresh_complete_wave_buoys():
 def test_read_archived_buoy_obs_filters_source_and_inclusive_calendar_days(tmp_path):
     pd.DataFrame(
         [
-            {"geo_id_wmo": "6101001", "validity_time": "2026-08-01T23:00:00+00:00", "haut_vag": 0.8},
-            {"geo_id_wmo": "6101001", "validity_time": "2026-08-02T00:00:00+00:00", "haut_vag": 1.0},
-            {"geo_id_wmo": "6101002", "validity_time": "2026-08-02T12:00:00+00:00", "haut_vag": 9.9},
-            {"geo_id_wmo": "6101001", "validity_time": "2026-08-02T23:00:00+00:00", "haut_vag": None},
+            {
+                "geo_id_wmo": "6101001",
+                "validity_time": "2026-08-01T23:00:00+00:00",
+                "haut_vag": 0.8,
+            },
+            {
+                "geo_id_wmo": "6101001",
+                "validity_time": "2026-08-02T00:00:00+00:00",
+                "haut_vag": 1.0,
+            },
+            {
+                "geo_id_wmo": "6101002",
+                "validity_time": "2026-08-02T12:00:00+00:00",
+                "haut_vag": 9.9,
+            },
+            {
+                "geo_id_wmo": "6101001",
+                "validity_time": "2026-08-02T23:00:00+00:00",
+                "haut_vag": None,
+            },
         ]
     ).to_parquet(tmp_path / "2026-08-02.parquet")
     pd.DataFrame(
         [
-            {"geo_id_wmo": "6101001", "validity_time": "2026-08-03T00:00:00+00:00", "haut_vag": 1.4},
+            {
+                "geo_id_wmo": "6101001",
+                "validity_time": "2026-08-03T00:00:00+00:00",
+                "haut_vag": 1.4,
+            },
         ]
     ).to_parquet(tmp_path / "2026-08-03.parquet")
 
@@ -105,9 +125,7 @@ def test_quality_report_rejects_a_timestamp_from_the_future():
 
 
 def test_quality_rendering_warns_without_raising_and_produces_a_job_summary():
-    obs = pd.DataFrame(
-        _hourly_rows("6101001", end=NOW - pd.Timedelta(hours=4), periods=18)
-    )
+    obs = pd.DataFrame(_hourly_rows("6101001", end=NOW - pd.Timedelta(hours=4), periods=18))
     report = mfbuoy.quality_report(obs, now=NOW, wave_ids=WAVE_IDS)
 
     warnings = mfbuoy.quality_warnings(report)
@@ -127,9 +145,7 @@ def test_quality_rendering_warns_without_raising_and_produces_a_job_summary():
 def test_quality_command_emits_annotations_and_appends_github_summary(tmp_path, capsys):
     archive_dir = tmp_path / "archive"
     archive_dir.mkdir()
-    pd.DataFrame(_hourly_rows("6101001", periods=18)).to_parquet(
-        archive_dir / "2026-08-29.parquet"
-    )
+    pd.DataFrame(_hourly_rows("6101001", periods=18)).to_parquet(archive_dir / "2026-08-29.parquet")
     catalog = tmp_path / "buoys.json"
     catalog.write_text(
         json.dumps(
@@ -163,9 +179,7 @@ def test_quality_command_emits_annotations_and_appends_github_summary(tmp_path, 
     assert "## Qualité des bouées Météo-France" in github_summary.read_text()
 
 
-def test_quality_command_remembers_historical_wave_ids_during_a_current_outage(
-    tmp_path, capsys
-):
+def test_quality_command_remembers_historical_wave_ids_during_a_current_outage(tmp_path, capsys):
     archive_dir = tmp_path / "archive"
     archive_dir.mkdir()
     pd.DataFrame(
@@ -177,9 +191,7 @@ def test_quality_command_remembers_historical_wave_ids_during_a_current_outage(
             }
         ]
     ).to_parquet(archive_dir / "2026-08-20.parquet")
-    pd.DataFrame(_hourly_rows("6101001", hs=None)).to_parquet(
-        archive_dir / "2026-08-29.parquet"
-    )
+    pd.DataFrame(_hourly_rows("6101001", hs=None)).to_parquet(archive_dir / "2026-08-29.parquet")
     catalog = tmp_path / "buoys.json"
     catalog.write_text(json.dumps({"buoys": [{"id": "6101001", "wave": False}]}))
 

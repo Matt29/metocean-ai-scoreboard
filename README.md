@@ -13,7 +13,8 @@ Justification de chaque source de données : [`docs/data-sources.md`](docs/data-
 
 ## Stations
 
-9 stations retenues, **8 publiées** — la dernière est mesurée comme
+9 stations actives, **8 publiées**, plus un pilote Gascogne inactif — la
+neuvième station active est mesurée comme
 les autres tous les jours, mais un *gate* qualité (`pipeline/models/gate.json`)
 retient toute station où l'IA ne bat pas sa propre baseline sur les données
 d'entraînement. Ce n'est pas une faiblesse cachée : c'est l'argument du
@@ -72,6 +73,7 @@ que le gate et le serve utilisent ensuite.
 | Belle-Île | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | oui |
 | Anglet | houle (Hs) | Candhis | Open-Meteo Marine (`meteofrance_wave`) | oui |
 | Cherbourg | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | non (sous le gate) |
+| Bouée Gascogne | houle (Hs) | Météo-France DPObs `/bouees` | Open-Meteo Marine (à sélectionner) | pilote inactif |
 | Brest | niveau d'eau | SHOM REFMAR | harmonique (utide, 2 ans) | oui |
 | Saint-Malo | niveau d'eau | SHOM REFMAR | harmonique (utide, 2 ans) | oui |
 | Ouessant (Le Stiff) | vent 10 m | Météo-France DPObs | Open-Meteo (`meteofrance_arpege_europe`) | oui |
@@ -94,18 +96,22 @@ les consomme.
 ```
 GitHub Actions (cron, voir .github/workflows/daily.yml)
         │
+        ├─ 1. archive une fois les 9 bouées Météo-France
+        │      → Parquet brut + contrôle fraîcheur/complétude Hs
+        │      → data/buoys.json + data/buoys/<wmo>/{latest,history}.json
+        │
         ▼
   uv run scoreboard daily
         │
-        ├─ 1. score les prédictions publiées hier (obs Candhis/SHOM d'aujourd'hui)
-        ├─ 2. baseline du jour : meilleur modèle vague Open-Meteo Marine
+        ├─ 2. score les prédictions publiées hier (obs Candhis/SHOM d'aujourd'hui)
+        ├─ 3. baseline du jour : meilleur modèle vague Open-Meteo Marine
         │      (`baseline_model`, choisi par station à l'entraînement) ou
         │      constantes harmoniques persistées (`models/<station>-harmonic.joblib`,
         │      ré-ajustées par le run lui-même quand elles dépassent 30 j)
-        ├─ 3. prévision atmosphérique Open-Meteo (ARPEGE/ICON/ECMWF selon le kind)
+        ├─ 4. prévision atmosphérique Open-Meteo (ARPEGE/ICON/ECMWF selon le kind)
         │      → inférence du modèle IA (par station)
-        ├─ 4. publie data/<station>/latest.json + history.json + data/scores.json
-        └─ 5. archive le vent + les modèles vague servis → pipeline/data_forecast_archive/YYYY-MM-DD.parquet
+        ├─ 5. publie data/<station>/latest.json + history.json + data/scores.json
+        └─ 6. archive le vent + les modèles vague servis → pipeline/data_forecast_archive/YYYY-MM-DD.parquet
         │
         ▼
   git commit + push (uniquement si data/ ou pipeline/data_forecast_archive/ a changé)
@@ -135,6 +141,10 @@ uv sync
 uv run scoreboard daily [--date YYYY-MM-DD] [--dry-run]
 uv run scoreboard backfill --since YYYY-MM-DD [--dry-run]
 uv run pytest
+
+# Construit aussi les pilotes inactifs ; Gascogne lit l'archive bouées locale,
+# sans refaire une requête `/bouees` par station.
+uv run python scripts/build_dataset.py --kind wave --include-pilots --days 90
 
 # régénère la section « Data » de docs/dev-dashboard.html (couverture par
 # station, archive bouées Météo-France, jeux d'entraînement) — lecture seule

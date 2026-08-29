@@ -78,9 +78,7 @@ class QualityReport:
     @property
     def failing_buoy_ids(self) -> tuple[str, ...]:
         return tuple(
-            buoy.buoy_id
-            for buoy in self.buoys
-            if buoy.hs_completeness < HS_COMPLETENESS_THRESHOLD
+            buoy.buoy_id for buoy in self.buoys if buoy.hs_completeness < HS_COMPLETENESS_THRESHOLD
         )
 
     @property
@@ -113,10 +111,7 @@ def quality_report(
     timestamps = pd.to_datetime(obs["validity_time"], utc=True, format="ISO8601")
     latest = timestamps.max() if not timestamps.empty else None
     freshness = checked_at - latest if latest is not None and not pd.isna(latest) else None
-    is_fresh = (
-        freshness is not None
-        and pd.Timedelta(0) <= freshness <= FRESHNESS_THRESHOLD
-    )
+    is_fresh = freshness is not None and pd.Timedelta(0) <= freshness <= FRESHNESS_THRESHOLD
 
     window_start = checked_at - QUALITY_WINDOW
     expected_hours = int(QUALITY_WINDOW / pd.Timedelta(hours=1))
@@ -179,7 +174,9 @@ def quality_warnings(report: QualityReport) -> list[str]:
 
 def quality_summary(report: QualityReport) -> str:
     """Rend le résumé Markdown destiné à ``GITHUB_STEP_SUMMARY``."""
-    latest = report.latest_timestamp.isoformat() if report.latest_timestamp is not None else "aucune"
+    latest = (
+        report.latest_timestamp.isoformat() if report.latest_timestamp is not None else "aucune"
+    )
     lines = [
         "## Qualité des bouées Météo-France",
         "",
@@ -207,11 +204,7 @@ def known_wave_ids(
     catalog_buoys: Iterable[Mapping[str, object]],
 ) -> set[str]:
     """Union du catalogue et de toute preuve Hs historique dans l'archive."""
-    catalog_ids = {
-        str(buoy["id"])
-        for buoy in catalog_buoys
-        if buoy.get("wave") is True
-    }
+    catalog_ids = {str(buoy["id"]) for buoy in catalog_buoys if buoy.get("wave") is True}
     historical_ids = set(
         archived_obs.loc[archived_obs["haut_vag"].notna(), "geo_id_wmo"].astype(str)
     )
@@ -243,7 +236,10 @@ def read_archived_buoy_obs(
     intactes : leur traitement appartient au consommateur du dataset.
     """
     columns = ["geo_id_wmo", "validity_time", "haut_vag"]
-    frames = [pd.read_parquet(path, columns=columns) for path in sorted(Path(archive_dir).glob("*.parquet"))]
+    frames = [
+        pd.read_parquet(path, columns=columns)
+        for path in sorted(Path(archive_dir).glob("*.parquet"))
+    ]
     if not frames:
         return pd.DataFrame(
             {"hs": pd.Series(dtype="float64")},
@@ -308,7 +304,9 @@ def fetch_buoy_obs(
     """
     api_key = os.environ.get("METEOFRANCE_API_KEY")
     if not api_key:
-        raise SourceError(_SOURCE_ID, "METEOFRANCE_API_KEY absente de l'environnement (.env non chargé ?)")
+        raise SourceError(
+            _SOURCE_ID, "METEOFRANCE_API_KEY absente de l'environnement (.env non chargé ?)"
+        )
 
     now = (now or pd.Timestamp.now(tz="UTC")).floor("h")
     start = now - timedelta(hours=LOOKBACK_HOURS)
@@ -345,10 +343,9 @@ def fetch_buoy_obs(
     if missing:
         raise SourceError(_SOURCE_ID, f"colonnes absentes du payload bouees: {missing}")
 
-    obs["validity_time"] = (
-        pd.to_datetime(obs["validity_time"], utc=True, format="ISO8601")
-        .dt.strftime("%Y-%m-%dT%H:%M:%S+00:00")
-    )
+    obs["validity_time"] = pd.to_datetime(
+        obs["validity_time"], utc=True, format="ISO8601"
+    ).dt.strftime("%Y-%m-%dT%H:%M:%S+00:00")
     obs = obs.sort_values(KEY_COLUMNS)
     return obs.drop_duplicates(KEY_COLUMNS, keep="last").reset_index(drop=True)
 

@@ -22,6 +22,7 @@ def load_env(path: Path = _ENV_FILE) -> None:
         key, _, value = line.partition("=")
         os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
+
 _VALID_KINDS = {"wave", "tide", "wind"}
 _VALID_SOURCES = {"candhis", "shom", "ioc", "mfobs", "mfbuoy"}
 # "marine-best" / "wind-best": the real baseline choice lives in the

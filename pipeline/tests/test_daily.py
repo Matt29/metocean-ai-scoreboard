@@ -25,17 +25,49 @@ BASELINE_MODEL = "ewam"
 # alone identifies which column the serve path actually selected.
 MODEL_HS = {col: 1.0 + i for i, col in enumerate(MODEL_COLUMNS)}
 
-WAVE = Station(id="wave-a", name="Wave A", kind="wave", lat=48.0, lon=-4.0,
-                source="candhis", source_id="0001", baseline="marine-best")
-TIDE = Station(id="tide-b", name="Tide B", kind="tide", lat=48.4, lon=-4.5,
-                source="shom", source_id="0002", baseline="harmonic")
+WAVE = Station(
+    id="wave-a",
+    name="Wave A",
+    kind="wave",
+    lat=48.0,
+    lon=-4.0,
+    source="candhis",
+    source_id="0001",
+    baseline="marine-best",
+)
+TIDE = Station(
+    id="tide-b",
+    name="Tide B",
+    kind="tide",
+    lat=48.4,
+    lon=-4.5,
+    source="shom",
+    source_id="0002",
+    baseline="harmonic",
+)
 # Deliberately NOT the first wind model, same reason as BASELINE_MODEL above.
 WIND_BASELINE_MODEL = "icon_eu"
-WIND = Station(id="wind-c", name="Wind C", kind="wind", lat=48.47, lon=-5.06,
-                source="mfobs", source_id="29155005", baseline="wind-best")
-MFBUOY = Station(id="gascogne-bouee", name="Bouée Gascogne", kind="wave",
-                 lat=45.22, lon=-4.97, source="mfbuoy", source_id="6200001",
-                 baseline="marine-best", active=False)
+WIND = Station(
+    id="wind-c",
+    name="Wind C",
+    kind="wind",
+    lat=48.47,
+    lon=-5.06,
+    source="mfobs",
+    source_id="29155005",
+    baseline="wind-best",
+)
+MFBUOY = Station(
+    id="gascogne-bouee",
+    name="Bouée Gascogne",
+    kind="wave",
+    lat=45.22,
+    lon=-4.97,
+    source="mfbuoy",
+    source_id="6200001",
+    baseline="marine-best",
+    active=False,
+)
 STATIONS = [WAVE, TIDE]
 GATE = {
     "wave-a": {"pass": True, "weak": False},
@@ -111,9 +143,7 @@ class _FakeHarmonic:
 
 def _patch_harmonic(monkeypatch, fitted_at=None):
     fitted_at = fitted_at if fitted_at is not None else pd.Timestamp(RUN_DATE, tz="UTC")
-    monkeypatch.setattr(
-        daily.harmonic.HarmonicModel, "load", lambda path: _FakeHarmonic(fitted_at)
-    )
+    monkeypatch.setattr(daily.harmonic.HarmonicModel, "load", lambda path: _FakeHarmonic(fitted_at))
     # Le rafraîchissement est neutralisé par défaut : sans ça, chaque test de
     # `daily.run` déclencherait un vrai ajustement et **écrirait un artefact dans
     # le `pipeline/models/` du dépôt** (constaté : `tide-b-harmonic.joblib` créé
@@ -152,7 +182,10 @@ def _wind_df(station, session=None):
 def _wind_models_df(station, session=None, forecast_days=3, with_speeds=False, past_days=2):
     idx = pd.date_range("2026-07-25", periods=24 * 10, freq="1h", tz="UTC")
     out = pd.DataFrame(
-        {col: np.full(len(idx), 3.0 if col.startswith("wind_u10") else -2.0) for col in MULTI_FORCING_COLUMNS},
+        {
+            col: np.full(len(idx), 3.0 if col.startswith("wind_u10") else -2.0)
+            for col in MULTI_FORCING_COLUMNS
+        },
         index=idx,
     )
     if with_speeds:
@@ -203,15 +236,18 @@ def _archive_never_writes_into_the_repo(monkeypatch, tmp_path):
 def patched_sources(monkeypatch):
     """Every network/model call replaced — daily.py orchestration only."""
     monkeypatch.setattr(
-        daily, "fetch_wave_obs",
+        daily,
+        "fetch_wave_obs",
         lambda station, start: _wave_obs_df(start, 24 * 6),
     )
     monkeypatch.setattr(
-        daily, "fetch_tide_obs",
+        daily,
+        "fetch_tide_obs",
         lambda station, start, date_end=None: _tide_obs_df(start, date_end),
     )
     monkeypatch.setattr(
-        daily, "fetch_wave_models_forecast",
+        daily,
+        "fetch_wave_models_forecast",
         lambda station, session=None, forecast_days=3, past_days=2: _marine_df(
             forecast_days=forecast_days, past_days=past_days
         ),
@@ -219,7 +255,8 @@ def patched_sources(monkeypatch):
     monkeypatch.setattr(daily, "fetch_wind_forecast", _wind_df)
     monkeypatch.setattr(daily, "fetch_wind_models_forecast", _wind_models_df)
     monkeypatch.setattr(
-        daily, "fetch_wind_obs",
+        daily,
+        "fetch_wind_obs",
         lambda station, start, date_end=None: _wind_obs_df(start),
     )
     monkeypatch.setattr(daily.model, "load_artifact", _artifact)
@@ -228,7 +265,9 @@ def patched_sources(monkeypatch):
 
 
 def test_first_run_publishes_latest_for_every_passing_station(tmp_path, patched_sources):
-    summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    summary = daily.run(
+        RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+    )
 
     assert summary["wave-a"]["status"] == "ok"
     assert summary["tide-b"]["status"] == "ok"
@@ -248,7 +287,9 @@ def test_a_source_error_on_one_station_does_not_block_the_others(tmp_path, patch
 
     patched_sources.setattr(daily, "fetch_wave_obs", _boom)
 
-    summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    summary = daily.run(
+        RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+    )
 
     assert summary["wave-a"]["status"] == "missing"
     assert summary["tide-b"]["status"] == "ok"
@@ -285,7 +326,9 @@ def test_second_run_scores_the_first_runs_predictions(tmp_path, patched_sources)
 
 def test_gate_failing_station_is_listed_but_never_gets_predictions(tmp_path, patched_sources):
     gate = {**GATE, "tide-b": {"pass": False, "weak": True}}
-    summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=gate, archive_dir=tmp_path / "archive")
+    summary = daily.run(
+        RUN_DATE, tmp_path, stations=STATIONS, gate=gate, archive_dir=tmp_path / "archive"
+    )
 
     assert "tide-b" not in summary
     assert not (tmp_path / "tide-b").exists()
@@ -306,7 +349,9 @@ def test_wind_source_error_marks_station_missing_without_touching_prior_latest(
 
     patched_sources.setattr(daily, "fetch_wind_models_forecast", _wind_boom)
     next_date = date(2026, 7, 31)
-    summary = daily.run(next_date, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    summary = daily.run(
+        next_date, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+    )
 
     assert summary["wave-a"]["status"] == "missing"
     assert (tmp_path / "wave-a" / "latest.json").read_bytes() == prior_bytes
@@ -319,7 +364,9 @@ def test_missing_model_artifact_is_isolated_to_its_station(tmp_path, patched_sou
         return _artifact(station_id, models_dir)
 
     patched_sources.setattr(daily.model, "load_artifact", _load)
-    summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    summary = daily.run(
+        RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+    )
 
     assert summary["wave-a"]["status"] == "missing"
     assert summary["tide-b"]["status"] == "ok"
@@ -335,7 +382,9 @@ def test_arbitrary_inference_exceptions_do_not_escape_and_block_other_stations(
 
     patched_sources.setattr(daily.model, "predict", _boom)
     with pytest.raises(daily.DailyRunError) as raised:
-        daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+        daily.run(
+            RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+        )
 
     assert raised.value.summary == {
         "wave-a": {"status": "missing", "reason": "input X contains NaN"},
@@ -377,9 +426,18 @@ def test_daily_run_archives_the_served_wind_forecast_for_every_published_station
     # wind frame plus the 5-model wave frame it actually served, the tide
     # path still the mono ARPEGE wind one (no wave frame at all).
     assert set(df.columns) == {
-        "station_id", "issued", "valid_time", "lead_h", "source",
-        "wind_u10", "wind_v10", "pressure_anom", "dp_dt_3h", "dp_dt_6h",
-        *MULTI_FORCING_COLUMNS, *MODEL_COLUMNS,
+        "station_id",
+        "issued",
+        "valid_time",
+        "lead_h",
+        "source",
+        "wind_u10",
+        "wind_v10",
+        "pressure_anom",
+        "dp_dt_3h",
+        "dp_dt_6h",
+        *MULTI_FORCING_COLUMNS,
+        *MODEL_COLUMNS,
     }
     wave, tide = df[df["station_id"] == "wave-a"], df[df["station_id"] == "tide-b"]
     assert (wave["source"] == "openmeteo:multi").all()
@@ -401,7 +459,9 @@ def test_rerunning_the_same_date_does_not_duplicate_archived_forecast_rows(
     daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=archive_dir)
     n_first = len(pd.read_parquet(archive_dir / f"{RUN_DATE.isoformat()}.parquet"))
 
-    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=archive_dir)  # same date again
+    daily.run(
+        RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=archive_dir
+    )  # same date again
 
     df = pd.read_parquet(archive_dir / f"{RUN_DATE.isoformat()}.parquet")
     assert len(df) == n_first
@@ -410,6 +470,7 @@ def test_rerunning_the_same_date_does_not_duplicate_archived_forecast_rows(
 def test_a_station_whose_inference_fails_is_not_archived(tmp_path, patched_sources):
     """Discriminant case: only wave-a's fetch fails, tide-b still publishes and
     archives — an implementation that never archives anything must not pass this."""
+
     def _wind_boom(station, session=None):
         raise SourceError(station.id, "open-meteo 503")
 
@@ -429,12 +490,15 @@ def test_archiving_failure_does_not_fail_the_run(tmp_path, patched_sources, monk
     """The scoreboard publish must survive a broken archive write (e.g. a full
     disk, a permissions error) — visible in logs, never in the run's outcome."""
     monkeypatch.setattr(
-        daily.archive, "write_day",
+        daily.archive,
+        "write_day",
         lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")),
     )
 
     with caplog.at_level("WARNING", logger="scoreboard.daily"):
-        summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+        summary = daily.run(
+            RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+        )
 
     assert summary["wave-a"]["status"] == "ok"
     assert (tmp_path / "wave-a" / "latest.json").exists()
@@ -449,7 +513,9 @@ def test_rerunning_the_same_date_does_not_invent_a_scored_day(tmp_path, patched_
     daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
     assert not (tmp_path / "wave-a" / "history.json").exists()
 
-    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")  # same date again
+    daily.run(
+        RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+    )  # same date again
 
     assert not (tmp_path / "wave-a" / "history.json").exists()  # still no invented day
     scores = json.loads((tmp_path / "scores.json").read_text())
@@ -528,7 +594,9 @@ def test_scores_json_status_reflects_this_run_own_verdict_per_station(tmp_path, 
 
 def test_scored_day_carries_n_points_and_max_lead_h(tmp_path, patched_sources):
     daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
-    daily.run(date(2026, 7, 31), tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    daily.run(
+        date(2026, 7, 31), tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+    )
 
     history = json.loads((tmp_path / "wave-a" / "history.json").read_text())
     scored_day = next(d for d in history["days"] if d["date"] == RUN_DATE.isoformat())
@@ -558,10 +626,12 @@ def test_score_series_keeps_unmatched_leads_as_pending():
 def _obs_capped_at_run(run_day):
     """Wave obs mock that stops at the run's own issuance instant — the real
     world: scoring yesterday's issue never sees obs beyond 'now'."""
+
     def _fetch(station, start):
         now = pd.Timestamp(run_day, tz="UTC") + pd.Timedelta(hours=daily.ISSUE_HOUR)
         hours = int((now - pd.Timestamp(start, tz="UTC")) / pd.Timedelta("1h"))
         return _wave_obs_df(start, hours)
+
     return _fetch
 
 
@@ -651,9 +721,12 @@ def test_expired_harmonic_constants_mark_the_station_missing(tmp_path, patched_s
     t0 = pd.Timestamp(RUN_DATE, tz="UTC") + pd.Timedelta(hours=daily.ISSUE_HOUR)
     fresh = t0 - pd.Timedelta(days=daily.harmonic.REFIT_DAYS)
     _patch_harmonic(patched_sources, fitted_at=fresh)
-    assert daily.run(
-        RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
-    )["tide-b"]["status"] == "ok"
+    assert (
+        daily.run(
+            RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+        )["tide-b"]["status"]
+        == "ok"
+    )
 
     _patch_harmonic(patched_sources, fitted_at=fresh - pd.Timedelta(days=1))
     summary = daily.run(
@@ -668,7 +741,9 @@ def test_fresh_constants_are_not_refitted(tmp_path, monkeypatch):
     que l'artefact est dans sa cadence, aucun ajustement."""
     calls = []
     monkeypatch.setattr(daily, "refit_harmonic", lambda *a, **k: calls.append(a))
-    monkeypatch.setattr(daily.harmonic, "artifact_path", lambda sid, md=None: tmp_path / f"{sid}.joblib")
+    monkeypatch.setattr(
+        daily.harmonic, "artifact_path", lambda sid, md=None: tmp_path / f"{sid}.joblib"
+    )
     (tmp_path / "tide-b.joblib").touch()
     fresh = pd.Timestamp(RUN_DATE, tz="UTC") - pd.Timedelta(days=daily.harmonic.REFIT_DAYS)
     monkeypatch.setattr(daily.harmonic.HarmonicModel, "load", lambda path: _FakeHarmonic(fresh))
@@ -683,7 +758,9 @@ def test_stale_or_missing_constants_are_refitted_by_the_run_itself(tmp_path, mon
     construction* — donc le run se rafraîchit lui-même, sans cron séparé."""
     calls = []
     monkeypatch.setattr(daily, "refit_harmonic", lambda *a, **k: calls.append(a))
-    monkeypatch.setattr(daily.harmonic, "artifact_path", lambda sid, md=None: tmp_path / f"{sid}.joblib")
+    monkeypatch.setattr(
+        daily.harmonic, "artifact_path", lambda sid, md=None: tmp_path / f"{sid}.joblib"
+    )
 
     # Artefact absent (station neuve) : on ajuste.
     daily._ensure_harmonic(TIDE, RUN_DATE)
@@ -701,10 +778,13 @@ def test_a_station_too_young_to_fit_is_refused_loudly(tmp_path, monkeypatch):
     """Moins de deux ans d'obs : pas d'ajustement sur une fenêtre trop courte —
     utide y rendrait des amplitudes fausses sans jamais lever."""
     monkeypatch.setattr(
-        daily, "fetch_tide_obs",
+        daily,
+        "fetch_tide_obs",
         lambda station, start, date_end=None: _tide_obs_df(date_end - timedelta(days=30), date_end),
     )
-    monkeypatch.setattr(daily.harmonic, "artifact_path", lambda sid, md=None: tmp_path / f"{sid}.joblib")
+    monkeypatch.setattr(
+        daily.harmonic, "artifact_path", lambda sid, md=None: tmp_path / f"{sid}.joblib"
+    )
 
     with pytest.raises(SourceError, match="pas d'ajustement"):
         daily.refit_harmonic(TIDE, RUN_DATE)
@@ -775,7 +855,9 @@ def test_wave_run_serves_the_multi_model_sources_and_never_mfwam(tmp_path, patch
     patched_sources.setattr(daily, "fetch_wind_models_forecast", _multi_wind)
     patched_sources.setattr(daily, "fetch_wind_forecast", _mono_wind)
 
-    summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    summary = daily.run(
+        RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+    )
 
     assert summary["wave-a"]["status"] == "ok"
     assert summary["tide-b"]["status"] == "ok"
@@ -804,7 +886,9 @@ def test_latest_json_carries_the_baseline_model_from_the_artefact(tmp_path, patc
 
 def test_scored_history_entry_carries_the_baseline_model(tmp_path, patched_sources):
     daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
-    daily.run(date(2026, 7, 31), tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    daily.run(
+        date(2026, 7, 31), tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+    )
 
     history = json.loads((tmp_path / "wave-a" / "history.json").read_text())
     scored = next(d for d in history["days"] if d["date"] == RUN_DATE.isoformat())
@@ -815,7 +899,9 @@ def test_scored_history_entry_carries_the_baseline_model(tmp_path, patched_sourc
     assert "baseline_model" not in tide_day
 
 
-def test_artefact_feature_columns_mismatch_marks_only_that_station_missing(tmp_path, patched_sources):
+def test_artefact_feature_columns_mismatch_marks_only_that_station_missing(
+    tmp_path, patched_sources
+):
     """A stale artefact (fitted on another column list) must refuse to predict
     rather than serve a silently subset/reordered feature frame — and only that
     station goes missing."""
@@ -828,7 +914,9 @@ def test_artefact_feature_columns_mismatch_marks_only_that_station_missing(tmp_p
         return art
 
     patched_sources.setattr(daily.model, "load_artifact", _load)
-    summary = daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    summary = daily.run(
+        RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+    )
 
     assert summary["wave-a"]["status"] == "missing"
     assert "feature" in summary["wave-a"]["reason"]
@@ -853,7 +941,9 @@ def test_a_pre_switch_latest_json_without_baseline_model_still_scores(tmp_path, 
     (tmp_path / "wave-a").mkdir(parents=True)
     (tmp_path / "wave-a" / "latest.json").write_text(json.dumps(old))
 
-    daily.run(date(2026, 7, 31), tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    daily.run(
+        date(2026, 7, 31), tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive"
+    )
 
     history = json.loads((tmp_path / "wave-a" / "history.json").read_text())
     scored = next(d for d in history["days"] if d["date"] == RUN_DATE.isoformat())
@@ -925,11 +1015,16 @@ def test_wind_run_fetches_speeds_and_forcing_in_a_single_request(tmp_path, patch
 
 def test_wind_station_never_touches_the_wave_or_tide_sources(tmp_path, patched_sources):
     """Une station vent ne doit ni appeler la marine, ni les obs houle/marée."""
+
     def _boom(*args, **kwargs):
         raise AssertionError("source hors du chemin vent appelée")
 
-    for name in ("fetch_wave_models_forecast", "fetch_wave_obs", "fetch_tide_obs",
-                 "fetch_wind_forecast"):
+    for name in (
+        "fetch_wave_models_forecast",
+        "fetch_wave_obs",
+        "fetch_tide_obs",
+        "fetch_wind_forecast",
+    ):
         patched_sources.setattr(daily, name, _boom)
 
     summary = daily.run(RUN_DATE, tmp_path, stations=[WIND], gate=WIND_GATE)
@@ -939,6 +1034,7 @@ def test_wind_station_never_touches_the_wave_or_tide_sources(tmp_path, patched_s
 def test_wind_obs_failure_marks_only_that_station_missing(tmp_path, patched_sources):
     """Même contrat que les autres kinds (résolution 5) : DPObs muet = station
     manquante du jour, jamais une exception qui remonte."""
+
     def _fail(station, start, date_end=None):
         raise SourceError(station.id, "DPObs n'a servi aucune heure")
 
@@ -970,8 +1066,16 @@ def test_unknown_obs_source_raises_instead_of_falling_through_to_shom():
     Une source sans collecteur doit lever, pas atterrir chez le collecteur du kind.
     Un mauvais aiguillage publierait un jour *faux*, pas un jour manquant.
     """
-    orphan = Station(id="orphan", name="Orphan", kind="wave", lat=48.0, lon=-4.0,
-                     source="future-source", source_id="0003", baseline="marine-best")
+    orphan = Station(
+        id="orphan",
+        name="Orphan",
+        kind="wave",
+        lat=48.0,
+        lon=-4.0,
+        source="future-source",
+        source_id="0003",
+        baseline="marine-best",
+    )
     with pytest.raises(SourceError, match="future-source"):
         daily._fetch_obs(orphan, RUN_DATE)
 
@@ -993,7 +1097,9 @@ def test_unknown_obs_source_raises_instead_of_falling_through_to_shom():
 )
 def test_missing_or_incomplete_gate_fails_before_any_publication(tmp_path, patched_sources, gate):
     with pytest.raises(daily.GateConfigurationError, match="gate"):
-        daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=gate, archive_dir=tmp_path / "archive")
+        daily.run(
+            RUN_DATE, tmp_path, stations=STATIONS, gate=gate, archive_dir=tmp_path / "archive"
+        )
 
     assert not (tmp_path / "stations.json").exists()
     assert not list(tmp_path.rglob("latest.json"))
@@ -1003,7 +1109,9 @@ def test_gate_with_no_published_station_fails_before_any_publication(tmp_path, p
     gate = {station.id: {"pass": False, "weak": False} for station in STATIONS}
 
     with pytest.raises(daily.GateConfigurationError, match="publishes no configured station"):
-        daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=gate, archive_dir=tmp_path / "archive")
+        daily.run(
+            RUN_DATE, tmp_path, stations=STATIONS, gate=gate, archive_dir=tmp_path / "archive"
+        )
 
     assert not (tmp_path / "stations.json").exists()
 

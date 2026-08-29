@@ -130,10 +130,7 @@ def validate_gate(stations: list[Station], gate: dict) -> None:
         if station.id in gate
         and (
             not isinstance(gate[station.id], dict)
-            or any(
-                not isinstance(gate[station.id].get(field), bool)
-                for field in ("pass", "weak")
-            )
+            or any(not isinstance(gate[station.id].get(field), bool) for field in ("pass", "weak"))
         )
     ]
     if missing or malformed:
@@ -179,9 +176,7 @@ def _fetch_obs(
         # pilots must never turn into one API request per station.
         start = run_date - timedelta(days=OBS_LOOKBACK_DAYS)
         archive_dir = obs_archive_dir or archive.DEFAULT_OBS_ARCHIVE_DIR
-        df = read_archived_buoy_obs(
-            archive_dir, station.source_id, start, run_date
-        )
+        df = read_archived_buoy_obs(archive_dir, station.source_id, start, run_date)
         return df["hs"].astype(float).dropna().sort_index()
     if station.source == "mfobs":
         # ~30 requêtes (DPObs ne sert qu'une heure à la fois, cf. `sources.mfobs`)
@@ -194,8 +189,6 @@ def _fetch_obs(
         df = fetch_tide_obs(station, start, date_end=run_date + timedelta(days=1))
         return df["level"].astype(float).dropna().sort_index()
     raise SourceError(station.id, f"aucun collecteur d'obs pour la source {station.source!r}")
-
-
 
 
 def refit_harmonic(
@@ -220,8 +213,12 @@ def refit_harmonic(
         )
     fitted = harmonic.fit(level, station.lat)
     fitted.save(harmonic.artifact_path(station.id, models_dir))
-    log.info("%s: constantes harmoniques ré-ajustées sur %sh, fit daté du %s",
-             station.id, len(level), f"{fitted.fitted_at:%Y-%m-%d}")
+    log.info(
+        "%s: constantes harmoniques ré-ajustées sur %sh, fit daté du %s",
+        station.id,
+        len(level),
+        f"{fitted.fitted_at:%Y-%m-%d}",
+    )
     return fitted
 
 
@@ -245,8 +242,12 @@ def _ensure_harmonic(station: Station, today: date, models_dir: Path | None = No
         age = (pd.Timestamp(today, tz="UTC") - harmonic.HarmonicModel.load(path).fitted_at).days
         if age <= harmonic.REFIT_DAYS:
             return
-        log.info("%s: constantes vieilles de %s j (> %s) — ré-ajustement",
-                 station.id, age, harmonic.REFIT_DAYS)
+        log.info(
+            "%s: constantes vieilles de %s j (> %s) — ré-ajustement",
+            station.id,
+            age,
+            harmonic.REFIT_DAYS,
+        )
     refit_harmonic(station, today, models_dir)
 
 
@@ -400,7 +401,9 @@ def rescore_entry(entry: dict, obs: pd.Series, *, drop_pending_before: date | No
     pending = entry.get("pending") or []
     if not pending:
         return entry
-    stale = drop_pending_before is not None and date.fromisoformat(entry["date"]) < drop_pending_before
+    stale = (
+        drop_pending_before is not None and date.fromisoformat(entry["date"]) < drop_pending_before
+    )
     times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in pending])
     matched = obs.reindex(times, method="nearest", tolerance=pd.Timedelta("1h"))
     keep = matched.notna()
@@ -563,7 +566,9 @@ def _run_station(
         obs = _fetch_obs(station, run_date, obs_archive_dir=obs_archive_dir)
     except Exception as exc:  # noqa: BLE001 - one station's failure must never be global
         log.warning("%s: obs fetch failed: %s", station.id, exc)
-        publish.upsert_history(out_dir, station.id, {"date": run_date.isoformat(), "status": "missing"})
+        publish.upsert_history(
+            out_dir, station.id, {"date": run_date.isoformat(), "status": "missing"}
+        )
         return {"status": "missing", "reason": str(exc)}
 
     try:
@@ -585,7 +590,9 @@ def _run_station(
         # Distinct "date" meaning from _score_previous_issue's entry above:
         # this one says "run_date's own issuance failed", not "a past issue
         # could not be scored" — the two can coexist in the same history.json.
-        publish.upsert_history(out_dir, station.id, {"date": run_date.isoformat(), "status": "missing"})
+        publish.upsert_history(
+            out_dir, station.id, {"date": run_date.isoformat(), "status": "missing"}
+        )
         return {"status": "missing", "reason": str(exc)}
 
     publish.write_latest(out_dir, station.id, issued, series, baseline_model=baseline_model)

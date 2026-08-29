@@ -395,15 +395,19 @@ comparaison faits en Task 0, rapport complet dans
 ## 4quater. Météo-France DPObs `/bouees` — archive d'observations bouées (2026-08-03)
 
 Collecteur : `sources/mfbuoy.py` + `archive.write_obs_days`, commande
-`uv run scoreboard archive-obs`, branchée sur le cron quotidien après
-`scoreboard daily`. Sortie : `pipeline/data_obs_archive/<jour>.parquet`,
-committé (Actions est sans état).
+`uv run scoreboard archive-obs`, branchée **avant** le scoreboard quotidien afin
+qu'une panne ultérieure ne fasse jamais perdre la fenêtre périssable. Sorties :
+`pipeline/data_obs_archive/<jour>.parquet`, `data/buoys.json` et, depuis le
+2026-08-29, `data/buoys/<wmo>/latest.json` + `history.json` (30 jours compacts),
+committés ensemble puisque Actions est sans état.
 
-**Ce que ça fait, et ce que ça ne fait pas.** Ça archive uniquement les
-observations, pour que le compteur des ~2-3 mois d'historique nécessaires au
-premier entraînement Méditerranée démarre (demande produit 4). Les 9 bouées ne
-sont **pas** encore des stations scorées : ni `stations.toml`, ni gate, ni
-verdict, ni publication.
+**Ce que ça fait, et ce que ça ne fait pas.** Ça archive et publie les
+observations pour que le compteur des ~2-3 mois d'historique nécessaires au
+premier entraînement Méditerranée démarre (demande produit 4). Gascogne est
+désormais déclarée dans `stations.toml` comme pilote `active = false` : le
+dispatch quotidien et le builder savent lire `mfbuoy`, mais aucun gate, verdict
+ou modèle n'est inventé avant l'entraînement. Les huit autres bouées restent des
+observations publiques, pas des stations scorées.
 
 **Rétention réelle : ~96 h, pas 24 h.** La doc Confluence annonce 24 h. Mesuré
 le 2026-08-03 sur la requête exacte : `date_debut` à T-24/30/36/48/72/96 h
@@ -451,6 +455,23 @@ panne ou un état permanent.
 Valeurs archivées **brutes**, sans filtre de plausibilité (contrairement à
 `candhis.fetch_wave_obs`) : ce corpus est la vérité terrain d'un futur
 entraînement, le filtrage appartient à qui le consomme.
+
+**Contrôle automatique depuis le 2026-08-29.** Une étape non bloquante du
+workflow mesure la fraîcheur (acceptable entre 0 et 3 h) et, pour chaque bouée
+ayant déjà fourni Hs, la complétude sur les dernières 24 h (seuil 80 %). Les IDs
+wave sont l'union du catalogue et de toute preuve Hs dans l'archive complète :
+une panne prolongée ne peut donc pas faire disparaître silencieusement les
+bouées surveillées. Les écarts produisent des annotations GitHub et un tableau
+dans `GITHUB_STEP_SUMMARY`, sans empêcher la sauvegarde des données brutes.
+
+**État mesuré le 2026-08-29 sur `c2a5563`.** 29 partitions du 2026-07-31 au
+2026-08-28, 5 682 lignes et 0 doublon sur
+`(geo_id_wmo, validity_time)`. Sur les huit bouées wave, Hs est présent sur
+100 % des lignes avant le 20 août et après le 25 août, mais seulement **37,2 %**
+du 20 au 25 août : les lignes météo continuaient d'arriver avec les champs
+vagues nuls. Gascogne reste complète sur ses 625 lignes ; Sardaign(e) reste à
+0 Hs. Cette anomalie est une lacune amont conservée brute, pas un filtrage du
+pipeline.
 
 ## 4quinquies. Météo-France DPObs + DPClim — vent aux stations terrestres (2026-08-04)
 
