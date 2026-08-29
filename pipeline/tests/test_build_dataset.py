@@ -24,12 +24,25 @@ def _load_build_dataset():
 
 
 STATION = Station(
-    id="pierres-noires", name="Les Pierres Noires", kind="wave", lat=48.29, lon=-4.97,
-    source="candhis", source_id="02911", baseline="marine-best",
+    id="pierres-noires",
+    name="Les Pierres Noires",
+    kind="wave",
+    lat=48.29,
+    lon=-4.97,
+    source="candhis",
+    source_id="02911",
+    baseline="marine-best",
 )
 MFBUOY_STATION = Station(
-    id="gascogne-bouee", name="Bouée Gascogne", kind="wave", lat=45.22, lon=-4.97,
-    source="mfbuoy", source_id="6200001", baseline="marine-best", active=False,
+    id="gascogne-bouee",
+    name="Bouée Gascogne",
+    kind="wave",
+    lat=45.22,
+    lon=-4.97,
+    source="mfbuoy",
+    source_id="6200001",
+    baseline="marine-best",
+    active=False,
 )
 
 
@@ -99,9 +112,35 @@ def test_build_wave_reads_mfbuoy_obs_from_archive_without_api_fetch(tmp_path):
         patch.object(bd, "fetch_wind_models_history", return_value=winds),
     ):
         out = bd.build_wave(
-            [MFBUOY_STATION], date(2026, 1, 1), date(2026, 1, 2),
+            [MFBUOY_STATION],
+            date(2026, 1, 1),
+            date(2026, 1, 2),
             obs_archive_dir=archive,
         )
 
     m_candhis.assert_not_called()
     assert out["gascogne-bouee"]["hs"].dropna().tolist() == [1.2, 1.4]
+
+
+def test_cli_only_selects_inactive_pilot_with_explicit_flag(tmp_path, monkeypatch):
+    bd = _load_build_dataset()
+    bd.OUT_DIR = tmp_path
+    selected = []
+    monkeypatch.setattr(bd, "load_env", lambda: None)
+    monkeypatch.setattr(
+        bd,
+        "build_wave",
+        lambda stations, start, end: selected.append({s.id for s in stations}),
+    )
+
+    monkeypatch.setattr(sys, "argv", ["build_dataset.py", "--kind", "wave", "--days", "1"])
+    assert bd.main() == 0
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["build_dataset.py", "--kind", "wave", "--days", "1", "--include-pilots"],
+    )
+    assert bd.main() == 0
+
+    assert "gascogne-bouee" not in selected[0]
+    assert "gascogne-bouee" in selected[1]
