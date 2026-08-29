@@ -71,6 +71,19 @@ jobs:
           METEOFRANCE_API_KEY: ${{ secrets.METEOFRANCE_API_KEY }}
         run: uv run scoreboard archive-obs
 
+      # Best-effort et après l'archivage : une qualité dégradée doit être très
+      # visible, mais ne doit jamais empêcher de sauver la fenêtre périssable.
+      # Les IDs wave viennent du catalogue précédent/courant afin que Sardaign(e)
+      # soit exclue sans faire disparaître une bouée wave absente du dernier lot.
+      - name: buoy observation quality
+        working-directory: pipeline
+        continue-on-error: true
+        run: |
+          uv run python -m scoreboard.sources.mfbuoy \
+            --archive-dir data_obs_archive \
+            --catalog ../data/buoys.json \
+            --summary "$GITHUB_STEP_SUMMARY"
+
       # Persist the expiring observations independently. The path list is
       # intentionally exact: this commit can contain only the buoy catalogue
       # and observation archive, never partial output from a scoreboard run.
@@ -79,8 +92,8 @@ jobs:
           set -eu
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git status --porcelain -- data/buoys.json pipeline/data_obs_archive | grep -q .; then
-            git add data/buoys.json pipeline/data_obs_archive
+          if git status --porcelain -- data/buoys.json data/buoys/ pipeline/data_obs_archive | grep -q .; then
+            git add data/buoys.json data/buoys/ pipeline/data_obs_archive
             git commit -m "chore(data): archive buoy observations $(date -u +%F)"
             git pull --rebase
             git push
@@ -156,8 +169,8 @@ jobs:
           # du modèle ML, qui n'ont jamais changé que par un retrain local et
           # humain. Un `git add` au répertoire ouvrirait la première voie de
           # commit automatique vers ces fichiers-là.
-          if git status --porcelain -- data ':(exclude)data/buoys.json' pipeline/data_forecast_archive 'pipeline/models/*-harmonic.joblib' | grep -q .; then
-            git add data ':(exclude)data/buoys.json' pipeline/data_forecast_archive 'pipeline/models/*-harmonic.joblib'
+          if git status --porcelain -- data ':(exclude)data/buoys.json' ':(exclude)data/buoys/' pipeline/data_forecast_archive 'pipeline/models/*-harmonic.joblib' | grep -q .; then
+            git add data ':(exclude)data/buoys.json' ':(exclude)data/buoys/' pipeline/data_forecast_archive 'pipeline/models/*-harmonic.joblib'
             if [ -n "$BACKFILL_SINCE" ]; then
               git commit -m "chore(data): backfill since $BACKFILL_SINCE"
             else
