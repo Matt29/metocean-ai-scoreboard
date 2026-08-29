@@ -27,6 +27,10 @@ STATION = Station(
     id="pierres-noires", name="Les Pierres Noires", kind="wave", lat=48.29, lon=-4.97,
     source="candhis", source_id="02911", baseline="marine-best",
 )
+MFBUOY_STATION = Station(
+    id="gascogne-bouee", name="Bouée Gascogne", kind="wave", lat=45.22, lon=-4.97,
+    source="mfbuoy", source_id="6200001", baseline="marine-best", active=False,
+)
 
 
 def _hourly(cols, start, periods, value):
@@ -67,3 +71,37 @@ def test_build_wave_writes_one_raw_parquet_per_station(tmp_path):
     assert str(written.index.tz) == "UTC"
     # obs resampled 30min -> 1h before the join
     assert written["hs"].notna().sum() == 2
+
+
+def test_build_wave_reads_mfbuoy_obs_from_archive_without_api_fetch(tmp_path):
+    bd = _load_build_dataset()
+    bd.OUT_DIR = tmp_path / "train"
+    bd.OUT_DIR.mkdir()
+    archive = tmp_path / "obs"
+    archive.mkdir()
+    pd.DataFrame(
+        {
+            "geo_id_wmo": ["6200001", "6100001", "6200001"],
+            "validity_time": [
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T01:00:00+00:00",
+            ],
+            "haut_vag": [1.2, 9.9, 1.4],
+        }
+    ).to_parquet(archive / "2026-01-01.parquet")
+    waves = _hourly(MODEL_COLUMNS, "2026-01-01", 2, 1.5)
+    winds = _hourly(MULTI_FORCING_COLUMNS, "2026-01-01", 2, 0.5)
+
+    with (
+        patch.object(bd, "fetch_wave_obs") as m_candhis,
+        patch.object(bd, "fetch_wave_models_history", return_value=waves),
+        patch.object(bd, "fetch_wind_models_history", return_value=winds),
+    ):
+        out = bd.build_wave(
+            [MFBUOY_STATION], date(2026, 1, 1), date(2026, 1, 2),
+            obs_archive_dir=archive,
+        )
+
+    m_candhis.assert_not_called()
+    assert out["gascogne-bouee"]["hs"].dropna().tolist() == [1.2, 1.4]

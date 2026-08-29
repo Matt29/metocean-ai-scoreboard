@@ -23,7 +23,7 @@ def load_env(path: Path = _ENV_FILE) -> None:
         os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
 _VALID_KINDS = {"wave", "tide", "wind"}
-_VALID_SOURCES = {"candhis", "shom", "ioc", "mfobs"}
+_VALID_SOURCES = {"candhis", "shom", "ioc", "mfobs", "mfbuoy"}
 # "marine-best" / "wind-best": the real baseline choice lives in the
 # artefact/gate (which of the candidate physical models won at train time),
 # not here — these values are just markers, not sources of truth. "harmonic"
@@ -43,9 +43,13 @@ class Station:
     source: str
     source_id: str
     baseline: str
+    # A configured pilot can be discovered by offline tooling without entering
+    # the production gate or requiring a model artefact before it is trained.
+    active: bool = True
 
 
-def load_stations(path: Path | None = None) -> list[Station]:
+def load_stations(path: Path | None = None, *, include_inactive: bool = False) -> list[Station]:
+    """Load stations, excluding inactive pilots unless explicitly requested."""
     if path is None:
         path = _DEFAULT_PATH
     with path.open("rb") as f:
@@ -59,5 +63,10 @@ def load_stations(path: Path | None = None) -> list[Station]:
             raise ValueError(f"invalid source: {raw['source']!r}")
         if raw["baseline"] not in _VALID_BASELINES:
             raise ValueError(f"invalid baseline: {raw['baseline']!r}")
-        stations.append(Station(**raw))
+        active = raw.get("active", True)
+        if not isinstance(active, bool):
+            raise TypeError(f"invalid active flag: {active!r}")
+        station = Station(**{**raw, "active": active})
+        if station.active or include_inactive:
+            stations.append(station)
     return stations

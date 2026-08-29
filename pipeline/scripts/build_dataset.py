@@ -5,11 +5,10 @@ Run:  cd pipeline && uv run python scripts/build_dataset.py [--days 1825]
 
 Sources and documented compromises
 ----------------------------------
-* Waves (Candhis): `fetch_wave_obs` chains `getCampTR.php` calls to cover the
-  whole window — each response is capped at ~365 days from `dateDeb`, never up
-  to "now" (verified live, docs/data-sources.md). Candhis has a daily quota,
-  so the chaining only fires more than one request when the window actually
-  exceeds the cap; a short daily/backfill window still costs one call.
+* Waves: Candhis observations come from its historical API; Météo-France buoy
+  pilots read the committed `data_obs_archive/` corpus populated by the single
+  upstream `archive-obs` collection. The builder never re-queries `/bouees`,
+  and a pilot is considered only with the explicit `--include-pilots` flag.
 * Wave models (Open-Meteo Marine, `sources.marine`): ONE request per station
   for the 5 candidate wave models, raw Hs, no baseline selection here — that
   choice (and feature assembly) moves to `train.py` (Task 5), because it must
@@ -63,10 +62,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from scoreboard import harmonic
+from scoreboard import archive, harmonic
 from scoreboard.config import Station, load_env, load_stations
 from scoreboard.dataset import HORIZON_H, assemble
 from scoreboard.sources.candhis import fetch_wave_obs
+from scoreboard.sources.mfbuoy import read_archived_buoy_obs
 from scoreboard.sources.marine import fetch_wave_models_history
 from scoreboard.sources.mfobs import fetch_wind_obs_archive
 from scoreboard.sources.waterlevel import fetch_tide_obs
@@ -118,12 +118,29 @@ def _build_raw(
     return out
 
 
-def build_wave(stations: list[Station], start: date, end: date) -> dict[str, pd.DataFrame]:
+def build_wave(
+    stations: list[Station],
+    start: date,
+    end: date,
+    *,
+    obs_archive_dir: Path | None = None,
+) -> dict[str, pd.DataFrame]:
     """One raw parquet per station: obs + 5 wave models + 6 multi-model wind
-    columns, hourly UTC. No feature assembly here (Task 5/train.py)."""
+    columns, hourly UTC. Candhis is fetched from its historical API; `mfbuoy`
+    is read from the archive collected once upstream. No feature assembly here
+    (Task 5/train.py)."""
+
+    obs_archive_dir = obs_archive_dir or archive.DEFAULT_OBS_ARCHIVE_DIR
 
     def fetch(st: Station) -> pd.DataFrame:
-        obs = fetch_wave_obs(st, start)[["hs"]].resample("1h").mean()  # single deep request
+        if st.source == "candhis":
+            obs = fetch_wave_obs(st, start)[["hs"]].resample("1h").mean()
+        elif st.source == "mfbuoy":
+            obs = read_archived_buoy_obs(
+                obs_archive_dir, st.source_id, start, end
+            )[["hs"]].resample("1h").mean()
+        else:
+            raise ValueError(f"{st.id}: unsupported wave source {st.source!r}")
         waves = fetch_wave_models_history(st, start, end)  # single request
         winds = fetch_wind_models_history(st, start, end)  # single request
         return obs.join(waves, how="outer").join(winds, how="outer")
@@ -205,12 +222,20 @@ def main() -> int:
     ap.add_argument(
         "--kind", choices=["wave", "tide", "wind"], help="build only this station kind"
     )
+    ap.add_argument(
+        "--include-pilots",
+        action="store_true",
+        help="include inactive pilot stations (never enabled implicitly)",
+    )
     args = ap.parse_args()
     load_env()
 
     end = date.today()
     start = end - timedelta(days=args.days)
-    stations = [s for s in load_stations() if args.kind in (None, s.kind)]
+    stations = [
+        s for s in load_stations(include_inactive=args.include_pilots)
+        if args.kind in (None, s.kind)
+    ]
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"Window {start} -> {end}")
@@ -219,7 +244,7 @@ def main() -> int:
     winds = [s for s in stations if s.kind == "wind"]
     tides = [s for s in stations if s.kind == "tide"]
     if waves:
-        print("Waves (Candhis + Open-Meteo multi-model), raw parquet per station:")
+        print("Waves (source obs configured + Open-Meteo multi-model), raw parquet per station:")
         build_wave(waves, start, end)  # writes its own <station>_raw.parquet
     if winds:
         # Départ borné par la dispo réelle des 3 modèles, pas par `--days` : voir

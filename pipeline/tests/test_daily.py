@@ -33,6 +33,9 @@ TIDE = Station(id="tide-b", name="Tide B", kind="tide", lat=48.4, lon=-4.5,
 WIND_BASELINE_MODEL = "icon_eu"
 WIND = Station(id="wind-c", name="Wind C", kind="wind", lat=48.47, lon=-5.06,
                 source="mfobs", source_id="29155005", baseline="wind-best")
+MFBUOY = Station(id="gascogne-bouee", name="Bouée Gascogne", kind="wave",
+                 lat=45.22, lon=-4.97, source="mfbuoy", source_id="6200001",
+                 baseline="marine-best", active=False)
 STATIONS = [WAVE, TIDE]
 GATE = {
     "wave-a": {"pass": True, "weak": False},
@@ -165,6 +168,25 @@ def _wind_obs_df(start, periods=24 * 6, value=6.5):
     return pd.DataFrame(
         {"wind_speed": np.full(periods, value), "wind_dir": np.full(periods, 220.0)}, index=idx
     )
+
+
+def test_fetch_obs_dispatches_mfbuoy_to_committed_archive(tmp_path):
+    pd.DataFrame(
+        {
+            "geo_id_wmo": ["6200001", "6100001", "6200001"],
+            "validity_time": [
+                "2026-07-29T00:00:00+00:00",
+                "2026-07-29T00:00:00+00:00",
+                "2026-07-30T00:00:00+00:00",
+            ],
+            "haut_vag": [1.2, 8.0, None],
+        }
+    ).to_parquet(tmp_path / "2026-07-29.parquet")
+
+    obs = daily._fetch_obs(MFBUOY, RUN_DATE, obs_archive_dir=tmp_path)
+
+    assert obs.tolist() == [1.2]
+    assert obs.index.tolist() == [pd.Timestamp("2026-07-29T00:00:00Z")]
 
 
 @pytest.fixture(autouse=True)
@@ -945,13 +967,12 @@ def test_wind_second_run_scores_the_first_runs_predictions(tmp_path, patched_sou
 def test_unknown_obs_source_raises_instead_of_falling_through_to_shom():
     """Le dispatch d'obs porte sur `source`, pas sur `kind`.
 
-    Une source sans collecteur — la prochaine sera `mfbuoy`, de la houle qui ne
-    vient pas de Candhis — doit lever, pas atterrir chez le collecteur du kind.
+    Une source sans collecteur doit lever, pas atterrir chez le collecteur du kind.
     Un mauvais aiguillage publierait un jour *faux*, pas un jour manquant.
     """
     orphan = Station(id="orphan", name="Orphan", kind="wave", lat=48.0, lon=-4.0,
-                     source="mfbuoy", source_id="0003", baseline="marine-best")
-    with pytest.raises(SourceError, match="mfbuoy"):
+                     source="future-source", source_id="0003", baseline="marine-best")
+    with pytest.raises(SourceError, match="future-source"):
         daily._fetch_obs(orphan, RUN_DATE)
 
 

@@ -39,3 +39,14 @@ def test_load_stations_default_loads_real_config():
     assert kinds == {"wave": 4, "tide": 2, "wind": 3}
     assert len({s.id for s in stations}) == len(stations)
     assert all(s.source_id for s in stations)
+
+
+def test_inactive_pilot_is_explicitly_opted_into_from_real_config():
+    active = load_stations()
+    with_pilots = load_stations(include_inactive=True)
+
+    assert "gascogne-bouee" not in {s.id for s in active}
+    gascogne = next(s for s in with_pilots if s.id == "gascogne-bouee")
+    assert gascogne.source == "mfbuoy"
+    assert gascogne.source_id == "6200001"
+    assert gascogne.active is False

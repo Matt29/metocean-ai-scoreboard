@@ -43,6 +43,21 @@ source = "candhis"
 source_id = "05008"
 baseline = "marine-best"
 
+# Pilote de la nouvelle source bouées Météo-France. Ses observations sont déjà
+# archivées quotidiennement, mais moins d'un mois ne suffit pas encore à former
+# ni valider un modèle. `active = false` la garde hors du gate et du scoreboard;
+# `build_dataset.py --include-pilots` permet de mesurer explicitement le corpus.
+[[station]]
+id = "gascogne-bouee"
+name = "Bouée Gascogne"
+kind = "wave"
+lat = 45.2200
+lon = -4.9700
+source = "mfbuoy"
+source_id = "6200001"
+baseline = "marine-best"
+active = false
+
 [[station]]
 id = "brest"
 name = "Brest"

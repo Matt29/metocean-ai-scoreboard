@@ -63,6 +63,7 @@ from scoreboard.config import Station, load_stations
 from scoreboard.features import build_features
 from scoreboard.sources import SourceError
 from scoreboard.sources.candhis import fetch_wave_obs
+from scoreboard.sources.mfbuoy import read_archived_buoy_obs
 from scoreboard.sources.marine import fetch_wave_models_forecast
 from scoreboard.sources.mfobs import fetch_wind_obs
 from scoreboard.sources.waterlevel import fetch_tide_obs
@@ -151,7 +152,12 @@ def iso(t: pd.Timestamp) -> str:
     return t.isoformat().replace("+00:00", "Z")
 
 
-def _fetch_obs(station: Station, run_date: date) -> pd.Series:
+def _fetch_obs(
+    station: Station,
+    run_date: date,
+    *,
+    obs_archive_dir: Path | None = None,
+) -> pd.Series:
     """One station-level fetch (résolution 5), `OBS_LOOKBACK_DAYS` deep quelle que
     soit la source : depuis que les constantes harmoniques sont persistées, la
     marée n'a plus besoin de ses deux ans d'historique au quotidien (une requête
@@ -166,6 +172,16 @@ def _fetch_obs(station: Station, run_date: date) -> pd.Series:
     if station.source == "candhis":
         start = run_date - timedelta(days=OBS_LOOKBACK_DAYS)
         df = fetch_wave_obs(station, start)
+        return df["hs"].astype(float).dropna().sort_index()
+    if station.source == "mfbuoy":
+        # `/bouees` is collected once for the whole network by `archive-obs`.
+        # Daily serving only reads that committed corpus: activating several
+        # pilots must never turn into one API request per station.
+        start = run_date - timedelta(days=OBS_LOOKBACK_DAYS)
+        archive_dir = obs_archive_dir or archive.DEFAULT_OBS_ARCHIVE_DIR
+        df = read_archived_buoy_obs(
+            archive_dir, station.source_id, start, run_date
+        )
         return df["hs"].astype(float).dropna().sort_index()
     if station.source == "mfobs":
         # ~30 requêtes (DPObs ne sert qu'une heure à la fois, cf. `sources.mfobs`)
@@ -536,6 +552,7 @@ def _run_station(
     out_dir: Path,
     models_dir: Path | None,
     archive_dir: Path,
+    obs_archive_dir: Path,
 ) -> dict:
     try:
         # Avant tout le reste : des constantes fraîches, sinon la station est
@@ -543,7 +560,7 @@ def _run_station(
         # ~50 s de REFMAR que le run quotidien ne paie plus.
         if station.kind == "tide":
             _ensure_harmonic(station, run_date, models_dir)
-        obs = _fetch_obs(station, run_date)
+        obs = _fetch_obs(station, run_date, obs_archive_dir=obs_archive_dir)
     except Exception as exc:  # noqa: BLE001 - one station's failure must never be global
         log.warning("%s: obs fetch failed: %s", station.id, exc)
         publish.upsert_history(out_dir, station.id, {"date": run_date.isoformat(), "status": "missing"})
@@ -598,6 +615,7 @@ def run(
     gate: dict | None = None,
     models_dir: Path | None = None,
     archive_dir: Path | None = None,
+    obs_archive_dir: Path | None = None,
 ) -> dict[str, dict]:
     """Predict, score, publish for `run_date`. Returns `{station_id: {status, ...}}`
     for the *published* (gate-passing) stations only."""
@@ -605,6 +623,9 @@ def run(
     gate = gate if gate is not None else load_gate()
     validate_gate(stations, gate)
     archive_dir = archive_dir if archive_dir is not None else archive.DEFAULT_ARCHIVE_DIR
+    obs_archive_dir = (
+        obs_archive_dir if obs_archive_dir is not None else archive.DEFAULT_OBS_ARCHIVE_DIR
+    )
     t0 = pd.Timestamp(run_date, tz="UTC") + pd.Timedelta(hours=ISSUE_HOUR)
     issued = iso(t0)
 
@@ -618,7 +639,9 @@ def run(
     # (Open-Meteo marine/forecast), so it lives inside `_run_station`'s
     # try/except and a dead source takes down exactly one station.
     summary = {
-        st.id: _run_station(st, run_date, t0, issued, out_dir, models_dir, archive_dir)
+        st.id: _run_station(
+            st, run_date, t0, issued, out_dir, models_dir, archive_dir, obs_archive_dir
+        )
         for st in published
     }
 
