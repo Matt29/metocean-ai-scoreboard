@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-08-29T06:00:00Z",
+  "updated": "2026-08-30T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -16,6 +16,16 @@
           "baseline_model": "ncep_gfswave025"
         },
         {
+          "date": "2026-08-29",
+          "obs_peak": 3.5,
+          "t_peak": "2026-08-29T15:00:00Z",
+          "ia_at_peak": 2.9125,
+          "baseline_at_peak": 2.86,
+          "peak_error_ia": -0.5875,
+          "peak_error_baseline": -0.64,
+          "baseline_model": "ncep_gfswave025"
+        },
+        {
           "date": "2026-08-19",
           "obs_peak": 2.5,
           "t_peak": "2026-08-20T14:00:00Z",
@@ -24,22 +34,22 @@
           "peak_error_ia": -0.3667,
           "peak_error_baseline": -0.48,
           "baseline_model": "ncep_gfswave025"
-        },
-        {
-          "date": "2026-08-20",
-          "obs_peak": 2.5,
-          "t_peak": "2026-08-20T14:00:00Z",
-          "ia_at_peak": 1.8137,
-          "baseline_at_peak": 1.92,
-          "peak_error_ia": -0.6863,
-          "peak_error_baseline": -0.58,
-          "baseline_model": "ncep_gfswave025"
         }
       ]
     },
     {
       "id": "belle-ile",
       "episodes": [
+        {
+          "date": "2026-08-29",
+          "obs_peak": 3.0,
+          "t_peak": "2026-08-29T15:00:00Z",
+          "ia_at_peak": 2.6337,
+          "baseline_at_peak": 2.72,
+          "peak_error_ia": -0.3663,
+          "peak_error_baseline": -0.28,
+          "baseline_model": "ewam"
+        },
         {
           "date": "2026-08-28",
           "obs_peak": 2.9,
@@ -58,16 +68,6 @@
           "baseline_at_peak": 2.02,
           "peak_error_ia": -0.3498,
           "peak_error_baseline": -0.28,
-          "baseline_model": "ewam"
-        },
-        {
-          "date": "2026-07-24",
-          "obs_peak": 1.6,
-          "t_peak": "2026-07-25T19:00:00Z",
-          "ia_at_peak": 1.3492,
-          "baseline_at_peak": 1.8,
-          "peak_error_ia": -0.2508,
-          "peak_error_baseline": 0.2,
           "baseline_model": "ewam"
         }
       ]
@@ -210,6 +210,26 @@
       "id": "dieppe",
       "episodes": [
         {
+          "date": "2026-08-28",
+          "obs_peak": 10.4,
+          "t_peak": "2026-08-29T19:00:00Z",
+          "ia_at_peak": 9.1931,
+          "baseline_at_peak": 9.65,
+          "peak_error_ia": -1.2069,
+          "peak_error_baseline": -0.75,
+          "baseline_model": "meteofrance_arpege_europe"
+        },
+        {
+          "date": "2026-08-29",
+          "obs_peak": 10.4,
+          "t_peak": "2026-08-29T19:00:00Z",
+          "ia_at_peak": 8.9112,
+          "baseline_at_peak": 8.79,
+          "peak_error_ia": -1.4888,
+          "peak_error_baseline": -1.61,
+          "baseline_model": "meteofrance_arpege_europe"
+        },
+        {
           "date": "2026-07-25",
           "obs_peak": 10.3,
           "t_peak": "2026-07-26T15:00:00Z",
@@ -217,26 +237,6 @@
           "baseline_at_peak": 8.41,
           "peak_error_ia": -1.4691,
           "peak_error_baseline": -1.89,
-          "baseline_model": "meteofrance_arpege_europe"
-        },
-        {
-          "date": "2026-07-26",
-          "obs_peak": 10.3,
-          "t_peak": "2026-07-26T15:00:00Z",
-          "ia_at_peak": 9.57,
-          "baseline_at_peak": 8.41,
-          "peak_error_ia": -0.73,
-          "peak_error_baseline": -1.89,
-          "baseline_model": "meteofrance_arpege_europe"
-        },
-        {
-          "date": "2026-07-19",
-          "obs_peak": 9.9,
-          "t_peak": "2026-07-20T15:00:00Z",
-          "ia_at_peak": 9.3292,
-          "baseline_at_peak": 7.53,
-          "peak_error_ia": -0.5708,
-          "peak_error_baseline": -2.37,
           "baseline_model": "meteofrance_arpege_europe"
         }
       ]
