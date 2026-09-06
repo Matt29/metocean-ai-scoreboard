@@ -19011,23 +19011,25 @@
           "obs": 5.1,
           "ia": 3.6055,
           "baseline": 2.98
-        }
-      ],
-      "mae_ia": 0.8646,
-      "mae_baseline": 1.0867,
-      "n_points": 30,
-      "max_lead_h": 30,
-      "pending": [
+        },
         {
           "t": "2026-09-06T13:00:00Z",
+          "obs": 7.1,
           "ia": 3.8311,
           "baseline": 2.61
         },
         {
           "t": "2026-09-06T14:00:00Z",
+          "obs": 7.1,
           "ia": 4.1471,
           "baseline": 2.62
-        },
+        }
+      ],
+      "mae_ia": 1.005,
+      "mae_baseline": 1.2991,
+      "n_points": 32,
+      "max_lead_h": 32,
+      "pending": [
         {
           "t": "2026-09-06T15:00:00Z",
           "ia": 4.7817,
