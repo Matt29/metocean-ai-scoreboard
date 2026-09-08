@@ -470,6 +470,9 @@ def _merge_peaks_pending(entry: dict, obs: pd.Series, stale: bool, kind: str | N
     needed to count (`threshold_p90`, `clim`) travels *with* the pending points
     rather than being re-read from `gate.json`: a retrain between the issue and
     this merge would otherwise sum two thresholds into one day's counts.
+
+    When `kind` is None or no observations match, `peaks_pending` is left untouched
+    if the entry is recent; if stale, it is dropped along with expired data.
     """
     ctx = entry.get("peaks_pending")
     if not ctx:
@@ -778,7 +781,10 @@ def _run_station(
         # Leaving yesterday's peaks.json in place would serve a stale alert as if
         # it were today's; the file is marked missing instead (same meaning as a
         # history day's `status`), and `_score_previous_issue` skips it.
-        publish.write_peaks(out_dir, station.id, issued, {"status": "missing"})
+        try:
+            publish.write_peaks(out_dir, station.id, issued, {"status": "missing"})
+        except Exception as marker_exc:  # noqa: BLE001 - filesystem must not escape _run_station
+            log.warning("%s: writing the missing peaks marker failed: %s", station.id, marker_exc)
         log.warning("%s: peak outputs failed: %s", station.id, exc)
 
     try:

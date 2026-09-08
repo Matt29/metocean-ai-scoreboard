@@ -1017,8 +1017,8 @@ un dépassement dans les 48 h ». Sa référence est la fréquence de ces jours 
 événement **mesurée sur le test poolé lui-même** (l'agrégation par jour n'existe
 pas côté train) : c'est un skill **optimiste**, un diagnostic contre une
 référence côté test, jamais un verdict. `p48_bss_clim` vaut `None` quand la cible
-par jour est **constante**, c'est-à-dire quand tous les jours d'émission portent
-au moins un dépassement : il n'y a alors pas de skill à mesurer, et le `None` le
+journalière est constante — tous les jours d'émission portent un dépassement, ou
+aucun (cas d'anglet) : il n'y a alors pas de skill à mesurer, et le `None` le
 dit plutôt qu'un chiffre calculé sur une référence nulle. À quelle fréquence ce
 cas se produit en production sur nos stations : **non mesuré** (il dépend du
 regroupement en épisodes des dépassements, que les seuils p90 par ligne ne

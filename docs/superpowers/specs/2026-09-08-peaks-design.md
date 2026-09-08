@@ -135,8 +135,8 @@ reportée : `daily` en a besoin pour scorer le Brier des jours publiés.
 `n_events_p98` est le diagnostic du second seuil. `p48_bss_clim` et
 `n_days_48h` évaluent `p_48h` par jour d'émission contre « au moins un
 dépassement dans les 48 h » — **non gaté**, référence prise sur le test poolé
-lui-même (donc optimiste), `None` quand la cible par jour est constante (tous les
-jours portent un dépassement) — fréquence de ce cas en production non mesurée.
+lui-même (donc optimiste), `None` quand la cible journalière est constante — tous
+les jours d'émission portent un dépassement, ou aucun (cas d'anglet) — fréquence de ce cas en production non mesurée.
 
 - `daily.validate_gate` et `load_gate` ne vérifient que `pass`/`weak` au
   niveau station : inchangés. Une entrée `peaks` absente vaut « non publié ».
