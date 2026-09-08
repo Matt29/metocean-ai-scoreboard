@@ -734,3 +734,44 @@ def test_peak_scores_climatology_has_zero_skill():
     assert s["alert"]["bss_clim"] == pytest.approx(0.0)
     assert s["alert"]["pod_baseline"] is None
     assert s["band"]["coverage"] == 1.0
+
+
+def test_evaluate_reports_peak_verdicts_on_the_same_sealed_rows(tmp_path, monkeypatch):
+    raw = _raw(days=45)
+    raw["hs_gwam"] = raw["hs"] + 0.02
+    monkeypatch.setattr(train, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(model, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(train, "GATE_PATH", tmp_path / "gate.json")
+    raw.to_parquet(tmp_path / "synthetic_raw.parquet")
+
+    row = train.evaluate(STATION, test_days=10, model_names=("ridge",))
+
+    peaks = row["peaks"]
+    assert set(peaks) == {"alert", "band"}
+    alert, band = peaks["alert"], peaks["band"]
+    assert {"pass", "weak", "threshold_p90", "threshold_p98", "clim", "bss_clim",
+            "bss_clim_ci95_low", "bss_clim_ci95_high", "pod", "far", "pod_baseline",
+            "far_baseline", "n_events"} <= set(alert)
+    assert {"pass", "weak", "coverage", "pinball_model", "pinball_baseline", "gain_pinball",
+            "gain_pinball_ci95_low", "gain_pinball_ci95_high", "crossings_frac"} <= set(band)
+    assert isinstance(alert["pass"], bool) and isinstance(band["pass"], bool)
+    assert not any(k.startswith("_") for k in alert) and not any(k.startswith("_") for k in band)
+    assert row["_peaks_estimator"] is not None
+    assert row["_peaks_estimator"]["feature_columns"] == list(row["_estimator"].feature_names_in_)
+    # degraded protocol on 45 days: nothing publishable, exactly like the median
+    assert alert["pass"] is False and band["pass"] is False
+    assert json.dumps(peaks)  # serialisable
+
+
+def test_evaluate_reports_no_peaks_when_no_fold_has_enough_events(tmp_path, monkeypatch):
+    raw = _raw(days=45)
+    raw["hs"] = 2.0  # constant: no exceedance class at all
+    for col in MODEL_COLUMNS:
+        raw[col] = 2.0
+    monkeypatch.setattr(train, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(model, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(train, "GATE_PATH", tmp_path / "gate.json")
+    raw.to_parquet(tmp_path / "synthetic_raw.parquet")
+
+    row = train.evaluate(STATION, test_days=10, model_names=("ridge",))
+    assert row["peaks"] is None and row["_peaks_estimator"] is None

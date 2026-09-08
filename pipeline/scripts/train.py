@@ -297,6 +297,50 @@ def _peak_scores(
     return {"alert": alert, "band": band}
 
 
+def _peak_verdicts(
+    kind: str,
+    x_test: pd.DataFrame,
+    obs_test: pd.Series,
+    level_test: np.ndarray,
+    fold_ids: np.ndarray,
+    fold_p: list[np.ndarray],
+    fold_q: list[np.ndarray],
+    fold_meta: list[dict | None],
+    evaluation_ready: bool,
+) -> dict | None:
+    """Pooled peak metrics + gate verdicts, restricted to the folds that had peaks."""
+    keep = np.isin(fold_ids, [k for k, m in enumerate(fold_meta) if m is not None])
+    if not keep.any():
+        return None
+    target = _peak_target(obs_test, x_test, kind).to_numpy()[keep]
+    x_keep = x_test[keep]
+    p_exceed = np.concatenate(fold_p)[keep]
+    q90 = np.concatenate(fold_q)[keep]
+    # Re-index folds densely so `_peak_scores` can index `folds[k]`.
+    kept_ids = [k for k, m in enumerate(fold_meta) if m is not None]
+    dense = np.searchsorted(kept_ids, fold_ids[keep])
+    scores = _peak_scores(target, p_exceed, q90, dense, [fold_meta[k] for k in kept_ids],
+                          _peak_baseline(x_keep, kind))
+    alert, band = scores["alert"], scores["band"]
+    alert["bss_clim_ci95_low"], alert["bss_clim_ci95_high"] = _issue_day_bootstrap(x_keep, alert.pop("_bss_fn"))
+    band["gain_pinball_ci95_low"], band["gain_pinball_ci95_high"] = _issue_day_bootstrap(x_keep, band.pop("_gain_fn"))
+    median_on_scale = level_test[keep] - (x_keep["baseline"].to_numpy() if kind == "tide" else 0.0)
+    band["crossings_frac"] = float((q90 < median_on_scale).mean())
+    ready = evaluation_ready and alert["n_events"] >= PEAK_MIN_EVENTS
+    alert["pass"] = bool(
+        ready and alert["bss_clim"] is not None and alert["bss_clim"] > 0
+        and alert["bss_clim_ci95_low"] > 0
+        and (alert["pod_baseline"] is None or (alert["pod"] or 0.0) >= alert["pod_baseline"])
+    )
+    alert["weak"] = bool(alert["n_events"] < PEAK_MIN_EVENTS)
+    band["pass"] = bool(
+        evaluation_ready and PEAK_COVERAGE[0] <= band["coverage"] <= PEAK_COVERAGE[1]
+        and band["gain_pinball_ci95_low"] > 0
+    )
+    band["weak"] = bool(band["crossings_frac"] > PEAK_CROSSINGS_WEAK)
+    return {"alert": alert, "band": band}
+
+
 def select_baseline(
     raw: pd.DataFrame,
     train_days: pd.DatetimeIndex,
@@ -493,6 +537,7 @@ def evaluate(
     fold_ids = []
     fold_models = []
     fold_baselines = []
+    fold_peak_p, fold_peak_q, fold_peak_meta = [], [], []
     skipped_origins: list[str] = []
     val_scores: dict = {}
     best = model_names[0]
@@ -556,6 +601,27 @@ def evaluate(
             fold_ids.append(np.full(len(x_test), len(fold_ids), dtype=int))
             fold_models.append(current_best)
             fold_baselines.append(fold_baseline)
+            # Peak outputs: same train rows, same sealed test rows, never part of
+            # the median candidate's selection. A fold too poor in events is
+            # recorded as such (None) rather than scored on a constant.
+            peak_train = _peak_target(obs_train, x_train, station.kind).to_numpy()
+            thr = _peak_thresholds(peak_train)
+            peaks_fit = model.train_peaks(x_train, pd.Series(peak_train, index=x_train.index), thr["p90"])
+            if peaks_fit is None:
+                fold_peak_meta.append(None)
+                fold_peak_p.append(np.full(len(x_test), np.nan))
+                fold_peak_q.append(np.full(len(x_test), np.nan))
+            else:
+                p_exceed, q90 = model.predict_peaks(peaks_fit, x_test)
+                base_train = _peak_baseline(x_train, station.kind)
+                fold_peak_p.append(p_exceed)
+                fold_peak_q.append(q90)
+                fold_peak_meta.append({
+                    **thr,
+                    "clim": float((peak_train >= thr["p90"]).mean()),
+                    "adv_p90": None if station.kind == "tide" else float(np.quantile(base_train, 0.9)),
+                    "adv_q90": float(np.quantile(peak_train - base_train, model.PEAK_QUANTILE)),
+                })
             # Keep the most recent origin's validation table for the report and use
             # its selected model for the production refit below. Its test remains
             # excluded from that choice.
@@ -594,6 +660,10 @@ def evaluate(
     else:
         protocol = "holdout annuel"
     evaluation_ready = station.kind not in KIND_MODELS or protocol == "rolling-origin multi-saisons"
+    peaks_row = _peak_verdicts(
+        station.kind, x_test, obs_test, level_test, test_fold_ids,
+        fold_peak_p, fold_peak_q, fold_peak_meta, evaluation_ready,
+    )
     # Once the reported heldouts are sealed, baseline selection and training may
     # use all available rows for the artefact served in production.  This is
     # intentionally after (and separate from) every reported fold.
@@ -612,8 +682,23 @@ def evaluate(
             else production_obs - final_x["baseline"]
         )
     final = model.train(final_x, final_target, name=best)
+    peaks_thresholds = None
+    peaks_final = None
+    if peaks_row is not None:
+        # `final_target` is already on the peak scale: surge for tide, obs otherwise.
+        production_target = np.asarray(final_target, dtype=float)
+        peaks_thresholds = _peak_thresholds(production_target)
+        peaks_final = model.train_peaks(
+            final_x, pd.Series(production_target, index=final_x.index), peaks_thresholds["p90"]
+        )
+        peaks_row["alert"]["threshold_p90"] = peaks_thresholds["p90"]
+        peaks_row["alert"]["threshold_p98"] = peaks_thresholds["p98"]
+        peaks_row["alert"]["clim"] = float((production_target >= peaks_thresholds["p90"]).mean())
+        if peaks_final is None:
+            peaks_row["alert"]["pass"] = peaks_row["band"]["pass"] = False
     row = {
         "events": _event_scores(level_test, x_test, obs_test),
+        "peaks": peaks_row,
         "test_days": test_days,
         "station": station.id,
         "kind": station.kind,
@@ -662,11 +747,22 @@ def evaluate(
             f"      [validation] {name:14} MAE {s['mae_model']:.4f}  "
             f"hors biais {s['gain_debiased']:+7.1%}{chosen}"
         )
+    if row["peaks"]:
+        a, b = row["peaks"]["alert"], row["peaks"]["band"]
+        print(
+            f"      [pics] alerte BSS {a['bss_clim']:+.3f} "
+            f"[{a['bss_clim_ci95_low']:+.3f};{a['bss_clim_ci95_high']:+.3f}] "
+            f"POD {a['pod']} FAR {a['far']} n={a['n_events']} -> {'PASS' if a['pass'] else 'FAIL'} | "
+            f"borne couverture {b['coverage']:.3f} gain pinball {b['gain_pinball']:+.1%} -> "
+            f"{'PASS' if b['pass'] else 'FAIL'}"
+        )
     # Evaluation deliberately has no filesystem side effect. `main` stages and
     # releases every successful station only after this phase completes for all
     # requested stations, preventing a later evaluation error from replacing an
     # earlier station's live artefact.
     row["_estimator"] = final
+    row["_peaks_estimator"] = peaks_final
+    row["_peaks_thresholds"] = peaks_thresholds
     # Test-fold internals, for callers comparing two candidates on the same rows
     # (`scripts/compare_ridge.py`). Underscored: not part of the report or gate.
     row["_test_eval"] = (level_test, x_test, obs_test, test_fold_ids)
