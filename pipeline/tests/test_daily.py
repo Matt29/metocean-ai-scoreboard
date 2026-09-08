@@ -1217,3 +1217,27 @@ def test_tide_peaks_band_adds_the_harmonic_back(tmp_path, patched_sources):
     upper = np.array([p["p90_upper"] for p in out["series"]])
     assert (upper >= feats["baseline"].to_numpy() - 0.5).all()  # level scale, not surge scale
     assert (upper >= median).all()
+
+
+def test_second_run_scores_yesterdays_peaks_into_history(tmp_path, patched_sources):
+    station, models_dir, obs, t0, models, forcing = _wave_inference_fixture(tmp_path, patched_sources)
+    artifact, feats = daily._issue_features(station, obs, t0, models, forcing, models_dir)
+    x = feats[artifact["feature_columns"]]
+    peaks = model.train_peaks(x, feats["baseline"] + 0.1, float(np.quantile(feats["baseline"], 0.9)))
+    model.stage_peaks(peaks, station.id, models_dir, {"p90": 1.5, "p98": 2.0}, "wave")
+
+    gate = {**GATE, "wave-a": {"pass": True, "weak": False,
+                                "peaks": {"alert": {"pass": True, "clim": 0.1}, "band": {"pass": True}}}}
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=gate,
+              archive_dir=tmp_path / "archive", models_dir=models_dir)
+    next_date = date(2026, 7, 31)
+    daily.run(next_date, tmp_path, stations=STATIONS, gate=gate,
+              archive_dir=tmp_path / "archive", models_dir=models_dir)
+
+    STATION_ID = "wave-a"
+    history = json.loads((tmp_path / STATION_ID / "history.json").read_text())
+    scored = [d for d in history["days"] if d.get("status") == "ok" and "peaks" in d]
+    assert scored, "yesterday's peaks.json was not scored"
+    assert set(scored[0]["peaks"]) == {"n", "events", "hits", "misses", "false_alarms",
+                                       "brier", "brier_clim", "n_band", "covered"}
+    assert (tmp_path / "peaks_scores.json").exists()

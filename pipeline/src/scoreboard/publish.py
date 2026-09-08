@@ -77,7 +77,25 @@ alerte. Le fichier n'est écrit que si au moins une des deux sorties passe
 (`write_peaks`, appelée depuis `daily._run_station` dans son propre
 try/except : un échec ici ne défait jamais la publication du médian).
 
-Et un huitième, écrit par `daily` juste après `extremes.json`, hors contrat
+Et un huitième, écrit par `daily` juste après `extremes.json` (même position
+relative que celui-ci vis-à-vis de `scores.json`) — le pendant *scoré* de
+`peaks.json`, jamais gonflé dans `scores.json` pour la même raison qu'`extremes.json` :
+
+    data/peaks_scores.json      {"schema_version":1,"updated","stations":[
+                                 {"id","threshold_p90"?,
+                                 "alert_30d"|"alert_90d":{"n_events","pod","far",
+                                 "bss_clim","n_days"}|null,
+                                 "band_30d"|"band_90d":{"coverage","n_points","n_days"}|null}]}
+
+Recalculé depuis `history.json` (clé additive `"peaks"` sur les jours "ok",
+écrite par `daily._score_previous_issue` via `score_peaks_day` quand le
+`peaks.json` d'hier partage l'`issued` du `latest.json` scoré ce jour-là) —
+fenêtres calendaires comme `compute_scores` (`_window_days`), jours `missing`
+exclus. `pod`/`far`/`bss_clim` valent `None` sans événement dans la fenêtre ;
+`alert_*`/`band_*` valent `None` sans le moindre jour scoré. `threshold_p90`
+vient du `peaks.json` courant de la station, absent si celui-ci n'existe pas.
+
+Et un neuvième, écrit par `daily` juste après `extremes.json`, hors contrat
 JSON versionné (pas de `schema_version`, le site le télécharge tel quel plutôt
 que de le désérialiser comme les fichiers ci-dessus) — le lead magnet CSV :
 
@@ -825,6 +843,88 @@ def write_peaks(out_dir: Path, station_id: str, issued: str, peaks: dict) -> Non
         out_dir / station_id / "peaks.json",
         {"schema_version": SCHEMA_VERSION, "station": station_id, "issued": issued, **peaks},
     )
+
+
+def score_peaks_day(obs: pd.Series, peaks: dict, kind: str, clim: float) -> dict | None:
+    """Daily counts for the peak outputs of one issue, matched to `obs` like `score_day`.
+
+    The alert target in production is the threshold stamped in `peaks.json`
+    (the training p90); for tide the observed peak is the surge, so the
+    series must carry `baseline` (the harmonic) — `daily` adds it when scoring.
+    """
+    series = peaks.get("series") or []
+    if not series:
+        return None
+    times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in series])
+    matched = obs.reindex(times, method="nearest", tolerance=pd.Timedelta("1h"))
+    keep = matched.notna().to_numpy()
+    if not keep.any():
+        return None
+    target = matched.to_numpy()[keep]
+    if kind == "tide":
+        target = target - np.array([p["baseline"] for p in series])[keep]
+    threshold = peaks["threshold_p90"]
+    event = target >= threshold
+    p = np.array([np.nan if s["p_exceed"] is None else s["p_exceed"] for s in series])[keep]
+    upper = np.array([np.nan if s["p90_upper"] is None else s["p90_upper"] for s in series])[keep]
+    if kind == "tide":
+        upper = upper - np.array([s["baseline"] for s in series])[keep]
+    has_p, has_u = ~np.isnan(p), ~np.isnan(upper)
+    alarm = p >= 0.5
+    return {
+        "n": int(has_p.sum()),
+        "events": int((event & has_p).sum()),
+        "hits": int((alarm & event & has_p).sum()),
+        "misses": int((~alarm & event & has_p).sum()),
+        "false_alarms": int((alarm & ~event & has_p).sum()),
+        "brier": float(((p[has_p] - event[has_p]) ** 2).sum()),
+        "brier_clim": float(((clim - event[has_p]) ** 2).sum()),
+        "n_band": int(has_u.sum()),
+        "covered": int((target[has_u] <= upper[has_u]).sum()),
+    }
+
+
+def _peaks_window(days: list[dict], n: int | None) -> tuple[dict | None, dict | None]:
+    ok = [d for d in days if d.get("status") == "ok" and d.get("peaks")]
+    window = _window_days(ok, n)
+    if not window:
+        return None, None
+    tot = {
+        k: sum(d["peaks"][k] for d in window)
+        for k in ("events", "hits", "misses", "false_alarms", "brier", "brier_clim", "n_band", "covered", "n")
+    }
+    alert = None
+    if tot["n"]:
+        alert = {
+            "n_events": tot["events"], "n_days": len(window),
+            "pod": tot["hits"] / (tot["hits"] + tot["misses"]) if tot["hits"] + tot["misses"] else None,
+            "far": tot["false_alarms"] / (tot["hits"] + tot["false_alarms"]) if tot["hits"] + tot["false_alarms"] else None,
+            "bss_clim": 1.0 - tot["brier"] / tot["brier_clim"] if tot["brier_clim"] else None,
+        }
+    band = (
+        {"coverage": tot["covered"] / tot["n_band"], "n_points": tot["n_band"], "n_days": len(window)}
+        if tot["n_band"]
+        else None
+    )
+    return alert, band
+
+
+def write_peaks_scores(out_dir: Path, station_ids: list[str], updated: str) -> dict:
+    """`data/peaks_scores.json` — separate from `scores.json` on purpose, like extremes."""
+    rows = []
+    for station_id in station_ids:
+        history = _read(out_dir / station_id / "history.json")
+        days = history["days"] if history else []
+        entry = {"id": station_id}
+        latest = _read(out_dir / station_id / "peaks.json")
+        if latest and "threshold_p90" in latest:
+            entry["threshold_p90"] = latest["threshold_p90"]
+        for label, n in (("30d", 30), ("90d", 90)):
+            entry[f"alert_{label}"], entry[f"band_{label}"] = _peaks_window(days, n)
+        rows.append(entry)
+    payload = {"schema_version": SCHEMA_VERSION, "updated": updated, "stations": rows}
+    _atomic_write(out_dir / "peaks_scores.json", payload)
+    return payload
 
 
 SERIES_CSV_HEADER = ("date", "t", "lead_h", "obs", "ia", "baseline", "baseline_model")

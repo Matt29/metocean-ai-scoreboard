@@ -465,7 +465,9 @@ def _rescore_pending(station: Station, obs: pd.Series, out_dir: Path, run_date: 
             publish.upsert_history(out_dir, station.id, new_entry)
 
 
-def _score_previous_issue(station: Station, obs: pd.Series, out_dir: Path, run_date: date) -> None:
+def _score_previous_issue(
+    station: Station, obs: pd.Series, out_dir: Path, run_date: date, gate_peaks: dict | None = None
+) -> None:
     """Score a *previous* `latest.json` against today's freshly fetched obs.
 
     Day label = that issue's own `issued` date — never `run_date` — because
@@ -485,6 +487,20 @@ def _score_previous_issue(station: Station, obs: pd.Series, out_dir: Path, run_d
     # `.get`, not `[...]`: a `latest.json` written before Task 6 has no
     # `baseline_model` key at all and must still be scored, not crash the sweep.
     entry = score_series(obs, prev.get("series") or [], issued_ts, prev.get("baseline_model"))
+    # Same issue only: a `peaks.json` overwritten by a later run's own
+    # inference must never be scored against yesterday's obs a second time.
+    peaks_path = out_dir / station.id / "peaks.json"
+    peaks = publish._read(peaks_path)
+    if peaks and peaks.get("issued") == prev.get("issued"):
+        if station.kind == "tide":  # the surge needs the harmonic: take it from latest.json
+            baseline_by_t = {p["t"]: p["baseline"] for p in prev["series"]}
+            for point in peaks["series"]:
+                point["baseline"] = baseline_by_t.get(point["t"])
+            peaks["series"] = [p for p in peaks["series"] if p["baseline"] is not None]
+        clim = (gate_peaks or {}).get("alert", {}).get("clim", 0.1)
+        counts = publish.score_peaks_day(obs, peaks, station.kind, clim)
+        if counts:
+            entry["peaks"] = counts
     publish.upsert_history(out_dir, station.id, entry)
 
 
@@ -641,7 +657,7 @@ def _run_station(
         # A malformed/truncated latest.json (bad JSON, missing "issued") must
         # not abort today's inference below — scoring the past and issuing
         # today are independent, so a failure here is swallowed, not raised.
-        _score_previous_issue(station, obs, out_dir, run_date)
+        _score_previous_issue(station, obs, out_dir, run_date, gate_peaks)
         _rescore_pending(station, obs, out_dir, run_date)
     except Exception as exc:  # noqa: BLE001
         log.warning("%s: scoring the previous issue failed: %s", station.id, exc)
@@ -756,6 +772,9 @@ def run(
     # that also gained a peak day would leave extremes.json stale until the
     # next daily run — an acceptable lag, extremes are not backfill's job.
     publish.write_extremes(out_dir, [s.id for s in published], issued)
+    # Same additive/separate-from-scores.json reasoning as extremes.json above,
+    # for the peak outputs' own scoring (`history.json`'s `"peaks"` key).
+    publish.write_peaks_scores(out_dir, [s.id for s in published], issued)
     # Lead magnet CSV, same "not backfill's job" reasoning as `write_extremes`
     # above (see its comment) — one per published station, from the same
     # on-disk history just updated.
