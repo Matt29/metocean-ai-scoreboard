@@ -190,6 +190,113 @@ def _gain_confidence_interval(
     return float(low), float(high)
 
 
+PEAK_MIN_EVENTS = 24  # pooled test hours above p90 needed before an alert verdict exists
+PEAK_DECISION = 0.5
+PEAK_COVERAGE = (0.85, 0.95)
+PEAK_CROSSINGS_WEAK = 0.05
+BOOTSTRAP_SEED = 20260804
+
+
+def _peak_target(obs: pd.Series, x: pd.DataFrame, kind: str) -> pd.Series:
+    """The peak scale: surge for tide (level-p90 is just high water), obs otherwise."""
+    return obs - x["baseline"] if kind == "tide" else obs
+
+
+def _peak_baseline(x: pd.DataFrame, kind: str) -> np.ndarray:
+    """The physical forecast on the peak scale: the harmonic has no surge, hence 0."""
+    return np.zeros(len(x)) if kind == "tide" else x["baseline"].to_numpy(dtype=float)
+
+
+def _peak_thresholds(train_target: np.ndarray) -> dict:
+    return {"p90": float(np.quantile(train_target, 0.9)), "p98": float(np.quantile(train_target, 0.98))}
+
+
+def _issue_day_bootstrap(x_ev: pd.DataFrame, stat, draws: int = 2_000) -> tuple[float, float]:
+    """Deterministic 95 % cluster bootstrap of `stat(indices)` by issue day."""
+    days = issue_days(x_ev)
+    groups = [np.flatnonzero(days == day) for day in days.unique().sort_values()]
+    if len(groups) < 2:
+        point = stat(np.arange(len(x_ev)))
+        return (float(point), float(point)) if point is not None else (0.0, 0.0)
+    rng = np.random.default_rng(BOOTSTRAP_SEED)
+    values = []
+    for picks in rng.integers(0, len(groups), size=(draws, len(groups))):
+        value = stat(np.concatenate([groups[i] for i in picks]))
+        if value is not None:
+            values.append(value)
+    if not values:
+        return 0.0, 0.0
+    low, high = np.quantile(values, (0.025, 0.975))
+    return float(low), float(high)
+
+
+def _pinball(target: np.ndarray, q: np.ndarray, tau: float = model.PEAK_QUANTILE) -> np.ndarray:
+    diff = target - q
+    return np.maximum(tau * diff, (tau - 1.0) * diff)
+
+
+def _peak_scores(
+    target: np.ndarray,
+    p_exceed: np.ndarray,
+    q90: np.ndarray,
+    fold_ids: np.ndarray,
+    folds: list[dict],
+    baseline_target: np.ndarray,
+) -> dict:
+    """Alert + band metrics on pooled test rows; per-fold thresholds/climatology.
+
+    `folds[k]` carries that fold's train-derived `p90`, `p98`, `clim`, and the
+    quantile-matched adversaries `adv_p90` (None when there is no deterministic
+    adversary, i.e. tide) and `adv_q90`.
+    """
+    per_row = lambda key: np.array([folds[k][key] for k in fold_ids], dtype=float)
+    event = target >= per_row("p90")
+    clim = per_row("clim")
+    brier_model = (p_exceed - event) ** 2
+    brier_clim = (clim - event) ** 2
+    alarm = p_exceed >= PEAK_DECISION
+    has_adv = all(f["adv_p90"] is not None for f in folds)
+    adv_alarm = baseline_target >= per_row("adv_p90") if has_adv else None
+    band_adv = baseline_target + per_row("adv_q90")
+    pin_model = _pinball(target, q90)
+    pin_adv = _pinball(target, band_adv)
+
+    def pod_far(alarms: np.ndarray, idx: np.ndarray) -> tuple[float | None, float | None]:
+        hits = int((alarms[idx] & event[idx]).sum())
+        misses = int((~alarms[idx] & event[idx]).sum())
+        false_alarms = int((alarms[idx] & ~event[idx]).sum())
+        pod = hits / (hits + misses) if hits + misses else None
+        far = false_alarms / (hits + false_alarms) if hits + false_alarms else None
+        return pod, far
+
+    def bss(idx: np.ndarray) -> float | None:
+        ref = brier_clim[idx].sum()
+        return 1.0 - brier_model[idx].sum() / ref if ref else None
+
+    def gain_pinball(idx: np.ndarray) -> float | None:
+        ref = pin_adv[idx].sum()
+        return (ref - pin_model[idx].sum()) / ref if ref else None
+
+    everything = np.arange(len(target))
+    pod, far = pod_far(alarm, everything)
+    pod_b, far_b = pod_far(adv_alarm, everything) if has_adv else (None, None)
+    alert = {
+        "n_events": int(event.sum()),
+        "n_events_p98": int((target >= per_row("p98")).sum()),
+        "bss_clim": bss(everything),
+        "pod": pod, "far": far, "pod_baseline": pod_b, "far_baseline": far_b,
+        "_bss_fn": bss,
+    }
+    band = {
+        "coverage": float((target <= q90).mean()),
+        "pinball_model": float(pin_model.mean()),
+        "pinball_baseline": float(pin_adv.mean()),
+        "gain_pinball": gain_pinball(everything),
+        "_gain_fn": gain_pinball,
+    }
+    return {"alert": alert, "band": band}
+
+
 def select_baseline(
     raw: pd.DataFrame,
     train_days: pd.DatetimeIndex,

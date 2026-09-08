@@ -673,3 +673,64 @@ def test_event_diagnostic_skips_a_band_too_thin_to_mean_anything():
     labels = [e["label"] for e in train._event_scores(levels, x_ev, obs_ev)]
 
     assert "|résidu| > 30 cm" not in labels
+
+
+def _peak_fixture(n_days=20, seed=1):
+    rng = np.random.default_rng(seed)
+    lead = np.tile(np.arange(1, 49), n_days)
+    valid = pd.date_range("2026-01-02T07:00", periods=48, freq="h", tz="UTC")
+    times = pd.DatetimeIndex(np.concatenate(
+        [valid + pd.Timedelta(days=d) for d in range(n_days)]
+    ))
+    x = pd.DataFrame({"lead_h": lead, "baseline": rng.normal(2.0, 0.5, len(lead))}, index=times)
+    target = pd.Series(x["baseline"].to_numpy() + rng.normal(0, 0.2, len(lead)), index=times)
+    fold_ids = np.zeros(len(lead), dtype=int)
+    return x, target, fold_ids
+
+
+def test_peak_target_is_the_surge_for_tide_and_the_observation_otherwise():
+    x, target, _ = _peak_fixture()
+    assert train._peak_target(target, x, "tide").equals(target - x["baseline"])
+    assert train._peak_target(target, x, "wave").equals(target)
+    assert (train._peak_baseline(x, "tide") == 0).all()
+
+
+def test_peak_thresholds_are_train_quantiles():
+    thr = train._peak_thresholds(np.arange(1000, dtype=float))
+    assert thr == {"p90": pytest.approx(899.1), "p98": pytest.approx(979.02)}
+
+
+def test_issue_day_bootstrap_is_deterministic_and_degenerate_on_one_day():
+    x, target, _ = _peak_fixture(n_days=1)
+    lo, hi = train._issue_day_bootstrap(x, lambda idx: float(target.to_numpy()[idx].mean()))
+    assert lo == hi == pytest.approx(target.mean())
+    x, target, _ = _peak_fixture(n_days=20)
+    first = train._issue_day_bootstrap(x, lambda idx: float(target.to_numpy()[idx].mean()))
+    assert first == train._issue_day_bootstrap(x, lambda idx: float(target.to_numpy()[idx].mean()))
+    assert first[0] < target.mean() < first[1]
+
+
+def test_peak_scores_perfect_classifier_and_exact_band():
+    x, target, fold_ids = _peak_fixture()
+    t = target.to_numpy()
+    p90 = float(np.quantile(t, 0.9))
+    fold = {"p90": p90, "p98": float(np.quantile(t, 0.98)), "clim": 0.1,
+            "adv_p90": float(np.quantile(x["baseline"], 0.9)), "adv_q90": 0.3}
+    s = train._peak_scores(t, (t >= p90).astype(float), t, fold_ids, [fold], x["baseline"].to_numpy())
+    assert s["alert"]["bss_clim"] == pytest.approx(1.0)
+    assert s["alert"]["pod"] == 1.0 and s["alert"]["far"] == 0.0
+    assert s["alert"]["n_events"] == int((t >= p90).sum())
+    assert s["band"]["coverage"] == 1.0 and s["band"]["pinball_model"] == 0.0
+    assert s["band"]["gain_pinball"] == 1.0
+
+
+def test_peak_scores_climatology_has_zero_skill():
+    x, target, fold_ids = _peak_fixture()
+    t = target.to_numpy()
+    p90 = float(np.quantile(t, 0.9))
+    clim = float((t >= p90).mean())
+    fold = {"p90": p90, "p98": p90, "clim": clim, "adv_p90": None, "adv_q90": 0.3}
+    s = train._peak_scores(t, np.full(len(t), clim), t + 1, fold_ids, [fold], np.zeros(len(t)))
+    assert s["alert"]["bss_clim"] == pytest.approx(0.0)
+    assert s["alert"]["pod_baseline"] is None
+    assert s["band"]["coverage"] == 1.0
