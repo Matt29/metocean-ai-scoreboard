@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-09-07T06:00:00Z",
+  "updated": "2026-09-08T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -175,6 +175,16 @@
       "id": "ouessant",
       "episodes": [
         {
+          "date": "2026-09-07",
+          "obs_peak": 17.0,
+          "t_peak": "2026-09-08T08:00:00Z",
+          "ia_at_peak": 11.4492,
+          "baseline_at_peak": 10.87,
+          "peak_error_ia": -5.5508,
+          "peak_error_baseline": -6.13,
+          "baseline_model": "meteofrance_arpege_europe"
+        },
+        {
           "date": "2026-07-12",
           "obs_peak": 16.6,
           "t_peak": "2026-07-13T08:00:00Z",
@@ -192,16 +202,6 @@
           "baseline_at_peak": 13.76,
           "peak_error_ia": -4.1198,
           "peak_error_baseline": -2.84,
-          "baseline_model": "meteofrance_arpege_europe"
-        },
-        {
-          "date": "2026-07-11",
-          "obs_peak": 14.8,
-          "t_peak": "2026-07-12T12:00:00Z",
-          "ia_at_peak": 13.7509,
-          "baseline_at_peak": 14.79,
-          "peak_error_ia": -1.0491,
-          "peak_error_baseline": -0.01,
           "baseline_model": "meteofrance_arpege_europe"
         }
       ]
