@@ -997,20 +997,50 @@ les publie pas.
 deux seuils par station calculés sur le train du fold, `p90` (gaté) et `p98`
 (diagnostic seulement). Adversaire : la baseline physique seuillée à **son
 propre p90 de train** (`baseline ≥ p90_baseline`), jamais au seuil des obs —
-un homme de paille sinon. Gate : `evaluation_ready AND bss_clim > 0 AND
-bss_clim_ci95_low > 0 AND pod ≥ pod_adversaire`.
+un homme de paille sinon. Gate, exactement ce que `train._peak_verdicts`
+calcule :
+
+```
+evaluation_ready AND n_events >= 24 AND bss_clim > 0 AND bss_clim_ci95_low > 0
+AND (pod_baseline is None OR pod >= pod_adversaire)
+```
+
+Le `n_events >= 24` (`PEAK_MIN_EVENTS`) est dans le gate, pas seulement dans le
+`weak` : sans lui une station à zéro événement passerait sur un BSS artefactuel.
+La dernière clause est une disjonction parce qu'il **n'y a pas toujours
+d'adversaire déterministe** — voir la réserve `tide` ci-dessous.
+
+**Diagnostic `p_48h`** (non gaté, additif dans `gate.json["peaks"]["alert"]`) :
+`p48_bss_clim` et `n_days_48h`. `p_48h = max_h p_h` est servi dans `peaks.json`,
+donc il est évalué comme tel — une ligne par jour d'émission, cible « au moins
+un dépassement dans les 48 h ». Sa référence est la fréquence de ces jours à
+événement **mesurée sur le test poolé lui-même** (l'agrégation par jour n'existe
+pas côté train) : c'est un skill **optimiste**, un diagnostic contre une
+référence côté test, jamais un verdict. `p48_bss_clim` vaut `None` quand la cible
+par jour est **constante**, c'est-à-dire quand tous les jours d'émission portent
+au moins un dépassement : il n'y a alors pas de skill à mesurer, et le `None` le
+dit plutôt qu'un chiffre calculé sur une référence nulle. À quelle fréquence ce
+cas se produit en production sur nos stations : **non mesuré** (il dépend du
+regroupement en épisodes des dépassements, que les seuils p90 par ligne ne
+disent pas).
 
 **Borne haute p90** (`HistGradientBoostingRegressor(loss="quantile",
 quantile=0.9)`, même cible que le médian, servie `max(median_h, p90_h)`) :
 adversaire la baseline décalée de son propre quantile 0,9 d'erreur de train
 (`baseline + q90(obs − baseline)`), même logique de quantile apparié. Gate :
 `evaluation_ready AND 0.85 ≤ coverage ≤ 0.95 AND gain_pinball_ci95_low > 0`.
+Ce `coverage`-là est celui du gate, mesuré sur la tête de quantile brute
+(`cible ≤ q90`). La production, elle, sert `max(médian, q90)` et publie sa
+propre couverture sous un autre nom, `coverage_published`
+(`data/peaks_scores.json`) : mécaniquement ≥ celle du gate, donc à ne jamais
+comparer à la bande 0,85–0,95 ci-dessus.
 
 **Réserve tide** : aucun adversaire déterministe pour l'alerte sur la marée —
 la cible est la surcote (`obs − harmonique`), pas le niveau, et la baseline
-harmonique n'a pas de notion propre de « dépassement » à seuiller ; la mesure
-ci-dessous couvre malgré tout brest et saint-malo via la baseline générique
-seuillée à son p90 de train.
+harmonique n'a pas de notion propre de « dépassement » à seuiller. Le code pose
+donc `adv_p90 = None` pour `tide`, et `pod_baseline`/`far_baseline` valent
+`None` : la clause `pod ≥ pod_adversaire` du gate est alors vide (elle ne
+sanctionne rien), brest et saint-malo passent sur le seul BSS et son IC.
 
 **Diagnostic mesuré le 2026-09-08 sur `8e7230b`**, folds scellés du protocole
 en vigueur
@@ -1060,8 +1090,12 @@ en plus du médian :
 ¹ anglet : `n_events = 0` sur les folds scellés (aucun dépassement du seuil
 p90 de train dans le test poolé) — BSS ≈ 1 est un artefact de dénominateur
 sur zéro événement, pas un signal ; POD/FAR sont `None`. Sous `PEAK_MIN_EVENTS
-= 24`, `weak = true` : verdict `evaluation_ready = false`, non gatable, comme
-prévu au § 4 de la spec (« fold sans événement positif »).
+= 24`, l'alerte est marquée `weak = true` et son gate échoue (la clause
+`n_events >= 24`) : elle n'est pas publiable, comme prévu au § 4 de la spec
+(« fold sans événement positif »). À ne pas confondre avec
+`evaluation_ready`, qui est le drapeau de **protocole au niveau station** (déjà
+`false` ici, comme pour les trois autres stations `wave`, faute de 730 jours
+d'historique) et non une conséquence du compte d'événements.
 
 Mesuré le 2026-09-08 sur `baaddd4` (`train.evaluate` complet — candidats
 médian + pics, sans promotion ; `git status` confirme aucune écriture sous

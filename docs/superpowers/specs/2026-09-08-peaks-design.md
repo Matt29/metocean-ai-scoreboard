@@ -88,8 +88,11 @@ bootstrap par jour d'émission.
 
 ### 2.3 Indépendance des verdicts
 
-Chaque output a son propre `pass`. Une station peut publier son alerte sans
-que son médian passe, et inversement ; le site décide de l'affichage. Les
+Chaque output a son propre `pass`. Contrainte de production, à ne pas confondre
+avec cette indépendance des verdicts : `daily.run` ne visite que les stations
+dont le médian passe, donc servir un output « pics » exige un médian publié —
+la borne publie `max(médian, p90)` — et les drapeaux de `stations.json` valent
+`médian publié AND cet output passe`. Les
 quatre stations `wave` sont en protocole dégradé (`evaluation_ready = false`)
 tant que l'historique n'atteint pas 730 jours : leurs outputs « pics » sont
 mesurés et reportés, jamais publiés, comme le médian.
@@ -117,14 +120,23 @@ mesurés et reportés, jamais publiés, comme le médian.
 
 ```json
 "peaks": {
-  "alert": {"pass", "weak", "threshold_p90", "threshold_p98", "bss_clim",
+  "alert": {"pass", "weak", "threshold_p90", "threshold_p98", "clim", "bss_clim",
             "bss_clim_ci95_low", "bss_clim_ci95_high", "pod", "far",
-            "pod_baseline", "far_baseline", "n_events"},
+            "pod_baseline", "far_baseline", "n_events", "n_events_p98",
+            "p48_bss_clim", "n_days_48h"},
   "band":  {"pass", "weak", "coverage", "pinball_model", "pinball_baseline",
             "gain_pinball", "gain_pinball_ci95_low", "gain_pinball_ci95_high",
             "crossings_frac"}
 }
 ```
+
+`clim` (la climatologie du refit de production) est servie, pas seulement
+reportée : `daily` en a besoin pour scorer le Brier des jours publiés.
+`n_events_p98` est le diagnostic du second seuil. `p48_bss_clim` et
+`n_days_48h` évaluent `p_48h` par jour d'émission contre « au moins un
+dépassement dans les 48 h » — **non gaté**, référence prise sur le test poolé
+lui-même (donc optimiste), `None` quand la cible par jour est constante (tous les
+jours portent un dépassement) — fréquence de ce cas en production non mesurée.
 
 - `daily.validate_gate` et `load_gate` ne vérifient que `pass`/`weak` au
   niveau station : inchangés. Une entrée `peaks` absente vaut « non publié ».
@@ -143,19 +155,37 @@ mesurés et reportés, jamais publiés, comme le médian.
 - Nouveau fichier par station, additif, `schema_version: 1` :
 
 ```
-data/<id>/peaks.json  {"station","issued","threshold_p90","unit",
+data/<id>/peaks.json  {"station","issued","status","threshold_p90","unit",
                        "p_48h","t_peak_pred",
                        "series":[{"t","p_exceed","p90_upper"}]}
 ```
+
+`status` vaut `"ok"`, ou `"missing"` (et le fichier se réduit alors à
+`schema_version`/`station`/`issued`/`status`) quand l'inférence pics a échoué
+pour l'émission du jour : laisser en place le fichier de la veille servirait une
+alerte périmée comme si elle était du jour.
 
   `p_exceed` et `p90_upper` valent `null` pour un output non publié. Les
   contrats `latest.json`, `history.json`, `scores.json` ne bougent pas.
 - Scores publics : nouveau fichier `data/peaks_scores.json`, séparé de
   `scores.json` (même règle que `extremes.json`), avec par station et par
-  fenêtre 30 j / 90 j : `n_events`, `pod`, `far`, `bss_clim`, `coverage`,
-  calculés par `daily` sur les jours rescorés, en pondérant par `n_points`
-  comme `compute_scores`. La cible réelle en production est le seuil de
-  `gate.json`, appliqué aux obs rescorées.
+  fenêtre 30 j / 90 j : `n_events`, `pod`, `far`, `bss_clim`,
+  `coverage_published`, calculés par `daily` sur les jours rescorés, en
+  pondérant par `n_points` comme `compute_scores`. La cible réelle en production
+  est le seuil de `gate.json`, appliqué aux obs rescorées.
+
+  `coverage_published`, pas `coverage` : la production mesure
+  `cible ≤ max(médian, q90)` (la borne servie), le gate mesure `cible ≤ q90`.
+  Deux estimandes, donc deux noms — le premier est mécaniquement ≥ le second et
+  ne se compare pas à la bande 0,85–0,95 du § 2.2.
+
+  Comme le médian, ces scores **couvrent les 48 h**, pas seulement les leads
+  déjà observés le lendemain matin : les points d'un `peaks.json` sans obs
+  partent en `peaks_pending` dans le jour d'historique (avec le seuil et la
+  climatologie qui ont servi à le compter, pour qu'un retrain entre l'émission
+  et le complément ne mélange pas deux seuils) et sont complétés par
+  `daily._rescore_pending`, même mécanisme et même règle de péremption que le
+  `pending` du médian.
 - `stations.json` : deux booléens additifs `peaks_alert_published`,
   `peaks_band_published`.
 

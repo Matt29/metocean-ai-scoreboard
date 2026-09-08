@@ -67,8 +67,8 @@ Et un septième, écrit par `daily` juste après `write_latest` (le même `feats
 que le médian, construits une seule fois par station et par run) — additif,
 jamais écrit quand ni l'alerte ni la bande n'est publiée par `gate.json` :
 
-    data/<id>/peaks.json         {"schema_version":1,"station","issued","unit",
-                                  "threshold_p90","p_48h","t_peak_pred",
+    data/<id>/peaks.json         {"schema_version":1,"station","issued","status",
+                                  "unit","threshold_p90","p_48h","t_peak_pred",
                                   "series":[{"t","p_exceed","p90_upper"}]}
 
 `p_exceed` (resp. `p90_upper`) vaut `null` quand `gate[station]["peaks"]["alert"]["pass"]`
@@ -76,6 +76,12 @@ jamais écrit quand ni l'alerte ni la bande n'est publiée par `gate.json` :
 alerte. Le fichier n'est écrit que si au moins une des deux sorties passe
 (`write_peaks`, appelée depuis `daily._run_station` dans son propre
 try/except : un échec ici ne défait jamais la publication du médian).
+
+`status` vaut `"ok"`, ou `"missing"` — et alors le fichier ne porte que
+`schema_version`/`station`/`issued`/`status` : l'inférence pics a échoué pour
+cette émission, et laisser en place le `peaks.json` de la veille servirait une
+alerte périmée comme si elle était du jour. Un fichier `missing` est traité
+comme absent par `daily._score_previous_issue` et par `write_peaks_scores`.
 
 Et un huitième, écrit par `daily` juste après `extremes.json` (même position
 relative que celui-ci vis-à-vis de `scores.json`) — le pendant *scoré* de
@@ -85,15 +91,27 @@ relative que celui-ci vis-à-vis de `scores.json`) — le pendant *scoré* de
                                  {"id","threshold_p90"?,
                                  "alert_30d"|"alert_90d":{"n_events","pod","far",
                                  "bss_clim","n_days"}|null,
-                                 "band_30d"|"band_90d":{"coverage","n_points","n_days"}|null}]}
+                                 "band_30d"|"band_90d":{"coverage_published",
+                                 "n_points","n_days"}|null}]}
 
 Recalculé depuis `history.json` (clé additive `"peaks"` sur les jours "ok",
 écrite par `daily._score_previous_issue` via `score_peaks_day` quand le
-`peaks.json` d'hier partage l'`issued` du `latest.json` scoré ce jour-là) —
-fenêtres calendaires comme `compute_scores` (`_window_days`), jours `missing`
-exclus. `pod`/`far`/`bss_clim` valent `None` sans événement dans la fenêtre ;
-`alert_*`/`band_*` valent `None` sans le moindre jour scoré. `threshold_p90`
-vient du `peaks.json` courant de la station, absent si celui-ci n'existe pas.
+`peaks.json` d'hier partage l'`issued` du `latest.json` scoré ce jour-là, puis
+**complétée sur les leads +25-48 h** par `daily._rescore_pending` à mesure que
+les obs arrivent — clé `"peaks_pending"`, exactement le mécanisme du `pending`
+du médian ; sans elle ces métriques ne couvriraient que les ~24 h de leads déjà
+observées le lendemain matin) — fenêtres calendaires comme `compute_scores`
+(`_window_days`), jours `missing` exclus. `pod`/`far`/`bss_clim` valent `None`
+sans événement dans la fenêtre ; `alert_*`/`band_*` valent `None` sans le
+moindre jour scoré. `threshold_p90` vient du `peaks.json` courant de la station,
+absent si celui-ci n'existe pas ou s'il est `missing`.
+
+`coverage_published` **n'est pas** le `coverage` du gate (`gate.json` →
+`peaks.band.coverage`) et ne se compare pas à sa bande 0,85-0,95 : le gate
+mesure `cible <= q90` (la tête de quantile brute), la production mesure
+`cible <= max(médian, q90)`, donc sur une borne mécaniquement plus haute. Le
+second est par construction >= le premier ; le nom le dit plutôt que de laisser
+deux estimandes différentes porter le même mot.
 
 Et un neuvième, écrit par `daily` juste après `extremes.json`, hors contrat
 JSON versionné (pas de `schema_version`, le site le télécharge tel quel plutôt
@@ -224,9 +242,18 @@ def _station_entry(s: Station, gate: dict, models_dir: Path | None = None) -> di
     model_name = _station_model_name(s.id, models_dir)
     if model_name:
         entry["model_name"] = model_name
+    # `daily.run` only runs the median-passing stations, so a peak output can
+    # only be *served* when the median publishes too: a flag that promised a
+    # `peaks.json` for a station the daily loop never visits would name a file
+    # that never exists. The band also publishes `max(median, p90)`, which has
+    # no meaning without a median.
     peaks = gate.get("peaks") or {}
-    entry["peaks_alert_published"] = bool(peaks.get("alert", {}).get("pass", False))
-    entry["peaks_band_published"] = bool(peaks.get("band", {}).get("pass", False))
+    entry["peaks_alert_published"] = entry["published"] and bool(
+        peaks.get("alert", {}).get("pass", False)
+    )
+    entry["peaks_band_published"] = entry["published"] and bool(
+        peaks.get("band", {}).get("pass", False)
+    )
     return entry
 
 
@@ -890,12 +917,22 @@ def score_peaks_day(obs: pd.Series, peaks: dict, kind: str, clim: float) -> dict
 
 
 def _peaks_window(days: list[dict], n: int | None) -> tuple[dict | None, dict | None]:
+    """`(alert, band)` totals over the last `n` calendar days *carrying peaks*.
+
+    The window is anchored on the latest day that carries peak counts, not on
+    the latest day of the history nor on today: a station whose peak outputs
+    started (or stopped) being published mid-history is then summarised over
+    its own peak record instead of a window that silently drifts empty.
+    """
     ok = [d for d in days if d.get("status") == "ok" and d.get("peaks")]
     window = _window_days(ok, n)
     if not window:
         return None, None
     tot = {
-        k: sum(d["peaks"][k] for d in window)
+        # `.get(k, 0)`: a day scored by an older generation of `score_peaks_day`
+        # may not carry every counter — a missing counter is zero, not a crash
+        # that takes the whole file down.
+        k: sum(d["peaks"].get(k, 0) for d in window)
         for k in ("events", "hits", "misses", "false_alarms", "brier", "brier_clim", "n_band", "covered", "n")
     }
     alert = None
@@ -907,7 +944,15 @@ def _peaks_window(days: list[dict], n: int | None) -> tuple[dict | None, dict | 
             "bss_clim": 1.0 - tot["brier"] / tot["brier_clim"] if tot["brier_clim"] else None,
         }
     band = (
-        {"coverage": tot["covered"] / tot["n_band"], "n_points": tot["n_band"], "n_days": len(window)}
+        {
+            # `coverage_published`, not `coverage`: what is served is
+            # `max(median, p90)`, so this is mechanically >= the gate's
+            # `coverage` (measured on the raw quantile head) — see the module
+            # docstring, it does not belong in the 0.85-0.95 band.
+            "coverage_published": tot["covered"] / tot["n_band"],
+            "n_points": tot["n_band"],
+            "n_days": len(window),
+        }
         if tot["n_band"]
         else None
     )
@@ -925,7 +970,9 @@ def write_peaks_scores(out_dir: Path, station_ids: list[str], updated: str) -> d
             latest = _read(out_dir / station_id / "peaks.json")
         except json.JSONDecodeError:
             latest = None
-        if latest and "threshold_p90" in latest:
+        # A `status: missing` peaks.json says the inference failed for the
+        # current issue: it carries no threshold to advertise (see daily).
+        if latest and latest.get("status") != "missing" and "threshold_p90" in latest:
             entry["threshold_p90"] = latest["threshold_p90"]
         for label, n in (("30d", 30), ("90d", 90)):
             entry[f"alert_{label}"], entry[f"band_{label}"] = _peaks_window(days, n)

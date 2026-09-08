@@ -742,6 +742,37 @@ def test_peak_scores_climatology_has_zero_skill():
     assert s["band"]["gain_pinball_ci95_low"] == s["band"]["gain_pinball_ci95_high"] == pytest.approx(s["band"]["gain_pinball"])
 
 
+def test_peak_scores_evaluates_p_48h_by_issue_day():
+    """`p_48h` is served, so it is scored: one row per issue day, against « au
+    moins un dépassement dans les 48 h »."""
+    x, target, fold_ids = _peak_fixture(n_days=20)
+    t = target.to_numpy()
+    # A rare-event threshold on purpose: at the p90 of the target, *every* issue
+    # day carries an exceedance, the day-level target is constant and the score
+    # is `None` by construction (asserted at the end).
+    rare = float(np.quantile(t, 0.99))
+    fold = {"p90": rare, "p98": rare, "clim": 0.1, "adv_p90": None, "adv_q90": 0.3}
+    event = (t >= rare).astype(float)
+
+    perfect = train._peak_scores(t, event, t, fold_ids, [fold], np.zeros(len(t)), x)
+    assert perfect["alert"]["n_days_48h"] == 20
+    assert perfect["alert"]["p48_bss_clim"] == pytest.approx(1.0)
+
+    # A constant `p_h` collapses to the day-level base rate: no skill at all.
+    days = train.issue_days(x)
+    base = float(np.mean([event[np.flatnonzero(days == d)].max() for d in days.unique()]))
+    assert 0.0 < base < 1.0, "the fixture must leave some issue days event-free"
+    flat = train._peak_scores(t, np.full(len(t), base), t, fold_ids, [fold], np.zeros(len(t)), x)
+    assert flat["alert"]["p48_bss_clim"] == pytest.approx(0.0)
+
+    # Degenerate day-level target (every day exceeds): `None`, never a score
+    # computed against a constant reference.
+    p90 = float(np.quantile(t, 0.9))
+    dense = train._peak_scores(t, (t >= p90).astype(float), t, fold_ids,
+                               [{**fold, "p90": p90}], np.zeros(len(t)), x)
+    assert dense["alert"]["p48_bss_clim"] is None
+
+
 def test_evaluate_reports_peak_verdicts_on_the_same_sealed_rows(tmp_path, monkeypatch):
     raw = _raw(days=45)
     raw["hs_gwam"] = raw["hs"] + 0.02
@@ -792,7 +823,8 @@ def _peaks_row(station="first", passing=True):
             "alert": {"pass": passing, "weak": False, "threshold_p90": 12.0, "threshold_p98": 15.0,
                       "clim": 0.1, "bss_clim": 0.2, "bss_clim_ci95_low": 0.1,
                       "bss_clim_ci95_high": 0.3, "pod": 0.6, "far": 0.3, "pod_baseline": 0.5,
-                      "far_baseline": 0.4, "n_events": 300},
+                      "far_baseline": 0.4, "n_events": 300, "n_events_p98": 60,
+                      "p48_bss_clim": 0.15, "n_days_48h": 360},
             "band": {"pass": passing, "weak": False, "coverage": 0.9, "pinball_model": 0.2,
                      "pinball_baseline": 0.3, "gain_pinball": 0.33, "gain_pinball_ci95_low": 0.2,
                      "gain_pinball_ci95_high": 0.4, "crossings_frac": 0.01},
@@ -808,6 +840,18 @@ def test_merge_gate_persists_the_peaks_sub_entry_and_survives_a_targeted_retrain
     again = train.merge_gate(gate, [_peaks_row("second")], known={"first", "second"})
     assert again["first"]["peaks"] == gate["first"]["peaks"]
     assert again["second"]["peaks"]["band"]["coverage"] == 0.9
+
+
+def test_merge_gate_drops_the_peaks_sub_entry_when_a_retrain_loses_it():
+    """The other direction: a station retrained into `peaks: None` (no fold with
+    enough events any more) must not keep advertising the previous verdict —
+    `daily` would publish an output the artefact no longer supports."""
+    gate = train.merge_gate({}, [_peaks_row("first")], known={"first"})
+    assert gate["first"]["peaks"]["alert"]["pass"] is True
+
+    again = train.merge_gate(gate, [{**_peaks_row("first"), "peaks": None}], known={"first"})
+
+    assert "peaks" not in again["first"]
 
 
 def test_release_promotes_the_peaks_artefact_in_the_same_transaction(tmp_path, monkeypatch):
@@ -847,4 +891,5 @@ def test_write_report_has_a_peaks_section(tmp_path, monkeypatch):
     text = (tmp_path / "model-eval.md").read_text()
     assert "## Pics — alerte de dépassement et borne haute" in text
     assert "| first | 12.000 | 15.000 | +0.200 | [+0.100 ; +0.300] |" in text
+    assert "| 300 | +0.150 | 360 | PASS |" in text  # le diagnostic p_48h
     assert "ne modifie pas le gate" in text

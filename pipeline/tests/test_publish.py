@@ -972,6 +972,18 @@ def test_station_entry_carries_peak_publication_flags(tmp_path):
     assert entries["dieppe"]["peaks_alert_published"] is False
 
 
+def test_peak_flags_need_a_published_median(tmp_path):
+    """`daily.run` only runs median-passing stations: a flag on a station it
+    never visits would promise a `peaks.json` that never exists."""
+    gate = {"brest": {"pass": False, "weak": False,
+                      "peaks": {"alert": {"pass": True}, "band": {"pass": True}}}}
+    stations = [s for s in load_stations() if s.id in gate]
+    publish.write_stations(tmp_path, stations, gate, updated="2026-09-08T06:00:00Z")
+    entry = json.loads((tmp_path / "stations.json").read_text())["stations"][0]
+    assert entry["published"] is False
+    assert entry["peaks_alert_published"] is False and entry["peaks_band_published"] is False
+
+
 def _peaks_payload(times, p, upper):
     return {"threshold_p90": 1.0, "series": [
         {"t": t.isoformat().replace("+00:00", "Z"), "p_exceed": pe, "p90_upper": u}
@@ -1019,6 +1031,6 @@ def test_write_peaks_scores_aggregates_windows(tmp_path):
     assert brest["alert_30d"]["n_days"] == 30 and brest["alert_90d"]["n_days"] == 40
     assert brest["alert_30d"]["pod"] == pytest.approx(0.8) and brest["alert_30d"]["far"] == pytest.approx(2 / 6)
     assert brest["alert_30d"]["bss_clim"] == pytest.approx(0.5)
-    assert brest["band_90d"]["coverage"] == pytest.approx(44 / 48)
+    assert brest["band_90d"]["coverage_published"] == pytest.approx(44 / 48)
     assert payload["stations"][1] == {"id": "ghost", "alert_30d": None, "alert_90d": None,
                                       "band_30d": None, "band_90d": None}

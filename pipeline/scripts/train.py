@@ -159,6 +159,13 @@ PEAK_CROSSINGS_WEAK = 0.05
 BOOTSTRAP_SEED = 20260804
 
 
+def _fmt(value: float | None, spec: str = ".2f") -> str:
+    """`—` plutôt qu'un `TypeError` : un fold sans événement laisse des `None`
+    partout dans les métriques d'alerte, et ni le rapport ni le log d'un
+    protocole de 17 min ne doivent tomber dessus."""
+    return "—" if value is None else format(value, spec)
+
+
 def _peak_target(obs: pd.Series, x: pd.DataFrame, kind: str) -> pd.Series:
     """The peak scale: surge for tide (level-p90 is just high water), obs otherwise."""
     return obs - x["baseline"] if kind == "tide" else obs
@@ -265,6 +272,19 @@ def _peak_scores(
         ref = pin_adv[idx].sum()
         return (ref - pin_model[idx].sum()) / ref if ref else None
 
+    # `p_48h` (le `max_h p_h` servi dans `peaks.json`) contre la cible « au moins
+    # un dépassement dans les 48 h », une ligne par jour d'émission. Diagnostic
+    # seulement, jamais gaté : la référence est la fréquence de `event48`
+    # mesurée **sur le test poolé lui-même** (le train n'expose pas cette
+    # agrégation par jour), donc un skill optimiste — un vrai adversaire
+    # utiliserait une climatologie de train.
+    days = issue_days(x_ev)
+    day_groups = [np.flatnonzero(days == d) for d in days.unique().sort_values()]
+    event48 = np.array([event[g].any() for g in day_groups], dtype=float)
+    p48 = np.array([p_exceed[g].max() for g in day_groups])
+    ref48 = float(((event48.mean() - event48) ** 2).mean())
+    p48_bss = 1.0 - float(((p48 - event48) ** 2).mean()) / ref48 if ref48 else None
+
     everything = np.arange(len(target))
     pod, far = pod_far(alarm, everything)
     pod_b, far_b = pod_far(adv_alarm, everything) if has_adv else (None, None)
@@ -275,6 +295,8 @@ def _peak_scores(
         "n_events_p98": int((target >= per_row("p98")).sum()),
         "bss_clim": bss(everything),
         "pod": pod, "far": far, "pod_baseline": pod_b, "far_baseline": far_b,
+        "p48_bss_clim": p48_bss,
+        "n_days_48h": len(day_groups),
         "bss_clim_ci95_low": bss_ci_low,
         "bss_clim_ci95_high": bss_ci_high,
     }
@@ -321,7 +343,8 @@ def _peak_verdicts(
     alert["pass"] = bool(
         ready and alert["bss_clim"] is not None and alert["bss_clim"] > 0
         and alert["bss_clim_ci95_low"] > 0
-        and (alert["pod_baseline"] is None or (alert["pod"] or 0.0) >= alert["pod_baseline"])
+        # `ready` implies `n_events >= PEAK_MIN_EVENTS`, so `pod` is not None here.
+        and (alert["pod_baseline"] is None or alert["pod"] >= alert["pod_baseline"])
     )
     alert["weak"] = bool(alert["n_events"] < PEAK_MIN_EVENTS)
     band["pass"] = bool(
@@ -693,6 +716,14 @@ def evaluate(
         peaks_row["alert"]["clim"] = float((production_target >= peaks_thresholds["p90"]).mean())
         if peaks_final is None:
             peaks_row["alert"]["pass"] = peaks_row["band"]["pass"] = False
+        else:
+            # Spec § 4 « vérifié à la promotion » : mêmes features que le médian
+            # par construction — le vérifier ici est ce qui rend l'absence de
+            # train/serve skew une propriété tenue, pas une intention.
+            assert peaks_final["feature_columns"] == list(final_x.columns), (
+                f"{station.id}: peaks features {peaks_final['feature_columns']} "
+                f"!= {list(final_x.columns)}"
+            )
     row = {
         "events": _event_scores(level_test, x_test, obs_test, station.kind),
         "peaks": peaks_row,
@@ -747,10 +778,13 @@ def evaluate(
     if row["peaks"]:
         a, b = row["peaks"]["alert"], row["peaks"]["band"]
         print(
-            f"      [pics] alerte BSS {a['bss_clim']:+.3f} "
+            f"      [pics] alerte BSS {_fmt(a['bss_clim'], '+.3f')} "
             f"[{a['bss_clim_ci95_low']:+.3f};{a['bss_clim_ci95_high']:+.3f}] "
-            f"POD {a['pod']} FAR {a['far']} n={a['n_events']} -> {'PASS' if a['pass'] else 'FAIL'} | "
-            f"borne couverture {b['coverage']:.3f} gain pinball {b['gain_pinball']:+.1%} -> "
+            f"POD {_fmt(a['pod'], '.2f')} FAR {_fmt(a['far'], '.2f')} n={a['n_events']} "
+            f"p48 BSS {_fmt(a['p48_bss_clim'], '+.3f')} ({a['n_days_48h']} j) "
+            f"-> {'PASS' if a['pass'] else 'FAIL'} | "
+            f"borne couverture {b['coverage']:.3f} "
+            f"gain pinball {_fmt(b['gain_pinball'], '+.1%')} -> "
             f"{'PASS' if b['pass'] else 'FAIL'}"
         )
     # Evaluation deliberately has no filesystem side effect. `main` stages and
@@ -1019,18 +1053,24 @@ def _peaks_section(rows: list[dict]) -> list[str]:
         "la baseline physique seuillée à son propre p90 de train (absent pour `tide`,",
         "l'harmonique n'a pas de surcote). Référence du Brier : la climatologie du train.",
         "",
-        "| Station | Seuil p90 | Seuil p98 | BSS clim. | IC95 % | POD / FAR modèle | POD / FAR baseline | Événements | Verdict |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "`p_48h` (le maximum de `p_h` sur l'horizon) est évalué à part, une ligne par",
+        "jour d'émission, contre « au moins un dépassement dans les 48 h » : `p48 BSS`",
+        "et `n jours`. **Diagnostic, jamais gaté** — sa référence est la fréquence des",
+        "jours à événement mesurée sur le test lui-même, donc un skill optimiste.",
+        "",
+        "| Station | Seuil p90 | Seuil p98 | BSS clim. | IC95 % | POD / FAR modèle | POD / FAR baseline | Événements | p48 BSS | n jours | Verdict |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
-    fmt = lambda v: "—" if v is None else f"{v:.2f}"
     for r in rows:
         a = (r.get("peaks") or {}).get("alert")
         if a:
             lines.append(
                 f"| {r['station']} | {a['threshold_p90']:.3f} | {a['threshold_p98']:.3f} | "
-                f"{a['bss_clim']:+.3f} | [{a['bss_clim_ci95_low']:+.3f} ; {a['bss_clim_ci95_high']:+.3f}] | "
-                f"{fmt(a['pod'])} / {fmt(a['far'])} | {fmt(a['pod_baseline'])} / {fmt(a['far_baseline'])} | "
-                f"{a['n_events']} | {'PASS' if a['pass'] else 'FAIL'} |"
+                f"{_fmt(a['bss_clim'], '+.3f')} | "
+                f"[{a['bss_clim_ci95_low']:+.3f} ; {a['bss_clim_ci95_high']:+.3f}] | "
+                f"{_fmt(a['pod'])} / {_fmt(a['far'])} | {_fmt(a['pod_baseline'])} / {_fmt(a['far_baseline'])} | "
+                f"{a['n_events']} | {_fmt(a['p48_bss_clim'], '+.3f')} | {a['n_days_48h']} | "
+                f"{'PASS' if a['pass'] else 'FAIL'} |"
             )
     lines += [
         "",
@@ -1046,7 +1086,8 @@ def _peaks_section(rows: list[dict]) -> list[str]:
         if b:
             lines.append(
                 f"| {r['station']} | {b['coverage']:.3f} | {b['pinball_model']:.4f} | {b['pinball_baseline']:.4f} | "
-                f"{b['gain_pinball']:+.1%} | [{b['gain_pinball_ci95_low']:+.1%} ; {b['gain_pinball_ci95_high']:+.1%}] | "
+                f"{_fmt(b['gain_pinball'], '+.1%')} | "
+                f"[{b['gain_pinball_ci95_low']:+.1%} ; {b['gain_pinball_ci95_high']:+.1%}] | "
                 f"{b['crossings_frac']:.1%} | {'PASS' if b['pass'] else 'FAIL'}{'*' if b['weak'] else ''} |"
             )
     lines.append("")

@@ -397,7 +397,12 @@ ci-dessous.
 
 **Deux outputs par station**, à côté du médian, chacun avec son propre
 verdict et son propre gate (`gate.json["peaks"]`), publiés indépendamment l'un
-de l'autre et indépendamment du médian :
+de l'autre. Indépendants **entre eux**, mais pas du médian : le run quotidien ne
+visite que les stations dont le médian passe, donc une station sans médian
+publié ne sert aucun `peaks.json` — et la borne haute, qui publie
+`max(médian, p90)`, n'aurait de toute façon pas de sens sans lui. Les drapeaux
+`peaks_alert_published`/`peaks_band_published` de `stations.json` disent donc
+« médian publié **et** cet output passe », jamais l'output seul.
 
 1. **Alerte de dépassement** — probabilité `p_h` que l'observation dépasse un
    seuil, à chaque heure de l'horizon. Deux seuils par station, calculés sur
@@ -420,7 +425,9 @@ d'indépendance des `p_h`.
 d'évaluation** — toute prévision y est mécaniquement sous l'observation
 (régression vers la moyenne, la faiblesse même que « pics » corrige). C'est
 `peaks.json` / `peaks_scores.json` qui portent l'évaluation chiffrée
-(BSS/POD/FAR pour l'alerte, coverage/pinball pour la borne), voir
+(BSS/POD/FAR pour l'alerte, `coverage_published` pour la borne — la couverture
+de `max(médian, p90)` réellement servi, à ne pas confondre avec le `coverage`
+du gate mesuré sur `q90` seul, ni comparer à sa bande 0,85–0,95), voir
 `docs/plan-dev-modele.md` § « Pics » pour le diagnostic 2026-09-08.
 
 ---

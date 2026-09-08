@@ -1243,6 +1243,90 @@ def test_second_run_scores_yesterdays_peaks_into_history(tmp_path, patched_sourc
     assert (tmp_path / "peaks_scores.json").exists()
 
 
+def _peaks_gate():
+    return {**GATE, "wave-a": {"pass": True, "weak": False,
+                               "peaks": {"alert": {"pass": True, "clim": 0.1},
+                                         "band": {"pass": True}}}}
+
+
+def _stage_wave_peaks(tmp_path, patched_sources):
+    """A wave station with a peaks artefact staged, ready for `daily.run`."""
+    station, models_dir, obs, t0, models, forcing = _wave_inference_fixture(tmp_path, patched_sources)
+    artifact, feats = daily._issue_features(station, obs, t0, models, forcing, models_dir)
+    x = feats[artifact["feature_columns"]]
+    peaks = model.train_peaks(x, feats["baseline"] + 0.1, float(np.quantile(feats["baseline"], 0.9)))
+    model.stage_peaks(peaks, station.id, models_dir, {"p90": 1.5, "p98": 2.0}, "wave")
+    return models_dir
+
+
+def test_peaks_pending_completes_the_second_half_of_the_horizon(tmp_path, patched_sources):
+    """The published peak metrics must cover the full 48 h, like the median.
+
+    Scored the morning after the issue, a day only meets ~24 h of its own leads.
+    The obs window is truncated here on purpose — that truncation is the whole
+    point of the test, so it is asserted (`peaks.n` short, `peaks_pending`
+    non-empty) rather than assumed, then lifted on a third run.
+    """
+    models_dir = _stage_wave_peaks(tmp_path, patched_sources)
+    obs_end = {"t": pd.Timestamp("2026-08-02", tz="UTC")}
+    patched_sources.setattr(
+        daily,
+        "fetch_wave_obs",
+        lambda station, start: _wave_obs_df(
+            start, int((obs_end["t"] - pd.Timestamp(start, tz="UTC")) / pd.Timedelta("1h"))
+        ),
+    )
+    gate = _peaks_gate()
+    run = lambda day: daily.run(day, tmp_path, stations=STATIONS, gate=gate,
+                                archive_dir=tmp_path / "archive", models_dir=models_dir)
+
+    run(RUN_DATE)
+    issued_day = RUN_DATE.isoformat()
+    n_leads = len(json.loads((tmp_path / "wave-a" / "peaks.json").read_text())["series"])
+
+    # Second run: obs stop at +24h of the issue, half its horizon unobserved.
+    obs_end["t"] = pd.Timestamp("2026-07-31T07:00:00Z")
+    run(date(2026, 7, 31))
+    day = next(d for d in json.loads((tmp_path / "wave-a" / "history.json").read_text())["days"]
+               if d["date"] == issued_day)
+    assert 0 < day["peaks"]["n"] < n_leads, "the fixture obs must truncate the horizon"
+    pending = day["peaks_pending"]
+    assert len(pending["points"]) == n_leads - day["peaks"]["n"]
+    assert pending["threshold_p90"] == 1.5 and pending["clim"] == 0.1
+    partial = day["peaks"]
+
+    # Third run: the obs caught up — the same day's counts must grow to the
+    # full horizon and stop pending.
+    obs_end["t"] = pd.Timestamp("2026-08-03", tz="UTC")
+    run(date(2026, 8, 1))
+    day = next(d for d in json.loads((tmp_path / "wave-a" / "history.json").read_text())["days"]
+               if d["date"] == issued_day)
+    assert day["peaks"]["n"] == n_leads
+    assert day["peaks"]["events"] >= partial["events"]
+    assert day["peaks"]["brier"] >= partial["brier"]
+    assert "peaks_pending" not in day
+
+
+def test_failed_peak_inference_marks_peaks_json_missing(tmp_path, patched_sources):
+    """A stale peaks.json would serve yesterday's alert as today's."""
+    models_dir = _stage_wave_peaks(tmp_path, patched_sources)
+    gate = _peaks_gate()
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=gate,
+              archive_dir=tmp_path / "archive", models_dir=models_dir)
+    (models_dir / "wave-a-peaks.joblib").unlink()  # artefact gone: inference must fail
+
+    daily.run(date(2026, 7, 31), tmp_path, stations=STATIONS, gate=gate,
+              archive_dir=tmp_path / "archive", models_dir=models_dir)
+
+    peaks = json.loads((tmp_path / "wave-a" / "peaks.json").read_text())
+    assert peaks == {"schema_version": 1, "station": "wave-a",
+                     "issued": "2026-07-31T06:00:00Z", "status": "missing"}
+    # A missing file is treated as absent, not as a scorable payload.
+    assert (tmp_path / "wave-a" / "latest.json").exists()
+    scores = json.loads((tmp_path / "peaks_scores.json").read_text())
+    assert "threshold_p90" not in next(s for s in scores["stations"] if s["id"] == "wave-a")
+
+
 def test_corrupt_peaks_json_does_not_lose_the_days_median_score(tmp_path, patched_sources):
     daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
     (tmp_path / "wave-a" / "peaks.json").write_text("{not json")

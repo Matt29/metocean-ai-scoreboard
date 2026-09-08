@@ -142,19 +142,30 @@ gate propre `gate.json["peaks"]`) — voir
 fichiers additifs, écrits seulement quand le gate publie au moins une sortie :
 
 ```
-data/<id>/peaks.json    {"schema_version":1,"station","issued","unit",
+data/<id>/peaks.json    {"schema_version":1,"station","issued","status","unit",
                          "threshold_p90","p_48h","t_peak_pred",
                          "series":[{"t","p_exceed","p90_upper"}]}
 data/peaks_scores.json  {"schema_version":1,"updated","stations":[{"id",
                          "threshold_p90"?,
                          "alert_30d"|"alert_90d":{"n_events","pod","far",
                          "bss_clim","n_days"}|null,
-                         "band_30d"|"band_90d":{"coverage","n_points",
-                         "n_days"}|null}]}
+                         "band_30d"|"band_90d":{"coverage_published",
+                         "n_points","n_days"}|null}]}
 ```
 
 `p_exceed`/`p90_upper` (resp. `p_48h`/`t_peak_pred`) valent `null` sans sortie
-publiée pour la station. Contrat complet, dont la réserve sur `extremes.json`
+publiée pour la station. `status` vaut `"missing"` — et le fichier se réduit
+alors à `schema_version`/`station`/`issued`/`status` — quand l'inférence pics a
+échoué pour l'émission du jour : mieux vaut un fichier qui le dit qu'un
+`peaks.json` de la veille servi comme s'il était du jour.
+
+`coverage_published` **n'est pas** le `coverage` du gate (`gate.json` →
+`peaks.band.coverage`) et ne se compare pas à sa bande 0,85–0,95 : le gate
+mesure `cible ≤ q90`, la production mesure `cible ≤ max(médian, q90)`, la borne
+réellement servie. Le second est donc mécaniquement ≥ le premier — deux
+estimandes, deux noms.
+
+Contrat complet, dont la réserve sur `extremes.json`
 qu'ils remplacent comme évaluation : docstring de `pipeline/src/scoreboard/publish.py`.
 
 ## Commandes
