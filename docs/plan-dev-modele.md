@@ -976,3 +976,106 @@ Utile comme **contrôle de cohérence** : il confirme que les niveaux REFMAR
 servis sont bien sur le zéro hydrographique et pas sur un autre plan. À
 ressortir si une nouvelle station de marée entre au scoreboard, pour vérifier
 son plan de référence avant de l'entraîner.
+
+---
+
+## Pics — alerte et borne haute — ✅ implémenté le 2026-09-08
+
+Spec : `docs/superpowers/specs/2026-09-08-peaks-design.md`. Le modèle médian
+publié minimise une erreur quadratique : il estime une **moyenne
+conditionnelle**, qui se replie vers le centre quand le forçage est incertain
+— **l'écrasement des pics est une propriété de la perte, pas un défaut du
+candidat**. Le gate à +5 % de MAE hors biais reste inchangé : pondérer le
+médian sur les pics le ferait échouer. « Pics » est donc un second et un
+troisième output, à côté du médian, chacun avec son propre protocole et son
+propre verdict indépendant (§ 2.3 de la spec) — évalués et gatés séparément via
+`gate.json["peaks"]`, jamais en promotion tant que le retrain de production ne
+les publie pas.
+
+**Alerte de dépassement** (`train.evaluate`, cible `y_evt = obs ≥ seuil`,
+`HistGradientBoostingClassifier`, `class_weight=None`, `early_stopping=True`) :
+deux seuils par station calculés sur le train du fold, `p90` (gaté) et `p98`
+(diagnostic seulement). Adversaire : la baseline physique seuillée à **son
+propre p90 de train** (`baseline ≥ p90_baseline`), jamais au seuil des obs —
+un homme de paille sinon. Gate : `evaluation_ready AND bss_clim > 0 AND
+bss_clim_ci95_low > 0 AND pod ≥ pod_adversaire`.
+
+**Borne haute p90** (`HistGradientBoostingRegressor(loss="quantile",
+quantile=0.9)`, même cible que le médian, servie `max(median_h, p90_h)`) :
+adversaire la baseline décalée de son propre quantile 0,9 d'erreur de train
+(`baseline + q90(obs − baseline)`), même logique de quantile apparié. Gate :
+`evaluation_ready AND 0.85 ≤ coverage ≤ 0.95 AND gain_pinball_ci95_low > 0`.
+
+**Réserve tide** : aucun adversaire déterministe pour l'alerte sur la marée —
+la cible est la surcote (`obs − harmonique`), pas le niveau, et la baseline
+harmonique n'a pas de notion propre de « dépassement » à seuiller ; la mesure
+ci-dessous couvre malgré tout brest et saint-malo via la baseline générique
+seuillée à son p90 de train.
+
+**Diagnostic mesuré le 2026-09-08 sur `8e7230b`**, folds scellés du protocole
+en vigueur
+(`docs/superpowers/specs/2026-09-08-peaks/event_diag.py`, résultats dans
+`event_diag_2026-09-08_8e7230b.json`), bande « prévu décile sup. » (n ≈
+1 200–2 300 lignes selon station) :
+
+| station | kind | gain hors biais (décile sup. prévu) | biais modèle | biais baseline | ratio d'amplitude (std modèle / std obs) |
+|---|---|---|---|---|---|
+| pierres-noires | wave | +11,3 % | +0,014 | +0,069 | 62 % |
+| belle-ile | wave | +23,4 % | +0,027 | +0,050 | 71 % |
+| anglet | wave | **−6,7 %** | −0,118 | −0,084 | 51 % |
+| cherbourg | wave | +32,8 % | −0,051 | +0,315 | 80 % |
+| brest | tide | +60,5 % | +0,010 | +0,006 | 98 % |
+| saint-malo | tide | +40,2 % | +0,010 | +0,012 | 85 % |
+| ouessant | wind | +17,2 % | +0,034 | +0,353 | 64 % |
+| dieppe | wind | +50,7 % | −0,307 | +0,479 | 76 % |
+| cherbourg-vent | wind | +22,5 % | +0,177 | −1,351 | 73 % |
+
+8 stations sur 9 battent la baseline sur ce décile ; anglet est la seule à
+perdre (−7 %), une seule origine exploitable pour cette station. Le biais
+modèle reste petit partout (≤ 0,31 unité en valeur absolue, à comparer à des
+MAE de 0,3 à 0,8 unité selon station) — **l'IA n'est pas biaisée au pic**, elle
+sous-restitue l'amplitude : le ratio d'amplitude va de 51 % (anglet) à 98 %
+(brest), cohérent avec la lecture § 1 de la spec (60 à 80 % de l'amplitude
+restituée sur houle et vent). Ces chiffres sont un **diagnostic**, pas le gate
+« pics » lui-même — celui-ci se lit dans `gate.json["peaks"]` après le
+prochain retrain de production, sur les seuils p90/p98 (pas le décile de la
+baseline) et la métrique BSS/pinball, pas le gain hors biais.
+
+**Coût mesuré du protocole (`train.evaluate` avec pics, sans promotion) le
+2026-09-08 sur `baaddd4`** — deux fits HGB de plus par origine et par station
+en plus du médian :
+
+| station | kind | alerte | BSS (IC95%) | POD | FAR | borne | coverage | gain pinball | temps `evaluate` |
+|---|---|---|---|---|---|---|---|---|---|
+| pierres-noires | wave | FAIL | 0,802 [0,757 ; 0,841] | 0,913 | 0,108 | FAIL | 0,770 | −8,7 % | 104 s |
+| belle-ile | wave | FAIL | 0,870 [0,828 ; 0,906] | 0,936 | 0,066 | FAIL | 0,739 | +0,1 % | 71 s |
+| anglet | wave | FAIL (n=0) | 1,000 [1,000 ; 1,000]¹ | — | — | FAIL | 0,686 | −32,8 % | 65 s |
+| cherbourg | wave | FAIL | 0,632 [0,544 ; 0,701] | 0,765 | 0,190 | FAIL | 0,826 | −20,5 % | 310 s |
+| brest | tide | **PASS** | 0,509 [0,395 ; 0,608] | 0,758 | 0,307 | **PASS** | 0,882 | +62,7 % | 92 s |
+| saint-malo | tide | **PASS** | 0,231 [0,163 ; 0,295] | 0,467 | 0,468 | **PASS** | 0,862 | +34,7 % | 67 s |
+| ouessant | wind | **PASS** | 0,671 [0,634 ; 0,704] | 0,763 | 0,164 | FAIL | 0,849 | +21,1 % | 100 s |
+| dieppe | wind | **PASS** | 0,606 [0,563 ; 0,647] | 0,701 | 0,176 | FAIL | 0,840 | +31,5 % | 127 s |
+| cherbourg-vent | wind | **PASS** | 0,598 [0,549 ; 0,643] | 0,748 | 0,227 | **PASS** | 0,880 | +31,3 % | 95 s |
+
+¹ anglet : `n_events = 0` sur les folds scellés (aucun dépassement du seuil
+p90 de train dans le test poolé) — BSS ≈ 1 est un artefact de dénominateur
+sur zéro événement, pas un signal ; POD/FAR sont `None`. Sous `PEAK_MIN_EVENTS
+= 24`, `weak = true` : verdict `evaluation_ready = false`, non gatable, comme
+prévu au § 4 de la spec (« fold sans événement positif »).
+
+Mesuré le 2026-09-08 sur `baaddd4` (`train.evaluate` complet — candidats
+médian + pics, sans promotion ; `git status` confirme aucune écriture sous
+`pipeline/models/`) ; log brut de la commande (non versionné, voir
+`.superpowers/sdd/.gitignore`) dans
+`.superpowers/sdd/2026-09-08-peaks/task-7-measure-2026-09-08.log`. Les quatre
+stations `wave` sont en protocole dégradé
+(`evaluation_ready = false`, historique < 730 j) : leurs deux outputs pics
+sont mesurés et reportés ci-dessus, jamais publiables, comme le médian — d'où
+`FAIL` systématique quel que soit le chiffre.
+
+Coût total : 1031 s pour 9 stations (~17 min), à comparer aux 20-220 s par
+station mesurés pour le médian seul le 2026-08-05 — le facteur ×3 anticipé au
+§ 6 de la spec est dans l'ordre de grandeur observé (le nombre inclut aussi le
+fit des candidats médian eux-mêmes, pas seulement les deux fits pics
+additionnels). Le retrain complet reste sous 30 min pour l'instant
+(`review_codex_2026-08-05` § 6 le signale déjà comme point à surveiller).

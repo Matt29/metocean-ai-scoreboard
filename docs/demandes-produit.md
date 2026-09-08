@@ -389,6 +389,42 @@ Zéro LLM, zéro nouveau champ pipeline — exactement la matière que
 
 ---
 
+## 6. Produit « pics » — alerte de dépassement et borne haute p90 — ✅ implémenté le 2026-09-08
+
+Spec : `docs/superpowers/specs/2026-09-08-peaks-design.md`. Ce lot remplace la
+lecture d'`extremes.json` comme évaluation des extrêmes — voir la réserve
+ci-dessous.
+
+**Deux outputs par station**, à côté du médian, chacun avec son propre
+verdict et son propre gate (`gate.json["peaks"]`), publiés indépendamment l'un
+de l'autre et indépendamment du médian :
+
+1. **Alerte de dépassement** — probabilité `p_h` que l'observation dépasse un
+   seuil, à chaque heure de l'horizon. Deux seuils par station, calculés sur
+   le train de chaque fold : `p90` (cible entraînée et gatée) et `p98`
+   (diagnostic seulement, jamais gaté). Pour `tide`, le seuil et la cible
+   portent sur la **surcote** (`obs − harmonique`), jamais sur le niveau — le
+   décile supérieur du niveau est la pleine mer, pas un événement.
+2. **Borne haute p90** — quantile 0,9 régressé sur la même cible que le
+   médian, servi comme `max(median_h, p90_h)` (jamais sous le médian).
+
+**`p_48h`** est l'agrégat par émission `max_h p_h` sur l'horizon 48 h — la
+probabilité qu'**au moins un** dépassement survienne dans les deux jours à
+venir, pas la probabilité à une échéance donnée. `t_peak_pred` est l'échéance
+où ce maximum est atteint. Évalué comme tel, contre la cible « au moins un
+dépassement dans les 48 h », n = jours d'émission — pas un produit
+d'indépendance des `p_h`.
+
+**Réserve sur `extremes.json`** : ce fichier reste publié pour le site
+(sélection sur le maximum observé, épisodes bruts) mais **ne sert pas
+d'évaluation** — toute prévision y est mécaniquement sous l'observation
+(régression vers la moyenne, la faiblesse même que « pics » corrige). C'est
+`peaks.json` / `peaks_scores.json` qui portent l'évaluation chiffrée
+(BSS/POD/FAR pour l'alerte, coverage/pinball pour la borne), voir
+`docs/plan-dev-modele.md` § « Pics » pour le diagnostic 2026-09-08.
+
+---
+
 ## Ordre suggéré
 
 1. Vérifier les premiers jours scorés non reconstitués.
