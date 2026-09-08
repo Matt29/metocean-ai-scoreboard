@@ -653,8 +653,8 @@ def test_event_diagnostic_debiases_on_the_whole_window_not_on_the_band():
     x_ev, obs_ev = _eval_window(resid)
 
     # Niveaux d'un modèle à résidu nul : la baseline elle-même.
-    events = train._event_scores(x_ev["baseline"].to_numpy(), x_ev, obs_ev)
-    storm = next(e for e in events if e["label"] == "|résidu| > 30 cm")
+    events = train._event_scores(x_ev["baseline"].to_numpy(), x_ev, obs_ev, "tide")
+    storm = next(e for e in events if e["label"] == "|résidu| > 0.3 m")
 
     assert storm["n"] == 100
     whole_window_bias = resid.mean()
@@ -670,9 +670,9 @@ def test_event_diagnostic_skips_a_band_too_thin_to_mean_anything():
     x_ev, obs_ev = _eval_window(resid)
 
     levels = x_ev["baseline"].to_numpy()
-    labels = [e["label"] for e in train._event_scores(levels, x_ev, obs_ev)]
+    labels = [e["label"] for e in train._event_scores(levels, x_ev, obs_ev, "tide")]
 
-    assert "|résidu| > 30 cm" not in labels
+    assert "|résidu| > 0.3 m" not in labels
 
 
 def _peak_fixture(n_days=20, seed=1):
@@ -775,3 +775,70 @@ def test_evaluate_reports_no_peaks_when_no_fold_has_enough_events(tmp_path, monk
 
     row = train.evaluate(STATION, test_days=10, model_names=("ridge",))
     assert row["peaks"] is None and row["_peaks_estimator"] is None
+
+
+def _peaks_row(station="first", passing=True):
+    return {
+        "station": station, "kind": "wind", "pass": True, "weak": False,
+        "mae_model": 1.0, "mae_base": 1.2, "gain": 0.1, "gain_debiased": 0.1,
+        "baseline_model": None,
+        "peaks": {
+            "alert": {"pass": passing, "weak": False, "threshold_p90": 12.0, "threshold_p98": 15.0,
+                      "clim": 0.1, "bss_clim": 0.2, "bss_clim_ci95_low": 0.1,
+                      "bss_clim_ci95_high": 0.3, "pod": 0.6, "far": 0.3, "pod_baseline": 0.5,
+                      "far_baseline": 0.4, "n_events": 300},
+            "band": {"pass": passing, "weak": False, "coverage": 0.9, "pinball_model": 0.2,
+                     "pinball_baseline": 0.3, "gain_pinball": 0.33, "gain_pinball_ci95_low": 0.2,
+                     "gain_pinball_ci95_high": 0.4, "crossings_frac": 0.01},
+        },
+    }
+
+
+def test_merge_gate_persists_the_peaks_sub_entry_and_survives_a_targeted_retrain():
+    gate = train.merge_gate({}, [_peaks_row("first"), {**_peaks_row("second"), "peaks": None}],
+                            known={"first", "second"})
+    assert gate["first"]["peaks"]["alert"]["threshold_p90"] == 12.0
+    assert "peaks" not in gate["second"]
+    again = train.merge_gate(gate, [_peaks_row("second")], known={"first", "second"})
+    assert again["first"]["peaks"] == gate["first"]["peaks"]
+    assert again["second"]["peaks"]["band"]["coverage"] == 0.9
+
+
+def test_release_promotes_the_peaks_artefact_in_the_same_transaction(tmp_path, monkeypatch):
+    models_dir, gate_path, rows = _release_fixture(tmp_path, monkeypatch)
+    staged = []
+
+    def fake_stage_peaks(peaks, station_id, staging_dir, thresholds, kind):
+        path = staging_dir / f"{station_id}-peaks.joblib"
+        path.write_bytes(peaks)
+        staged.append((station_id, thresholds, kind))
+        return path
+
+    monkeypatch.setattr(model, "stage_peaks", fake_stage_peaks)
+    rows[0].update({"_peaks_estimator": b"peaks-first", "_peaks_thresholds": {"p90": 1.0, "p98": 2.0}, "kind": "wave"})
+    rows[1].update({"_peaks_estimator": None, "_peaks_thresholds": None, "kind": "wave"})
+    train.release(rows, {"first": {"pass": True, "weak": False}, "second": {"pass": True, "weak": False}})
+    assert (models_dir / "first-peaks.joblib").read_bytes() == b"peaks-first"
+    assert not (models_dir / "second-peaks.joblib").exists()
+    assert staged == [("first", {"p90": 1.0, "p98": 2.0}, "wave")]
+
+
+def test_event_bands_absolute_threshold_depends_on_kind():
+    assert train.EVENT_ABSOLUTE["tide"] == 0.30
+    assert train.EVENT_ABSOLUTE["wave"] == 0.50
+    assert train.EVENT_ABSOLUTE["wind"] == 2.0
+
+
+def test_write_report_has_a_peaks_section(tmp_path, monkeypatch):
+    monkeypatch.setattr(train, "REPORT_PATH", tmp_path / "model-eval.md")
+    row = {**_peaks_row("first"), "events": [], "val_scores": {}, "n_train": 10, "n_test": 5,
+           "n_val": 0, "n_folds": 4, "n_issue_days": 360, "test_days": 90, "ml_model": "hgb",
+           "fold_models": ["hgb"], "fold_baselines": [None], "skipped_origins": [],
+           "evaluation_protocol": "rolling-origin multi-saisons", "evaluation_ready": True,
+           "gain_debiased_ci95_low": 0.05, "gain_debiased_ci95_high": 0.15, "ci_unit": "issue_day",
+           "bias": 0.0, "mae_debiased": 1.1}
+    train.write_report([row], {"first": {"pass": True, "weak": False}})
+    text = (tmp_path / "model-eval.md").read_text()
+    assert "## Pics — alerte de dépassement et borne haute" in text
+    assert "| first | 12.000 | 15.000 | +0.200 | [+0.100 ; +0.300] |" in text
+    assert "ne modifie pas le gate" in text

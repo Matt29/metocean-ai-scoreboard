@@ -444,10 +444,12 @@ def _reference(x_ev: pd.DataFrame, obs_ev: pd.Series) -> tuple[float, float, flo
 # Amplitude bands the event diagnostic reports on, beyond the whole window.
 # `None` threshold = the top decile of |residual|, whatever it is worth at that
 # station; the absolute one is what an operator actually cares about.
-EVENT_BANDS = (("décile sup.", None), ("|résidu| > 30 cm", 0.30))
+EVENT_ABSOLUTE = {"tide": 0.30, "wave": 0.50, "wind": 2.0}  # m, m, m/s — "an event an operator notices"
+EVENT_BANDS = (("décile sup.", None), ("|résidu| > seuil", "absolute"))
+_EVENT_UNIT = {"tide": "m", "wave": "m", "wind": "m/s"}
 
 
-def _event_scores(level: np.ndarray, x_ev: pd.DataFrame, obs_ev: pd.Series) -> list[dict]:
+def _event_scores(level: np.ndarray, x_ev: pd.DataFrame, obs_ev: pd.Series, kind: str) -> list[dict]:
     """Skill restricted to the hours where there is something to predict.
 
     A MAE over every hour is dominated by calm ones, where the physical baseline
@@ -469,7 +471,9 @@ def _event_scores(level: np.ndarray, x_ev: pd.DataFrame, obs_ev: pd.Series) -> l
 
     out = []
     for label, threshold in EVENT_BANDS:
-        cut = np.quantile(abs_resid, 0.9) if threshold is None else threshold
+        cut = np.quantile(abs_resid, 0.9) if threshold is None else EVENT_ABSOLUTE[kind]
+        if threshold is not None:
+            label = f"|résidu| > {EVENT_ABSOLUTE[kind]:g} {_EVENT_UNIT[kind]}"
         mask = abs_resid >= cut
         if mask.sum() < 24:  # less than a day of such hours: not worth a number
             continue
@@ -697,7 +701,7 @@ def evaluate(
         if peaks_final is None:
             peaks_row["alert"]["pass"] = peaks_row["band"]["pass"] = False
     row = {
-        "events": _event_scores(level_test, x_test, obs_test),
+        "events": _event_scores(level_test, x_test, obs_test, station.kind),
         "peaks": peaks_row,
         "test_days": test_days,
         "station": station.id,
@@ -807,6 +811,15 @@ def release(rows: list[dict], gate: dict) -> None:
             )
             for row in rows
         ]
+        for row in rows:
+            if row.get("_peaks_estimator") is not None:
+                replacements.append((
+                    model.stage_peaks(
+                        row["_peaks_estimator"], row["station"], staging_dir,
+                        row["_peaks_thresholds"], row["kind"],
+                    ),
+                    model.MODELS_DIR / f"{row['station']}-peaks.joblib",
+                ))
         staged_gate = staging_dir / "gate.json"
         staged_gate.write_text(json.dumps(gate, indent=2, sort_keys=True) + "\n")
         replacements.append((staged_gate, GATE_PATH))
@@ -998,6 +1011,55 @@ def _event_diagnostic(rows: list[dict]) -> list[str]:
     return lines
 
 
+def _peaks_section(rows: list[dict]) -> list[str]:
+    if not any(r.get("peaks") for r in rows):
+        return []
+    lines = [
+        "## Pics — alerte de dépassement et borne haute",
+        "",
+        "Deux outputs entraînés sur les mêmes lignes de train et scorés sur les mêmes",
+        "folds scellés que le modèle médian. Leur verdict **ne modifie pas le gate** du",
+        "médian : chacun a le sien (`gate.json` → `peaks.alert.pass`, `peaks.band.pass`).",
+        "Pour une station `tide`, la cible est la surcote `obs − harmonique`.",
+        "",
+        "Alerte : probabilité que la cible dépasse le p90 de son train. Adversaire :",
+        "la baseline physique seuillée à son propre p90 de train (absent pour `tide`,",
+        "l'harmonique n'a pas de surcote). Référence du Brier : la climatologie du train.",
+        "",
+        "| Station | Seuil p90 | Seuil p98 | BSS clim. | IC95 % | POD / FAR modèle | POD / FAR baseline | Événements | Verdict |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    fmt = lambda v: "—" if v is None else f"{v:.2f}"
+    for r in rows:
+        a = (r.get("peaks") or {}).get("alert")
+        if a:
+            lines.append(
+                f"| {r['station']} | {a['threshold_p90']:.3f} | {a['threshold_p98']:.3f} | "
+                f"{a['bss_clim']:+.3f} | [{a['bss_clim_ci95_low']:+.3f} ; {a['bss_clim_ci95_high']:+.3f}] | "
+                f"{fmt(a['pod'])} / {fmt(a['far'])} | {fmt(a['pod_baseline'])} / {fmt(a['far_baseline'])} | "
+                f"{a['n_events']} | {'PASS' if a['pass'] else 'FAIL'} |"
+            )
+    lines += [
+        "",
+        "Borne haute : quantile 0,9 de la cible. Adversaire : la baseline décalée de son",
+        "propre quantile 0,9 d'erreur de train. `max(médian, p90)` est publié ; la part de",
+        "croisements est un diagnostic (`weak` au-delà de 5 %).",
+        "",
+        "| Station | Couverture | Pinball modèle | Pinball baseline | Gain pinball | IC95 % | Croisements | Verdict |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for r in rows:
+        b = (r.get("peaks") or {}).get("band")
+        if b:
+            lines.append(
+                f"| {r['station']} | {b['coverage']:.3f} | {b['pinball_model']:.4f} | {b['pinball_baseline']:.4f} | "
+                f"{b['gain_pinball']:+.1%} | [{b['gain_pinball_ci95_low']:+.1%} ; {b['gain_pinball_ci95_high']:+.1%}] | "
+                f"{b['crossings_frac']:.1%} | {'PASS' if b['pass'] else 'FAIL'}{'*' if b['weak'] else ''} |"
+            )
+    lines.append("")
+    return lines
+
+
 def _val_window(rows: list[dict]) -> int:
     """Validation slice actually used, i.e. the test window capped by `VAL_DAYS_CAP`."""
     return min(max((r["test_days"] for r in rows), default=DEFAULT_TEST_DAYS), VAL_DAYS_CAP)
@@ -1123,6 +1185,7 @@ def write_report(
         else "**Toutes les stations de `gate.json` passent le gate.**\n",
     ]
     lines += _event_diagnostic(rows)
+    lines += _peaks_section(rows)
     lines += _ml_comparison(rows)
     lines += [
         "## Protocole",
@@ -1274,6 +1337,11 @@ def merge_gate(previous: dict, rows: list[dict], known: set[str]) -> dict:
         ):
             if key in r:
                 entry[key] = r[key]
+        if r.get("peaks"):
+            entry["peaks"] = {
+                output: {k: (round(v, 4) if isinstance(v, float) else v) for k, v in values.items()}
+                for output, values in r["peaks"].items()
+            }
         gate[r["station"]] = entry
     return gate
 
