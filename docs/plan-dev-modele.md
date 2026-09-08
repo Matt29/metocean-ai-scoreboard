@@ -794,6 +794,23 @@ sur brest, ouessant, cherbourg-vent : seule différence, `"skipped_origins": []`
 
 ## Réserves ouvertes
 
+- **Comptes pics perdus sur les jours backfillés — ouverte le 2026-09-08
+  (`bfff192`), non mesurée.** `backfill._backfill_station` reconstruit l'entrée
+  du jour par `score_series` puis `upsert_history` (remplacement par date)
+  **avant** d'appeler `daily._rescore_pending` : les clés `peaks` et
+  `peaks_pending` d'un jour backfillé sont écrasées, jamais recomptées. Ce
+  chemin est antérieur à la vague de correctifs `1aa33d2`, qui a réparé le
+  même effacement dans `rescore_entry` mais pas dans backfill. Conséquence :
+  `peaks_scores.json` agrège moins de jours que `scores.json` dès qu'un
+  backfill est passé (30 des 55 premiers jours de production le sont) ; le
+  contrat de `publish.py` ne le dit pas encore. Amplitude **non mesurée**. Deux
+  autres chemins ont été tracés à la main par la re-revue, sans test qui les
+  affirme : la voie `tide` de `peaks_pending` (la baseline harmonique voyage
+  avec les points) et la ré-exécution du même jour (`upsert_history` remplace,
+  n'accumule pas). Piste : faire porter `peaks`/`peaks_pending` par
+  `_backfill_station` comme `rescore_entry` le fait, plus un test tide et un
+  test de rerun.
+
 - ~~**Divergence validation/test sur saint-malo.**~~ **Fermée le 2026-08-04 —
   c'était le protocole, pas la station.** Les chiffres de la réserve
   (validation +8,8 % / test −11,7 %) avaient été pris contre la baseline
@@ -1101,7 +1118,7 @@ Mesuré le 2026-09-08 sur `baaddd4` (`train.evaluate` complet — candidats
 médian + pics, sans promotion ; `git status` confirme aucune écriture sous
 `pipeline/models/`) ; log brut de la commande (non versionné, voir
 `.superpowers/sdd/.gitignore`) dans
-`.superpowers/sdd/2026-09-08-peaks/task-7-measure-2026-09-08.log`. Les quatre
+`docs/superpowers/specs/2026-09-08-peaks/measure_2026-09-08_baaddd4.log`. Les quatre
 stations `wave` sont en protocole dégradé
 (`evaluation_ready = false`, historique < 730 j) : leurs deux outputs pics
 sont mesurés et reportés ci-dessus, jamais publiables, comme le médian — d'où

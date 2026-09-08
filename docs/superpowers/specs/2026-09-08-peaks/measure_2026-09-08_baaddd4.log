@@ -1,0 +1,61 @@
+  pierres-noires: origine 2025-08-11 écartée — validation interne dégénérée (train plus court que ses 90 jours de validation)
+  pierres-noires: train 19490 / test 12164 rows (3 origin(s)) | baseline ncep_gfswave025 | MAE base 0.273 -> hgb 0.208 (+23.8%) | FAIL -> ready for release
+      [validation] hgb            MAE 0.2248  hors biais  +23.5% <- publié
+      [validation] ridge          MAE 0.2343  hors biais  +20.3%
+      [validation] hgb-per-lead   MAE 0.2286  hors biais  +22.2%
+      [pics] alerte BSS +0.802 [+0.757;+0.841] POD 0.9134948096885813 FAR 0.10810810810810811 n=2312 -> FAIL | borne couverture 0.770 gain pinball -8.7% -> FAIL
+pierres-noires 104s {"alert": {"n_events": 2312, "n_events_p98": 882, "bss_clim": 0.8019674760517967, "pod": 0.9134948096885813, "far": 0.10810810810810811, "pod_baseline": 0.9199826989619377, "far_baseline": 0.14646869983948635, "bss_clim_ci95_low": 0.757001163832754, "bss_clim_ci95_high": 0.8405071770434471, "pass": false, "weak": false, "threshold_p90": 3.7, "threshold_p98": 5.0, "clim": 0.10251410979989738}, "band": {"coverage": 0.7703058204537981, "pinball_model": 0.07074271646380914, "pinball_baseline": 0.0650824564288063, "gain_pinball": -0.0869705961574236, "gain_pinball_ci95_low": -0.3057974735394051, "gain_pinball_ci95_high": 0.0858209910010974, "crossings_frac": 0.07152252548503782, "pass": false, "weak": true}}
+  belle-ile: origine 2025-08-11 écartée — validation interne dégénérée (train plus court que ses 90 jours de validation)
+  belle-ile: train 19752 / test 12898 rows (3 origin(s)) | baseline ewam | MAE base 0.181 -> ridge 0.126 (+30.5%) | FAIL -> ready for release
+      [validation] hgb            MAE 0.1377  hors biais  +28.8%
+      [validation] ridge          MAE 0.1333  hors biais  +31.1% <- publié
+      [validation] hgb-per-lead   MAE 0.1431  hors biais  +26.0%
+      [pics] alerte BSS +0.870 [+0.828;+0.906] POD 0.936046511627907 FAR 0.06589307915457936 n=2408 -> FAIL | borne couverture 0.739 gain pinball +0.1% -> FAIL
+belle-ile 71s {"alert": {"n_events": 2408, "n_events_p98": 1104, "bss_clim": 0.8702467223654529, "pod": 0.936046511627907, "far": 0.06589307915457936, "pod_baseline": 0.9327242524916943, "far_baseline": 0.0633861551292744, "bss_clim_ci95_low": 0.8277913184140366, "bss_clim_ci95_high": 0.9057979630052055, "pass": false, "weak": false, "threshold_p90": 3.55, "threshold_p98": 5.0, "clim": 0.10206561360874848}, "band": {"coverage": 0.739029306869282, "pinball_model": 0.04447356912022354, "pinball_baseline": 0.0445054271980152, "gain_pinball": 0.0007158245588773068, "gain_pinball_ci95_low": -0.16406369746695598, "gain_pinball_ci95_high": 0.1231016678865197, "crossings_frac": 0.09358040006202512, "pass": false, "weak": true}}
+  anglet: origine vide écartée — split train/test dégénéré
+  anglet: origine 2025-11-17 écartée — split train/test dégénéré
+  anglet: origine 2026-02-07 écartée — validation interne dégénérée (train plus court que ses 90 jours de validation)
+  anglet: train 12484 / test 4260 rows (1 origin(s)) | baseline meteofrance_wave | MAE base 0.109 -> ridge 0.099 (+9.7%) | FAIL -> ready for release
+      [validation] hgb            MAE 0.2050  hors biais   -8.6%
+      [validation] ridge          MAE 0.1802  hors biais   +4.5% <- publié
+      [validation] hgb-per-lead   MAE 0.2112  hors biais  -11.9%
+      [pics] alerte BSS +1.000 [+1.000;+1.000] POD None FAR None n=0 -> FAIL | borne couverture 0.686 gain pinball -32.8% -> FAIL
+anglet 65s {"alert": {"n_events": 0, "n_events_p98": 0, "bss_clim": 0.9999999978244043, "pod": null, "far": null, "pod_baseline": null, "far_baseline": null, "bss_clim_ci95_low": 0.9999999978069664, "bss_clim_ci95_high": 0.9999999978415468, "pass": false, "weak": true, "threshold_p90": 3.4, "threshold_p98": 5.15, "clim": 0.10365267542454341}, "band": {"coverage": 0.686150234741784, "pinball_model": 0.04022463387680005, "pinball_baseline": 0.030295774647887325, "gain_pinball": -0.327730825315111, "gain_pinball_ci95_low": -0.5017726418346523, "gain_pinball_ci95_high": -0.17131704262183417, "crossings_frac": 0.15070422535211267, "pass": false, "weak": true}}
+  cherbourg: origine 2025-08-11 écartée — validation interne dégénérée (train plus court que ses 90 jours de validation)
+  cherbourg: origine 2026-02-07 écartée — couverture 57/72 jours d'émission
+  cherbourg: train 18516 / test 8348 rows (2 origin(s)) | baseline ewam | MAE base 0.162 -> ridge 0.097 (+40.3%) | FAIL -> ready for release
+      [validation] hgb            MAE 0.0976  hors biais  +29.1%
+      [validation] ridge          MAE 0.0948  hors biais  +31.1% <- publié
+      [validation] hgb-per-lead   MAE 0.0994  hors biais  +27.8%
+      [pics] alerte BSS +0.632 [+0.544;+0.701] POD 0.7651376146788991 FAR 0.19029126213592232 n=1090 -> FAIL | borne couverture 0.826 gain pinball -20.5% -> FAIL
+cherbourg 310s {"alert": {"n_events": 1090, "n_events_p98": 296, "bss_clim": 0.6322578666898251, "pod": 0.7651376146788991, "far": 0.19029126213592232, "pod_baseline": 0.8440366972477065, "far_baseline": 0.267515923566879, "bss_clim_ci95_low": 0.5442952509787188, "bss_clim_ci95_high": 0.7013166153980469, "pass": false, "weak": false, "threshold_p90": 1.15, "threshold_p98": 1.85, "clim": 0.11201123352775978}, "band": {"coverage": 0.8255869669381888, "pinball_model": 0.03252387482804571, "pinball_baseline": 0.026992453282223283, "gain_pinball": -0.20492474277857922, "gain_pinball_ci95_low": -0.4611037853616263, "gain_pinball_ci95_high": 0.009765281232138783, "crossings_frac": 0.11895064686152372, "pass": false, "weak": true}}
+  brest: train 42084 / test 17484 rows (1 origin(s)) | baseline harmonic | MAE base 0.118 -> hgb-per-lead 0.054 (+54.2%) | PASS -> ready for release
+      [validation] hgb            MAE 0.0403  hors biais  +40.8%
+      [validation] ridge          MAE 0.0402  hors biais  +41.0%
+      [validation] hgb-per-lead   MAE 0.0389  hors biais  +42.8% <- publié
+      [pics] alerte BSS +0.509 [+0.395;+0.608] POD 0.757703081232493 FAR 0.3072983354673495 n=1428 -> PASS | borne couverture 0.882 gain pinball +62.7% -> PASS
+brest 92s {"alert": {"n_events": 1428, "n_events_p98": 140, "bss_clim": 0.5085971201535409, "pod": 0.757703081232493, "far": 0.3072983354673495, "pod_baseline": null, "far_baseline": null, "bss_clim_ci95_low": 0.3953170513710548, "bss_clim_ci95_high": 0.6078403794602877, "pass": true, "weak": false, "threshold_p90": 0.20171120650075824, "threshold_p98": 0.41362145568339276, "clim": 0.10003801919969585}, "band": {"coverage": 0.8816060398078243, "pinball_model": 0.011456936802037554, "pinball_baseline": 0.030684788919193597, "gain_pinball": 0.6266248781372212, "gain_pinball_ci95_low": 0.5924977348297019, "gain_pinball_ci95_high": 0.660404432120929, "crossings_frac": 0.026366964081445895, "pass": true, "weak": false}}
+  saint-malo: train 43596 / test 17484 rows (1 origin(s)) | baseline harmonic | MAE base 0.151 -> hgb-per-lead 0.099 (+34.2%) | PASS -> ready for release
+      [validation] hgb            MAE 0.0884  hors biais  +25.5%
+      [validation] ridge          MAE 0.1058  hors biais  +10.7%
+      [validation] hgb-per-lead   MAE 0.0849  hors biais  +28.4% <- publié
+      [pics] alerte BSS +0.231 [+0.163;+0.295] POD 0.46685082872928174 FAR 0.46813532651455547 n=1448 -> PASS | borne couverture 0.862 gain pinball +34.7% -> PASS
+saint-malo 67s {"alert": {"n_events": 1448, "n_events_p98": 204, "bss_clim": 0.23065507843325417, "pod": 0.46685082872928174, "far": 0.46813532651455547, "pod_baseline": null, "far_baseline": null, "bss_clim_ci95_low": 0.16348061428227878, "bss_clim_ci95_high": 0.29472273348999317, "pass": true, "weak": false, "threshold_p90": 0.25501612445205524, "threshold_p98": 0.46059004142922877, "clim": 0.10003211303789339}, "band": {"coverage": 0.8615877373598719, "pinball_model": 0.023263895554393274, "pinball_baseline": 0.035643782571070266, "gain_pinball": 0.3473224816135237, "gain_pinball_ci95_low": 0.31399985580468975, "gain_pinball_ci95_high": 0.3797958266533995, "crossings_frac": 0.01555708075955159, "pass": true, "weak": false}}
+  ouessant: train 43772 / test 17238 rows (4 origin(s)) | baseline meteofrance_arpege_europe | MAE base 1.238 -> hgb 0.969 (+21.7%) | PASS -> ready for release
+      [validation] hgb            MAE 0.9523  hors biais  +21.5% <- publié
+      [validation] ridge          MAE 1.0903  hors biais  +10.2%
+      [validation] hgb-per-lead   MAE 0.9603  hors biais  +20.9%
+      [pics] alerte BSS +0.671 [+0.634;+0.704] POD 0.7626475548060708 FAR 0.1636615811373093 n=2372 -> PASS | borne couverture 0.849 gain pinball +21.1% -> FAIL
+ouessant 100s {"alert": {"n_events": 2372, "n_events_p98": 350, "bss_clim": 0.670915498017312, "pod": 0.7626475548060708, "far": 0.1636615811373093, "pod_baseline": 0.7284991568296796, "far_baseline": 0.2715008431703204, "bss_clim_ci95_low": 0.6340458197236625, "bss_clim_ci95_high": 0.7042831091485611, "pass": true, "weak": false, "threshold_p90": 12.6, "threshold_p98": 16.958000000000172, "clim": 0.10262268116604222}, "band": {"coverage": 0.8494604942568743, "pinball_model": 0.2448395880896914, "pinball_baseline": 0.3104890358510268, "gain_pinball": 0.21143885993073874, "gain_pinball_ci95_low": 0.1828283480240952, "gain_pinball_ci95_high": 0.24186978482961338, "crossings_frac": 0.0013922728854855553, "pass": false, "weak": false}}
+  dieppe: train 43768 / test 17236 rows (4 origin(s)) | baseline meteofrance_arpege_europe | MAE base 1.294 -> hgb 0.808 (+37.5%) | PASS -> ready for release
+      [validation] hgb            MAE 0.8446  hors biais  +32.4% <- publié
+      [validation] ridge          MAE 0.8994  hors biais  +28.0%
+      [validation] hgb-per-lead   MAE 0.8523  hors biais  +31.8%
+      [pics] alerte BSS +0.606 [+0.563;+0.647] POD 0.7014354066985646 FAR 0.17640449438202246 n=2090 -> PASS | borne couverture 0.840 gain pinball +31.5% -> FAIL
+dieppe 127s {"alert": {"n_events": 2090, "n_events_p98": 416, "bss_clim": 0.6062669654581467, "pod": 0.7014354066985646, "far": 0.17640449438202246, "pod_baseline": 0.5655502392344498, "far_baseline": 0.48384279475982533, "bss_clim_ci95_low": 0.5633490565463279, "bss_clim_ci95_high": 0.6469144967749926, "pass": true, "weak": false, "threshold_p90": 8.0, "threshold_p98": 11.1, "clim": 0.10407146773898739}, "band": {"coverage": 0.839695985147366, "pinball_model": 0.20804714330219454, "pinball_baseline": 0.3035346368066837, "gain_pinball": 0.3145851640164005, "gain_pinball_ci95_low": 0.288399336692734, "gain_pinball_ci95_high": 0.3399621874450176, "crossings_frac": 0.0011603620329542817, "pass": false, "weak": false}}
+  cherbourg-vent: train 43736 / test 17232 rows (4 origin(s)) | baseline meteofrance_arpege_europe | MAE base 1.635 -> hgb 1.086 (+33.6%) | PASS -> ready for release
+      [validation] hgb            MAE 1.0117  hors biais  +25.3% <- publié
+      [validation] ridge          MAE 1.1489  hors biais  +15.2%
+      [validation] hgb-per-lead   MAE 1.0321  hors biais  +23.8%
+      [pics] alerte BSS +0.598 [+0.549;+0.643] POD 0.7481378026070763 FAR 0.22666025024061598 n=2148 -> PASS | borne couverture 0.880 gain pinball +31.3% -> PASS
+cherbourg-vent 95s {"alert": {"n_events": 2148, "n_events_p98": 328, "bss_clim": 0.5979258232477782, "pod": 0.7481378026070763, "far": 0.22666025024061598, "pod_baseline": 0.6461824953445066, "far_baseline": 0.41827326068734283, "bss_clim_ci95_low": 0.5485050798290125, "bss_clim_ci95_high": 0.6426028651601252, "pass": true, "weak": false, "threshold_p90": 10.9, "threshold_p98": 14.4, "clim": 0.10092372416316078}, "band": {"coverage": 0.8801067780872794, "pinball_model": 0.24915050203916533, "pinball_baseline": 0.36286942896935925, "gain_pinball": 0.31338800640545655, "gain_pinball_ci95_low": 0.2842084005462191, "gain_pinball_ci95_high": 0.3441471274800206, "crossings_frac": 0.005396935933147632, "pass": true, "weak": false}}
