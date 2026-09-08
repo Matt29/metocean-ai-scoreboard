@@ -1,0 +1,515 @@
+[
+ {
+  "station": "pierres-noires",
+  "kind": "wave",
+  "baseline_model": "ncep_gfswave025",
+  "ml_model": "hgb",
+  "n_folds": 3,
+  "evaluation_protocol": "holdout dégradé",
+  "mae_model": 0.20794310461509066,
+  "mae_base": 0.27294228872081555,
+  "mae_debiased": 0.26626502379983663,
+  "gain_debiased": 0.21903710202880108,
+  "gain_debiased_ci95_low": 0.18023037067323625,
+  "gain_debiased_ci95_high": 0.2521855325217132,
+  "events": [
+   {
+    "label": "décile sup.",
+    "n": 1218,
+    "mae_base": 0.7631855500821019,
+    "mae_debiased": 0.7619940331074656,
+    "mae_model": 0.5094359515293814,
+    "gain_debiased": 0.3314436473316392
+   },
+   {
+    "label": "|résidu| > 30 cm",
+    "n": 4408,
+    "mae_base": 0.5105195099818511,
+    "mae_debiased": 0.5098074436870333,
+    "mae_model": 0.33342758494087277,
+    "gain_debiased": 0.3459734865198217
+   },
+   {
+    "label": "obs décile sup.",
+    "n": 1272,
+    "mae_base": 0.4167138364779875,
+    "mae_debiased": 0.42170603947311275,
+    "mae_model": 0.3639818091507782,
+    "gain_debiased": 0.1368826265672084,
+    "bias_model": -0.13246827959309107,
+    "bias_base": -0.16589622641509433
+   },
+   {
+    "label": "prévu décile sup.",
+    "n": 1238,
+    "mae_base": 0.42334410339256867,
+    "mae_debiased": 0.42103087236948566,
+    "mae_model": 0.3735807119145569,
+    "gain_debiased": 0.11269995520254335,
+    "bias_model": 0.013556134065995073,
+    "bias_base": 0.06915993537964456
+   },
+   {
+    "label": "amplitude",
+    "std_ratio": 0.6192502971340454,
+    "corr": 0.5882169049974654
+   }
+  ]
+ },
+ {
+  "station": "belle-ile",
+  "kind": "wave",
+  "baseline_model": "ewam",
+  "ml_model": "ridge",
+  "n_folds": 3,
+  "evaluation_protocol": "holdout dégradé",
+  "mae_model": 0.1257589602284159,
+  "mae_base": 0.18083191192432935,
+  "mae_debiased": 0.16932304924048186,
+  "gain_debiased": 0.25728386777510637,
+  "gain_debiased_ci95_low": 0.22792534078621135,
+  "gain_debiased_ci95_high": 0.28307171015783483,
+  "events": [
+   {
+    "label": "décile sup.",
+    "n": 1298,
+    "mae_base": 0.5174114021571647,
+    "mae_debiased": 0.491046899687748,
+    "mae_model": 0.2684243291245608,
+    "gain_debiased": 0.4533631526942757
+   },
+   {
+    "label": "|résidu| > 30 cm",
+    "n": 2382,
+    "mae_base": 0.43732997481108316,
+    "mae_debiased": 0.4103999624255884,
+    "mae_model": 0.22418745227736095,
+    "gain_debiased": 0.4537342280629242
+   },
+   {
+    "label": "obs décile sup.",
+    "n": 1354,
+    "mae_base": 0.2763072378138848,
+    "mae_debiased": 0.2950508867095605,
+    "mae_model": 0.21229821729287893,
+    "gain_debiased": 0.2804691432706687,
+    "bias_model": -0.03208367674334981,
+    "bias_base": -0.05084194977843423
+   },
+   {
+    "label": "prévu décile sup.",
+    "n": 1312,
+    "mae_base": 0.2844207317073171,
+    "mae_debiased": 0.2842284254696323,
+    "mae_model": 0.21773792690252586,
+    "gain_debiased": 0.2339333177434445,
+    "bias_model": 0.02653317927089376,
+    "bias_base": 0.05009146341463414
+   },
+   {
+    "label": "amplitude",
+    "std_ratio": 0.7133179802402516,
+    "corr": 0.6726921667267606
+   }
+  ]
+ },
+ {
+  "station": "anglet",
+  "kind": "wave",
+  "baseline_model": "meteofrance_wave",
+  "ml_model": "ridge",
+  "n_folds": 1,
+  "evaluation_protocol": "holdout dégradé",
+  "mae_model": 0.09889205542344424,
+  "mae_base": 0.10945539906103285,
+  "mae_debiased": 0.1056748550772554,
+  "gain_debiased": 0.06418555907980635,
+  "gain_debiased_ci95_low": 0.011903832457360842,
+  "gain_debiased_ci95_high": 0.10871286771967745,
+  "events": [
+   {
+    "label": "décile sup.",
+    "n": 429,
+    "mae_base": 0.31081585081585084,
+    "mae_debiased": 0.31594038981362926,
+    "mae_model": 0.2783805200755029,
+    "gain_debiased": 0.11888277329873091
+   },
+   {
+    "label": "|résidu| > 30 cm",
+    "n": 162,
+    "mae_base": 0.4166666666666667,
+    "mae_debiased": 0.4292108618790935,
+    "mae_model": 0.4022534476387236,
+    "gain_debiased": 0.06280692460193067
+   },
+   {
+    "label": "obs décile sup.",
+    "n": 446,
+    "mae_base": 0.17210762331838567,
+    "mae_debiased": 0.18243573548916822,
+    "mae_model": 0.193504276653899,
+    "gain_debiased": -0.06067090493566128,
+    "bias_model": -0.1462251480896978,
+    "bias_base": -0.11497757847533635
+   },
+   {
+    "label": "prévu décile sup.",
+    "n": 442,
+    "mae_base": 0.15348416289592762,
+    "mae_debiased": 0.16139793512204448,
+    "mae_model": 0.17214912824359752,
+    "gain_debiased": -0.06661295334059444,
+    "bias_model": -0.11758279642703456,
+    "bias_base": -0.08425339366515841
+   },
+   {
+    "label": "amplitude",
+    "std_ratio": 0.5091506231887583,
+    "corr": 0.3981994180039921
+   }
+  ]
+ },
+ {
+  "station": "cherbourg",
+  "kind": "wave",
+  "baseline_model": "ewam",
+  "ml_model": "ridge",
+  "n_folds": 2,
+  "evaluation_protocol": "holdout dégradé",
+  "mae_model": 0.09707999925401069,
+  "mae_base": 0.16248802108289412,
+  "mae_debiased": 0.12397027648914871,
+  "gain_debiased": 0.21690906882418517,
+  "gain_debiased_ci95_low": 0.16784783331273684,
+  "gain_debiased_ci95_high": 0.26367247733632904,
+  "events": [
+   {
+    "label": "décile sup.",
+    "n": 846,
+    "mae_base": 0.5106028368794326,
+    "mae_debiased": 0.3916554608569769,
+    "mae_model": 0.18918288796368177,
+    "gain_debiased": 0.5169660406375215
+   },
+   {
+    "label": "|résidu| > 30 cm",
+    "n": 1280,
+    "mae_base": 0.4462890625,
+    "mae_debiased": 0.3278737609307619,
+    "mae_model": 0.16994965946209595,
+    "gain_debiased": 0.4816612986057621
+   },
+   {
+    "label": "obs décile sup.",
+    "n": 914,
+    "mae_base": 0.2805908096280088,
+    "mae_debiased": 0.25674744091536755,
+    "mae_model": 0.19695310830808424,
+    "gain_debiased": 0.23289164010399427,
+    "bias_model": -0.1281580919040023,
+    "bias_base": 0.18973741794310725
+   },
+   {
+    "label": "prévu décile sup.",
+    "n": 854,
+    "mae_base": 0.3545433255269321,
+    "mae_debiased": 0.2757096035567565,
+    "mae_model": 0.18536421182110088,
+    "gain_debiased": 0.32768315129457387,
+    "bias_model": -0.051006028186274414,
+    "bias_base": 0.3147306791569087
+   },
+   {
+    "label": "amplitude",
+    "std_ratio": 0.80267119208742,
+    "corr": 0.7508696442497064
+   }
+  ]
+ },
+ {
+  "station": "brest",
+  "kind": "tide",
+  "baseline_model": null,
+  "ml_model": "hgb-per-lead",
+  "n_folds": 1,
+  "evaluation_protocol": "holdout annuel",
+  "mae_model": 0.05388169805018871,
+  "mae_base": 0.11767198069425588,
+  "mae_debiased": 0.11688853172138985,
+  "gain_debiased": 0.5390334940760598,
+  "gain_debiased_ci95_low": 0.5078415846688487,
+  "gain_debiased_ci95_high": 0.566882155366096,
+  "events": [
+   {
+    "label": "décile sup.",
+    "n": 1750,
+    "mae_base": 0.3249336487786296,
+    "mae_debiased": 0.3262958442265719,
+    "mae_model": 0.09152460719759183,
+    "gain_debiased": 0.7195042204275229
+   },
+   {
+    "label": "|résidu| > 30 cm",
+    "n": 814,
+    "mae_base": 0.3889490937625579,
+    "mae_debiased": 0.39330938358705225,
+    "mae_model": 0.09785396334525721,
+    "gain_debiased": 0.7512035882469635
+   },
+   {
+    "label": "obs décile sup.",
+    "n": 1750,
+    "mae_base": 0.12933956223430224,
+    "mae_debiased": 0.1299307420079267,
+    "mae_model": 0.04815796859506346,
+    "gain_debiased": 0.6293566260698682,
+    "bias_model": 0.005686116594958113,
+    "bias_base": -0.024141052672263404
+   },
+   {
+    "label": "prévu décile sup.",
+    "n": 1750,
+    "mae_base": 0.12054871838108593,
+    "mae_debiased": 0.11972954763296496,
+    "mae_model": 0.04733838939158472,
+    "gain_debiased": 0.6046223315175117,
+    "bias_model": 0.009697659238193776,
+    "bias_base": 0.005607660893334505
+   },
+   {
+    "label": "amplitude",
+    "std_ratio": 0.9788341615579297,
+    "corr": 0.8968732756987272
+   }
+  ]
+ },
+ {
+  "station": "saint-malo",
+  "kind": "tide",
+  "baseline_model": null,
+  "ml_model": "hgb-per-lead",
+  "n_folds": 1,
+  "evaluation_protocol": "holdout annuel",
+  "mae_model": 0.09914595609385543,
+  "mae_base": 0.15059476102815036,
+  "mae_debiased": 0.15052641619940677,
+  "gain_debiased": 0.3413384932880228,
+  "gain_debiased_ci95_low": 0.3164843529435311,
+  "gain_debiased_ci95_high": 0.3644444504203829,
+  "events": [
+   {
+    "label": "décile sup.",
+    "n": 1750,
+    "mae_base": 0.4110073037631323,
+    "mae_debiased": 0.4110761398564886,
+    "mae_model": 0.1651590038240855,
+    "gain_debiased": 0.5982277057438936
+   },
+   {
+    "label": "|résidu| > 30 cm",
+    "n": 2032,
+    "mae_base": 0.39663650789008115,
+    "mae_debiased": 0.3966674381785201,
+    "mae_model": 0.16003443233080722,
+    "gain_debiased": 0.5965526359671001
+   },
+   {
+    "label": "obs décile sup.",
+    "n": 1750,
+    "mae_base": 0.15622365563879934,
+    "mae_debiased": 0.1564202009636778,
+    "mae_model": 0.09202525970224582,
+    "gain_debiased": 0.41167918762861766,
+    "bias_model": -0.001449151009689474,
+    "bias_base": -0.015116124385926626
+   },
+   {
+    "label": "prévu décile sup.",
+    "n": 1750,
+    "mae_base": 0.15324311532392831,
+    "mae_debiased": 0.1531284017918912,
+    "mae_model": 0.09150091723532663,
+    "gain_debiased": 0.4024562643860102,
+    "bias_model": 0.009932752021096669,
+    "bias_base": 0.011763778116705688
+   },
+   {
+    "label": "amplitude",
+    "std_ratio": 0.8476880565380951,
+    "corr": 0.7608128496804937
+   }
+  ]
+ },
+ {
+  "station": "ouessant",
+  "kind": "wind",
+  "baseline_model": "meteofrance_arpege_europe",
+  "ml_model": "hgb",
+  "n_folds": 4,
+  "evaluation_protocol": "rolling-origin multi-saisons",
+  "mae_model": 0.9690037639263853,
+  "mae_base": 1.2382561782109294,
+  "mae_debiased": 1.226835861218483,
+  "gain_debiased": 0.21016022227783682,
+  "gain_debiased_ci95_low": 0.19186723452531282,
+  "gain_debiased_ci95_high": 0.2274723423128204,
+  "events": [
+   {
+    "label": "décile sup.",
+    "n": 1728,
+    "mae_base": 3.5585416666666667,
+    "mae_debiased": 3.5631558265975687,
+    "mae_model": 2.2241892072908493,
+    "gain_debiased": 0.3757811009307692
+   },
+   {
+    "label": "|résidu| > 30 cm",
+    "n": 14387,
+    "mae_base": 1.4539924932230484,
+    "mae_debiased": 1.451574797857572,
+    "mae_model": 1.0388833211722133,
+    "gain_debiased": 0.2843060359648458
+   },
+   {
+    "label": "obs décile sup.",
+    "n": 1762,
+    "mae_base": 1.7546878547105562,
+    "mae_debiased": 1.7683982975078554,
+    "mae_model": 1.38791557583203,
+    "gain_debiased": 0.21515668851979042,
+    "bias_model": -0.7575143965254381,
+    "bias_base": -1.1194324631101022
+   },
+   {
+    "label": "prévu décile sup.",
+    "n": 1726,
+    "mae_base": 1.5882850521436847,
+    "mae_debiased": 1.5823405900650385,
+    "mae_model": 1.3104892677345865,
+    "gain_debiased": 0.17180329193178198,
+    "bias_model": 0.033503553673222844,
+    "bias_base": 0.35347624565469293
+   },
+   {
+    "label": "amplitude",
+    "std_ratio": 0.644623504088671,
+    "corr": 0.609290926139129
+   }
+  ]
+ },
+ {
+  "station": "dieppe",
+  "kind": "wind",
+  "baseline_model": "meteofrance_arpege_europe",
+  "ml_model": "hgb",
+  "n_folds": 4,
+  "evaluation_protocol": "rolling-origin multi-saisons",
+  "mae_model": 0.8083549686413183,
+  "mae_base": 1.2941361104664657,
+  "mae_debiased": 1.2306751470646131,
+  "gain_debiased": 0.343161377257521,
+  "gain_debiased_ci95_low": 0.31941977311375536,
+  "gain_debiased_ci95_high": 0.36456420882532736,
+  "events": [
+   {
+    "label": "décile sup.",
+    "n": 1727,
+    "mae_base": 3.4504400694846553,
+    "mae_debiased": 3.4513850634194627,
+    "mae_model": 1.7426491333642695,
+    "gain_debiased": 0.49508701540310357
+   },
+   {
+    "label": "|résidu| > 30 cm",
+    "n": 14577,
+    "mae_base": 1.503205735062084,
+    "mae_debiased": 1.5030073851546863,
+    "mae_model": 0.84165381854002,
+    "gain_debiased": 0.44002017098977947
+   },
+   {
+    "label": "obs décile sup.",
+    "n": 1782,
+    "mae_base": 2.2189786756453422,
+    "mae_debiased": 2.227595294243588,
+    "mae_model": 1.4007565928277848,
+    "gain_debiased": 0.3711799461744546,
+    "bias_model": -1.0462025388212925,
+    "bias_base": -1.7915263748597081
+   },
+   {
+    "label": "prévu décile sup.",
+    "n": 1736,
+    "mae_base": 2.0856566820276496,
+    "mae_debiased": 2.0824358378615972,
+    "mae_model": 1.026400784677011,
+    "gain_debiased": 0.5071152896931523,
+    "bias_model": -0.3074363105371829,
+    "bias_base": 0.47865207373271895
+   },
+   {
+    "label": "amplitude",
+    "std_ratio": 0.7647588055780508,
+    "corr": 0.7520451337480336
+   }
+  ]
+ },
+ {
+  "station": "cherbourg-vent",
+  "kind": "wind",
+  "baseline_model": "meteofrance_arpege_europe",
+  "ml_model": "hgb",
+  "n_folds": 4,
+  "evaluation_protocol": "rolling-origin multi-saisons",
+  "mae_model": 1.0855884580885349,
+  "mae_base": 1.6353319405756732,
+  "mae_debiased": 1.4278717163879129,
+  "gain_debiased": 0.2397156932033446,
+  "gain_debiased_ci95_low": 0.2121013594319228,
+  "gain_debiased_ci95_high": 0.2656367605320048,
+  "events": [
+   {
+    "label": "décile sup.",
+    "n": 1726,
+    "mae_base": 4.728470451911935,
+    "mae_debiased": 3.7087945545273495,
+    "mae_model": 1.724414181308304,
+    "gain_debiased": 0.5350472624040875
+   },
+   {
+    "label": "|résidu| > 30 cm",
+    "n": 15000,
+    "mae_base": 1.8563333333333334,
+    "mae_debiased": 1.4910573166202414,
+    "mae_model": 1.1303604644067713,
+    "gain_debiased": 0.24190676521480517
+   },
+   {
+    "label": "obs décile sup.",
+    "n": 1752,
+    "mae_base": 3.47175799086758,
+    "mae_debiased": 2.5167932708818257,
+    "mae_model": 1.355407838444473,
+    "gain_debiased": 0.46145444120264606,
+    "bias_model": -0.6796246203677198,
+    "bias_base": -3.4559589041095893
+   },
+   {
+    "label": "prévu décile sup.",
+    "n": 1734,
+    "mae_base": 2.005432525951557,
+    "mae_debiased": 1.739224235054227,
+    "mae_model": 1.347749719737978,
+    "gain_debiased": 0.22508570627412133,
+    "bias_model": 0.17690122391519827,
+    "bias_base": -1.3514763552479816
+   },
+   {
+    "label": "amplitude",
+    "std_ratio": 0.7297376057839384,
+    "corr": 0.6406592487166012
+   }
+  ]
+ }
+]
