@@ -173,7 +173,7 @@ def test_predict_peaks_gives_probabilities_and_a_quantile_above_the_median_mostl
     p, q = model.predict_peaks(peaks, x)
     assert p.shape == q.shape == (len(x),)
     assert ((p >= 0) & (p <= 1)).all()
-    assert (q > target.median()).mean() > 0.8
+    assert 0.8 <= (target.to_numpy() <= q).mean() <= 0.97
 
 
 def test_peaks_artifact_round_trips(tmp_path):
