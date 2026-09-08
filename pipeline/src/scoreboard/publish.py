@@ -4,7 +4,8 @@ Four files per run, all wrapped in `{"schema_version": 1, ...}` so an external
 consumer (the website, a separate repo) can detect a breaking change:
 
     data/stations.json          {"updated","stations": [{"id","name","kind","lat","lon",
-                                 "unit","published","weak","baseline_model"?,"model_name"?}]}
+                                 "unit","published","weak","baseline_model"?,"model_name"?,
+                                 "peaks_alert_published","peaks_band_published"}]}
     data/<id>/latest.json       {"station","issued","series":[{"t","ia","baseline"}]}
     data/<id>/history.json      {"station","days":[{"date","status",
                                  "series"?,"mae_ia"?,"mae_baseline"?,
@@ -58,7 +59,25 @@ séparé de lui (pas question de gonfler `scores.json` avec des séries) :
                                  "baseline_at_peak","peak_error_ia",
                                  "peak_error_baseline","baseline_model"?}]}]}
 
-Et un septième, écrit par `daily` juste après `extremes.json`, hors contrat
+`extremes.json` réserve : sélection sur le maximum observé — toute prévision y
+est mécaniquement sous l'observation (régression vers la moyenne) ; ne pas
+lire ce fichier comme une évaluation, voir `peaks.json` / `peaks_scores.json`.
+
+Et un septième, écrit par `daily` juste après `write_latest` (le même `feats`
+que le médian, construits une seule fois par station et par run) — additif,
+jamais écrit quand ni l'alerte ni la bande n'est publiée par `gate.json` :
+
+    data/<id>/peaks.json         {"schema_version":1,"station","issued","unit",
+                                  "threshold_p90","p_48h","t_peak_pred",
+                                  "series":[{"t","p_exceed","p90_upper"}]}
+
+`p_exceed` (resp. `p90_upper`) vaut `null` quand `gate[station]["peaks"]["alert"]["pass"]`
+(resp. `["band"]["pass"]`) est faux ; `p_48h`/`t_peak_pred` valent `null` sans
+alerte. Le fichier n'est écrit que si au moins une des deux sorties passe
+(`write_peaks`, appelée depuis `daily._run_station` dans son propre
+try/except : un échec ici ne défait jamais la publication du médian).
+
+Et un huitième, écrit par `daily` juste après `extremes.json`, hors contrat
 JSON versionné (pas de `schema_version`, le site le télécharge tel quel plutôt
 que de le désérialiser comme les fichiers ci-dessus) — le lead magnet CSV :
 
@@ -181,6 +200,9 @@ def _station_entry(s: Station, gate: dict, models_dir: Path | None = None) -> di
     model_name = _station_model_name(s.id, models_dir)
     if model_name:
         entry["model_name"] = model_name
+    peaks = gate.get("peaks") or {}
+    entry["peaks_alert_published"] = bool(peaks.get("alert", {}).get("pass", False))
+    entry["peaks_band_published"] = bool(peaks.get("band", {}).get("pass", False))
     return entry
 
 
@@ -795,6 +817,14 @@ def write_extremes(out_dir: Path, station_ids: list[str], updated: str) -> dict:
     payload = {"schema_version": SCHEMA_VERSION, "updated": updated, "stations": rows}
     _atomic_write(out_dir / "extremes.json", payload)
     return payload
+
+
+def write_peaks(out_dir: Path, station_id: str, issued: str, peaks: dict) -> None:
+    """`data/<id>/peaks.json` — additive file, written only when an output passes."""
+    _atomic_write(
+        out_dir / station_id / "peaks.json",
+        {"schema_version": SCHEMA_VERSION, "station": station_id, "issued": issued, **peaks},
+    )
 
 
 SERIES_CSV_HEADER = ("date", "t", "lead_h", "obs", "ia", "baseline", "baseline_model")

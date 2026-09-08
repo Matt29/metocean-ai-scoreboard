@@ -22,7 +22,10 @@ that loses to its own baseline is never published):
    feature columns built here must match the artefact's `feature_columns`
    exactly, or the station is marked missing rather than served a frame the
    model was never fitted on.
-4. Publish today's `latest.json`.
+4. Publish today's `latest.json`, then — from the same `feats`, built once —
+   attempt today's `peaks.json` (`issue_peaks`/`publish.write_peaks`): its own
+   try/except, gated per-station by `gate[station]["peaks"]`, and a failure
+   here never undoes the median publication that already happened.
 5. Archive the served wind forecast (`archive.write_day`, Task A1) for every
    station that reached step 4 — the corpus a future retrain needs to measure
    what a *real* +48 h forecast costs. Training now uses past ARPEGE runs rather
@@ -56,6 +59,7 @@ import logging
 from datetime import date, timedelta
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from scoreboard import archive, harmonic, model, publish
@@ -484,6 +488,47 @@ def _score_previous_issue(station: Station, obs: pd.Series, out_dir: Path, run_d
     publish.upsert_history(out_dir, station.id, entry)
 
 
+def _issue_features(
+    station: Station,
+    obs: pd.Series,
+    t0: pd.Timestamp,
+    models: pd.DataFrame | None,
+    forcing: pd.DataFrame,
+    models_dir: Path | None,
+) -> tuple[dict, pd.DataFrame]:
+    """`(artifact, feats)` — the one feature build per station per run, shared by
+    the median (`issue_series`/`_series_from`) and the peak outputs
+    (`issue_peaks`): résolution 1's "ne duplique pas la logique de prédiction",
+    now spanning both models rather than just the median's.
+
+    The artefact drives everything about a multi-model path: which Open-Meteo model
+    is the baseline, and which feature columns the estimator was fitted on. A frame
+    that does not match those columns exactly is refused (`SourceError` — the
+    caller marks the station missing) rather than silently reordered or subset by
+    `model.predict`: a model asked to correct a different baseline, or fed a
+    column list from another training generation, produces plausible garbage.
+    """
+    artifact = model.load_artifact(station.id, models_dir=models_dir)
+    baseline = _baseline_window(station, t0, models, artifact["baseline_model"], models_dir)
+    feats = build_features(baseline, obs, t0, forcing, models=models)
+    if list(feats.columns) != list(artifact["feature_columns"]):
+        raise SourceError(
+            station.id,
+            f"feature columns {list(feats.columns)} do not match the artefact's "
+            f"{list(artifact['feature_columns'])}",
+        )
+    return artifact, feats
+
+
+def _series_from(station: Station, artifact: dict, feats: pd.DataFrame) -> list[dict]:
+    pred = model.predict(artifact["model"], feats)
+    ia = feats["baseline"].to_numpy() + pred if station.kind == "tide" else pred
+    return [
+        {"t": iso(t), "ia": round(float(i), 4), "baseline": round(float(b), 4)}
+        for t, i, b in zip(feats.index, ia, feats["baseline"])
+    ]
+
+
 def issue_series(
     station: Station,
     obs: pd.Series,
@@ -496,31 +541,51 @@ def issue_series(
     "baseline"}], baseline_model)`. Shared by `_run_station` (live forcing, today's
     issue) and `backfill.py` (a-posteriori forcing/obs, a past day's issue) — one
     code path, résolution 1's "ne duplique pas la logique de prédiction".
-
-    The artefact drives everything about a multi-model path: which Open-Meteo model
-    is the baseline, and which feature columns the estimator was fitted on. A frame
-    that does not match those columns exactly is refused (`SourceError` — the
-    caller marks the station missing) rather than silently reordered or subset by
-    `model.predict`: a model asked to correct a different baseline, or fed a
-    column list from another training generation, produces plausible garbage.
     """
-    artifact = model.load_artifact(station.id, models_dir=models_dir)
-    baseline_model = artifact["baseline_model"]
-    baseline = _baseline_window(station, t0, models, baseline_model, models_dir)
-    feats = build_features(baseline, obs, t0, forcing, models=models)
-    if list(feats.columns) != list(artifact["feature_columns"]):
-        raise SourceError(
-            station.id,
-            f"feature columns {list(feats.columns)} do not match the artefact's "
-            f"{list(artifact['feature_columns'])}",
-        )
-    pred = model.predict(artifact["model"], feats)
-    ia = feats["baseline"].to_numpy() + pred if station.kind == "tide" else pred
+    artifact, feats = _issue_features(station, obs, t0, models, forcing, models_dir)
+    return _series_from(station, artifact, feats), artifact["baseline_model"]
+
+
+PEAK_UNIT = {"wave": "m", "tide": "m", "wind": "m/s"}
+
+
+def issue_peaks(
+    station: Station,
+    feats: pd.DataFrame,
+    median_ia: np.ndarray,
+    gate_peaks: dict | None,
+    models_dir: Path | None,
+) -> dict | None:
+    """Peak outputs for one issue, or None when the gate publishes neither.
+
+    Same features as the median (`feats`); tide outputs come back on the level
+    scale (harmonic added to the p90 surge), the threshold stays on the surge.
+    """
+    publish_alert = bool((gate_peaks or {}).get("alert", {}).get("pass"))
+    publish_band = bool((gate_peaks or {}).get("band", {}).get("pass"))
+    if not (publish_alert or publish_band):
+        return None
+    art = model.load_peaks_artifact(station.id, models_dir=models_dir)
+    p_exceed, q90 = model.predict_peaks(art, feats)
+    if station.kind == "tide":
+        q90 = q90 + feats["baseline"].to_numpy()
+    upper = np.maximum(q90, np.asarray(median_ia, dtype=float))
     series = [
-        {"t": iso(t), "ia": round(float(i), 4), "baseline": round(float(b), 4)}
-        for t, i, b in zip(feats.index, ia, feats["baseline"])
+        {
+            "t": iso(t),
+            "p_exceed": round(float(p), 4) if publish_alert else None,
+            "p90_upper": round(float(u), 4) if publish_band else None,
+        }
+        for t, p, u in zip(feats.index, p_exceed, upper)
     ]
-    return series, baseline_model
+    peak_idx = int(np.argmax(p_exceed))
+    return {
+        "unit": PEAK_UNIT[station.kind],
+        "threshold_p90": art["thresholds"]["p90"],
+        "p_48h": round(float(p_exceed.max()), 4) if publish_alert else None,
+        "t_peak_pred": iso(feats.index[peak_idx]) if publish_alert else None,
+        "series": series,
+    }
 
 
 def _fetch_inputs(station: Station) -> tuple[pd.DataFrame | None, pd.DataFrame, str]:
@@ -556,6 +621,7 @@ def _run_station(
     models_dir: Path | None,
     archive_dir: Path,
     obs_archive_dir: Path,
+    gate_peaks: dict | None = None,
 ) -> dict:
     try:
         # Avant tout le reste : des constantes fraîches, sinon la station est
@@ -582,7 +648,9 @@ def _run_station(
 
     try:
         model_frame, forcing, forcing_source = _fetch_inputs(station)
-        series, baseline_model = issue_series(station, obs, t0, model_frame, forcing, models_dir)
+        artifact, feats = _issue_features(station, obs, t0, model_frame, forcing, models_dir)
+        series = _series_from(station, artifact, feats)
+        baseline_model = artifact["baseline_model"]
     except Exception as exc:  # noqa: BLE001 - SourceError, a missing model file,
         # sklearn/pandas/utide raising on a degenerate input: none of it may
         # escape and abort the other stations' loop iteration.
@@ -596,6 +664,17 @@ def _run_station(
         return {"status": "missing", "reason": str(exc)}
 
     publish.write_latest(out_dir, station.id, issued, series, baseline_model=baseline_model)
+
+    try:
+        # Its own try/except (résolution 5, same spirit as the archiving block
+        # below): a peaks artefact that fails to load or predict must never
+        # undo the median publication that already happened above.
+        median = np.array([p["ia"] for p in series])
+        peaks = issue_peaks(station, feats, median, gate_peaks, models_dir)
+        if peaks is not None:
+            publish.write_peaks(out_dir, station.id, issued, peaks)
+    except Exception as exc:  # noqa: BLE001 - peaks must never fail the median publication
+        log.warning("%s: peak outputs failed: %s", station.id, exc)
 
     try:
         # Archived *after* a successful issuance only (résolution: a failed
@@ -647,7 +726,15 @@ def run(
     # try/except and a dead source takes down exactly one station.
     summary = {
         st.id: _run_station(
-            st, run_date, t0, issued, out_dir, models_dir, archive_dir, obs_archive_dir
+            st,
+            run_date,
+            t0,
+            issued,
+            out_dir,
+            models_dir,
+            archive_dir,
+            obs_archive_dir,
+            gate.get(st.id, {}).get("peaks"),
         )
         for st in published
     }

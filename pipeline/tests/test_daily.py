@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from scoreboard import daily, publish
+from scoreboard import daily, model, publish
 from scoreboard.config import Station
 from scoreboard.features import FEATURE_COLUMNS, WAVE_FEATURE_COLUMNS, WIND_FEATURE_COLUMNS
 from scoreboard.sources import SourceError
@@ -262,6 +262,56 @@ def patched_sources(monkeypatch):
     monkeypatch.setattr(daily.model, "load_artifact", _artifact)
     _patch_harmonic(monkeypatch)
     return monkeypatch
+
+
+def _peak_trainable(patched_sources):
+    """`_issue_features`'s forecast window is always exactly 48 rows (`t0+1h` to
+    `t0+48h`, fixed by `BASELINE_HORIZON_H` — no fixture can widen it). A
+    `train_peaks` call whose threshold is a 90th percentile of that same
+    48-row array only ever isolates ~5 rows on one side of it, always below
+    `PEAK_MIN_CLASS_ROWS` (24) on *some* split of the peaks tests' fixed
+    target arrays. That guard is a training-quality concern (Task 1); these
+    tests use `train_peaks` only to obtain a fitted artefact for an
+    *inference* test, so it is lowered here rather than reshaping the target
+    arrays to hit an exact, brittle 24/24 boundary."""
+    patched_sources.setattr(model, "PEAK_MIN_CLASS_ROWS", 1)
+
+
+def _wave_inference_fixture(tmp_path, patched_sources):
+    """`(station, models_dir, obs, t0, models, forcing)` for a wave station,
+    every source patched by `patched_sources` — the inputs `_issue_features`
+    needs, built the same way `_run_station` builds them."""
+    _peak_trainable(patched_sources)
+    station = WAVE
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    t0 = pd.Timestamp(RUN_DATE, tz="UTC") + pd.Timedelta(hours=daily.ISSUE_HOUR)
+    obs = daily._fetch_obs(station, RUN_DATE, obs_archive_dir=tmp_path / "obs")
+    # A varying (not constant) baseline: `test_issue_peaks_publishes_only_the_passing_outputs`
+    # trains on `feats["baseline"] + 0.1` against a threshold derived from
+    # `feats["baseline"]` itself — a constant baseline makes every row exceed
+    # it, a single-class target `predict_proba` cannot serve column 1 for.
+    patched_sources.setattr(
+        daily,
+        "fetch_wave_models_forecast",
+        lambda station, session=None, forecast_days=3, past_days=2: _marine_df(
+            forecast_days=forecast_days, past_days=past_days
+        ).assign(**{f"hs_{BASELINE_MODEL}": lambda df: np.linspace(1.0, 5.0, len(df))}),
+    )
+    models, forcing, _ = daily._fetch_inputs(station)
+    return station, models_dir, obs, t0, models, forcing
+
+
+def _tide_inference_fixture(tmp_path, patched_sources):
+    """Same as `_wave_inference_fixture`, for the tide station."""
+    _peak_trainable(patched_sources)
+    station = TIDE
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    t0 = pd.Timestamp(RUN_DATE, tz="UTC") + pd.Timedelta(hours=daily.ISSUE_HOUR)
+    obs = daily._fetch_obs(station, RUN_DATE, obs_archive_dir=tmp_path / "obs")
+    models, forcing, _ = daily._fetch_inputs(station)
+    return station, models_dir, obs, t0, models, forcing
 
 
 def test_first_run_publishes_latest_for_every_passing_station(tmp_path, patched_sources):
@@ -1129,3 +1179,41 @@ def test_issue_hour_matches_publish_lead_decomposition():
     """`publish._ISSUE_HOUR` est dupliqué (sens de la dépendance : `daily`
     importe `publish`, jamais l'inverse) — ce test est le garde anti-dérive."""
     assert daily.ISSUE_HOUR == publish._ISSUE_HOUR
+
+
+def test_issue_peaks_publishes_only_the_passing_outputs(tmp_path, patched_sources):
+    # Arrange: a wave station with a median artefact (existing fixture) plus a peaks artefact.
+    station, models_dir, obs, t0, models, forcing = _wave_inference_fixture(tmp_path, patched_sources)
+    artifact, feats = daily._issue_features(station, obs, t0, models, forcing, models_dir)
+    x = feats[artifact["feature_columns"]]
+    peaks = model.train_peaks(x, feats["baseline"] + 0.1, float(np.quantile(feats["baseline"], 0.9)))
+    model.stage_peaks(peaks, station.id, models_dir, {"p90": 1.5, "p98": 2.0}, "wave")
+    median = model.predict(artifact["model"], feats)
+
+    out = daily.issue_peaks(station, feats, median, {"alert": {"pass": True}, "band": {"pass": False}}, models_dir)
+    assert out["unit"] == "m" and out["threshold_p90"] == 1.5
+    assert all(p["p90_upper"] is None for p in out["series"])
+    assert all(0.0 <= p["p_exceed"] <= 1.0 for p in out["series"])
+    assert out["p_48h"] == max(p["p_exceed"] for p in out["series"])
+    assert out["t_peak_pred"] in {p["t"] for p in out["series"]}
+
+    out = daily.issue_peaks(station, feats, median, {"alert": {"pass": False}, "band": {"pass": True}}, models_dir)
+    assert out["p_48h"] is None and out["t_peak_pred"] is None
+    assert all(p["p_exceed"] is None and p["p90_upper"] >= m for p, m in zip(out["series"], median))
+
+    assert daily.issue_peaks(station, feats, median, {"alert": {"pass": False}, "band": {"pass": False}}, models_dir) is None
+    assert daily.issue_peaks(station, feats, median, None, models_dir) is None
+
+
+def test_tide_peaks_band_adds_the_harmonic_back(tmp_path, patched_sources):
+    station, models_dir, obs, t0, models, forcing = _tide_inference_fixture(tmp_path, patched_sources)
+    artifact, feats = daily._issue_features(station, obs, t0, models, forcing, models_dir)
+    x = feats[artifact["feature_columns"]]
+    surge = pd.Series(np.linspace(-0.2, 0.4, len(x)), index=x.index)
+    peaks = model.train_peaks(x, surge, float(np.quantile(surge, 0.9)))
+    model.stage_peaks(peaks, station.id, models_dir, {"p90": 0.3, "p98": 0.4}, "tide")
+    median = feats["baseline"].to_numpy() + model.predict(artifact["model"], feats)
+    out = daily.issue_peaks(station, feats, median, {"alert": {"pass": True}, "band": {"pass": True}}, models_dir)
+    upper = np.array([p["p90_upper"] for p in out["series"]])
+    assert (upper >= feats["baseline"].to_numpy() - 0.5).all()  # level scale, not surge scale
+    assert (upper >= median).all()

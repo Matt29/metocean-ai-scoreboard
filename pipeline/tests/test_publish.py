@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from scoreboard import publish
-from scoreboard.config import Station
+from scoreboard.config import Station, load_stations
 
 STATIONS = [
     Station(id="a", name="A", kind="wave", lat=1.0, lon=2.0,
@@ -948,3 +948,25 @@ def test_write_series_csv_header_only_when_no_history(tmp_path):
 
     assert text == "date,t,lead_h,obs,ia,baseline,baseline_model\n"
     assert (tmp_path / "empty-station" / "series.csv").read_text() == text
+
+
+def test_write_peaks_writes_the_additive_contract(tmp_path):
+    publish.write_peaks(tmp_path, "brest", "2026-09-08T06:00:00Z", {
+        "unit": "m", "threshold_p90": 0.21, "p_48h": 0.7, "t_peak_pred": "2026-09-09T03:00:00Z",
+        "series": [{"t": "2026-09-08T07:00:00Z", "p_exceed": 0.1, "p90_upper": 5.2}],
+    })
+    payload = json.loads((tmp_path / "brest" / "peaks.json").read_text())
+    assert payload["schema_version"] == 1 and payload["station"] == "brest"
+    assert payload["issued"] == "2026-09-08T06:00:00Z" and payload["p_48h"] == 0.7
+
+
+def test_station_entry_carries_peak_publication_flags(tmp_path):
+    gate = {"brest": {"pass": True, "weak": False,
+                      "peaks": {"alert": {"pass": True}, "band": {"pass": False}}},
+            "dieppe": {"pass": True, "weak": False}}
+    stations = [s for s in load_stations() if s.id in gate]
+    publish.write_stations(tmp_path, stations, gate, updated="2026-09-08T06:00:00Z")
+    entries = {e["id"]: e for e in json.loads((tmp_path / "stations.json").read_text())["stations"]}
+    assert entries["brest"]["peaks_alert_published"] is True
+    assert entries["brest"]["peaks_band_published"] is False
+    assert entries["dieppe"]["peaks_alert_published"] is False
