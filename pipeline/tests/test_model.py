@@ -151,3 +151,45 @@ def test_load_artifact_falls_back_to_inference_on_a_bare_estimator(tmp_path):
 
     artifact = model.load_artifact("bare", models_dir=tmp_path)
     assert artifact["model_name"] == "hgb"
+
+
+def _peaks_frame(n=600, seed=0):
+    rng = np.random.default_rng(seed)
+    x = pd.DataFrame({"baseline": rng.normal(2.0, 0.5, n), "lead_h": rng.integers(1, 49, n)})
+    target = x["baseline"] + rng.normal(0, 0.2, n)
+    return x, target
+
+
+def test_train_peaks_returns_none_without_enough_positives():
+    x, target = _peaks_frame()
+    assert model.train_peaks(x, target, threshold=float(target.max()) + 1) is None
+
+
+def test_predict_peaks_gives_probabilities_and_a_quantile_above_the_median_mostly():
+    x, target = _peaks_frame()
+    thr = float(np.quantile(target, 0.9))
+    peaks = model.train_peaks(x, target, thr)
+    assert peaks is not None and peaks["feature_columns"] == ["baseline", "lead_h"]
+    p, q = model.predict_peaks(peaks, x)
+    assert p.shape == q.shape == (len(x),)
+    assert ((p >= 0) & (p <= 1)).all()
+    assert (q > target.median()).mean() > 0.8
+
+
+def test_peaks_artifact_round_trips(tmp_path):
+    x, target = _peaks_frame()
+    peaks = model.train_peaks(x, target, float(np.quantile(target, 0.9)))
+    path = model.stage_peaks(peaks, "synthetic", tmp_path, {"p90": 2.6, "p98": 3.1}, "wave")
+    assert path.name == "synthetic-peaks.joblib"
+    art = model.load_peaks_artifact("synthetic", models_dir=tmp_path)
+    assert art["thresholds"] == {"p90": 2.6, "p98": 3.1} and art["kind"] == "wave"
+    p1, _ = model.predict_peaks(peaks, x)
+    p2, _ = model.predict_peaks(art, x[["lead_h", "baseline"]])  # reordered columns
+    np.testing.assert_allclose(p1, p2)
+
+
+def test_predict_peaks_refuses_missing_columns():
+    x, target = _peaks_frame()
+    peaks = model.train_peaks(x, target, float(np.quantile(target, 0.9)))
+    with pytest.raises(ValueError, match="missing feature columns"):
+        model.predict_peaks(peaks, x[["baseline"]])
