@@ -152,44 +152,6 @@ def _debiased_baseline_error(residual: np.ndarray, fold_ids: np.ndarray) -> np.n
     return error
 
 
-def _gain_confidence_interval(
-    level: np.ndarray,
-    x_ev: pd.DataFrame,
-    obs_ev: pd.Series,
-    fold_ids: np.ndarray,
-    draws: int = 2_000,
-) -> tuple[float, float]:
-    """Deterministic 95% cluster-bootstrap CI for gain, resampled by issue day.
-
-    Leads from one run share inputs and errors, so resampling rows would invent
-    precision.  Whole issue days are the independent units.  Summing errors
-    within every selected day preserves the existing hourly-MAE estimand.
-    """
-    residual = obs_ev.to_numpy() - x_ev["baseline"].to_numpy()
-    model_error = np.abs(level - obs_ev.to_numpy())
-    groups = [
-        np.flatnonzero(issue_days(x_ev) == day)
-        for day in issue_days(x_ev).unique().sort_values()
-    ]
-    if len(groups) < 2:
-        base = _debiased_baseline_error(residual, fold_ids).sum()
-        point = (base - model_error.sum()) / base if base else 0.0
-        return float(point), float(point)
-    rng = np.random.default_rng(20260804)
-    values = []
-    for picks in rng.integers(0, len(groups), size=(draws, len(groups))):
-        indices = np.concatenate([groups[i] for i in picks])
-        # Refit the baseline bias inside each replicate and each fold. Fold
-        # baselines may differ, so one global offset is not a valid comparator.
-        base = _debiased_baseline_error(residual[indices], fold_ids[indices]).sum()
-        if base:
-            values.append((base - model_error[indices].sum()) / base)
-    if not values:
-        return 0.0, 0.0
-    low, high = np.quantile(values, (0.025, 0.975))
-    return float(low), float(high)
-
-
 PEAK_MIN_EVENTS = 24  # pooled test hours above p90 needed before an alert verdict exists
 PEAK_DECISION = 0.5
 PEAK_COVERAGE = (0.85, 0.95)
@@ -230,6 +192,31 @@ def _issue_day_bootstrap(x_ev: pd.DataFrame, stat, draws: int = 2_000) -> tuple[
     return float(low), float(high)
 
 
+def _gain_confidence_interval(
+    level: np.ndarray,
+    x_ev: pd.DataFrame,
+    obs_ev: pd.Series,
+    fold_ids: np.ndarray,
+    draws: int = 2_000,
+) -> tuple[float, float]:
+    """Deterministic 95% cluster-bootstrap CI for gain, resampled by issue day.
+
+    Leads from one run share inputs and errors, so resampling rows would invent
+    precision.  Whole issue days are the independent units.  Summing errors
+    within every selected day preserves the existing hourly-MAE estimand.
+    """
+    residual = obs_ev.to_numpy() - x_ev["baseline"].to_numpy()
+    model_error = np.abs(level - obs_ev.to_numpy())
+
+    def stat(idx: np.ndarray) -> float | None:
+        # Refit the baseline bias inside each replicate and each fold. Fold
+        # baselines may differ, so one global offset is not a valid comparator.
+        base = _debiased_baseline_error(residual[idx], fold_ids[idx]).sum()
+        return (base - model_error[idx].sum()) / base if base else None
+
+    return _issue_day_bootstrap(x_ev, stat, draws)
+
+
 def _pinball(target: np.ndarray, q: np.ndarray, tau: float = model.PEAK_QUANTILE) -> np.ndarray:
     diff = target - q
     return np.maximum(tau * diff, (tau - 1.0) * diff)
@@ -242,6 +229,7 @@ def _peak_scores(
     fold_ids: np.ndarray,
     folds: list[dict],
     baseline_target: np.ndarray,
+    x_ev: pd.DataFrame,
 ) -> dict:
     """Alert + band metrics on pooled test rows; per-fold thresholds/climatology.
 
@@ -280,19 +268,23 @@ def _peak_scores(
     everything = np.arange(len(target))
     pod, far = pod_far(alarm, everything)
     pod_b, far_b = pod_far(adv_alarm, everything) if has_adv else (None, None)
+    bss_ci_low, bss_ci_high = _issue_day_bootstrap(x_ev, bss)
+    gain_ci_low, gain_ci_high = _issue_day_bootstrap(x_ev, gain_pinball)
     alert = {
         "n_events": int(event.sum()),
         "n_events_p98": int((target >= per_row("p98")).sum()),
         "bss_clim": bss(everything),
         "pod": pod, "far": far, "pod_baseline": pod_b, "far_baseline": far_b,
-        "_bss_fn": bss,
+        "bss_clim_ci95_low": bss_ci_low,
+        "bss_clim_ci95_high": bss_ci_high,
     }
     band = {
         "coverage": float((target <= q90).mean()),
         "pinball_model": float(pin_model.mean()),
         "pinball_baseline": float(pin_adv.mean()),
         "gain_pinball": gain_pinball(everything),
-        "_gain_fn": gain_pinball,
+        "gain_pinball_ci95_low": gain_ci_low,
+        "gain_pinball_ci95_high": gain_ci_high,
     }
     return {"alert": alert, "band": band}
 
@@ -303,27 +295,26 @@ def _peak_verdicts(
     obs_test: pd.Series,
     level_test: np.ndarray,
     fold_ids: np.ndarray,
-    fold_p: list[np.ndarray],
-    fold_q: list[np.ndarray],
-    fold_meta: list[dict | None],
+    fold_peaks: list[dict | None],
     evaluation_ready: bool,
 ) -> dict | None:
     """Pooled peak metrics + gate verdicts, restricted to the folds that had peaks."""
-    keep = np.isin(fold_ids, [k for k, m in enumerate(fold_meta) if m is not None])
+    kept_ids = [k for k, f in enumerate(fold_peaks) if f is not None]
+    keep = np.isin(fold_ids, kept_ids)
     if not keep.any():
         return None
     target = _peak_target(obs_test, x_test, kind).to_numpy()[keep]
     x_keep = x_test[keep]
-    p_exceed = np.concatenate(fold_p)[keep]
-    q90 = np.concatenate(fold_q)[keep]
+    # Kept folds' rows appear in the same block order as `x_test`, so
+    # concatenating only their arrays already matches `x_test[keep]` — no NaN
+    # placeholders for the dropped folds needed.
+    p_exceed = np.concatenate([fold_peaks[k]["p_exceed"] for k in kept_ids])
+    q90 = np.concatenate([fold_peaks[k]["q90"] for k in kept_ids])
     # Re-index folds densely so `_peak_scores` can index `folds[k]`.
-    kept_ids = [k for k, m in enumerate(fold_meta) if m is not None]
     dense = np.searchsorted(kept_ids, fold_ids[keep])
-    scores = _peak_scores(target, p_exceed, q90, dense, [fold_meta[k] for k in kept_ids],
-                          _peak_baseline(x_keep, kind))
+    scores = _peak_scores(target, p_exceed, q90, dense, [fold_peaks[k]["meta"] for k in kept_ids],
+                          _peak_baseline(x_keep, kind), x_keep)
     alert, band = scores["alert"], scores["band"]
-    alert["bss_clim_ci95_low"], alert["bss_clim_ci95_high"] = _issue_day_bootstrap(x_keep, alert.pop("_bss_fn"))
-    band["gain_pinball_ci95_low"], band["gain_pinball_ci95_high"] = _issue_day_bootstrap(x_keep, band.pop("_gain_fn"))
     median_on_scale = level_test[keep] - (x_keep["baseline"].to_numpy() if kind == "tide" else 0.0)
     band["crossings_frac"] = float((q90 < median_on_scale).mean())
     ready = evaluation_ready and alert["n_events"] >= PEAK_MIN_EVENTS
@@ -441,11 +432,11 @@ def _reference(x_ev: pd.DataFrame, obs_ev: pd.Series) -> tuple[float, float, flo
     return mae_base, bias, float(np.abs(resid - bias).mean())
 
 
-# Amplitude bands the event diagnostic reports on, beyond the whole window.
-# `None` threshold = the top decile of |residual|, whatever it is worth at that
-# station; the absolute one is what an operator actually cares about.
+# Amplitude bands the event diagnostic reports on, beyond the whole window: the
+# top decile of |residual|, whatever it is worth at that station, and the
+# absolute one an operator actually cares about (see `EVENT_ABSOLUTE`).
 EVENT_ABSOLUTE = {"tide": 0.30, "wave": 0.50, "wind": 2.0}  # m, m, m/s — "an event an operator notices"
-EVENT_BANDS = (("décile sup.", None), ("|résidu| > seuil", "absolute"))
+EVENT_BANDS = ("décile sup.", "|résidu| > {thr:g} {unit}")  # 2nd label templated per station below
 _EVENT_UNIT = {"tide": "m", "wave": "m", "wind": "m/s"}
 
 
@@ -469,11 +460,13 @@ def _event_scores(level: np.ndarray, x_ev: pd.DataFrame, obs_ev: pd.Series, kind
     bias = float(resid.mean())
     err_model = np.abs(level - obs_ev.to_numpy())
 
+    labels = (
+        EVENT_BANDS[0],
+        EVENT_BANDS[1].format(thr=EVENT_ABSOLUTE[kind], unit=_EVENT_UNIT[kind]),
+    )
+    cuts = (np.quantile(abs_resid, 0.9), EVENT_ABSOLUTE[kind])
     out = []
-    for label, threshold in EVENT_BANDS:
-        cut = np.quantile(abs_resid, 0.9) if threshold is None else EVENT_ABSOLUTE[kind]
-        if threshold is not None:
-            label = f"|résidu| > {EVENT_ABSOLUTE[kind]:g} {_EVENT_UNIT[kind]}"
+    for label, cut in zip(labels, cuts):
         mask = abs_resid >= cut
         if mask.sum() < 24:  # less than a day of such hours: not worth a number
             continue
@@ -541,7 +534,7 @@ def evaluate(
     fold_ids = []
     fold_models = []
     fold_baselines = []
-    fold_peak_p, fold_peak_q, fold_peak_meta = [], [], []
+    fold_peaks: list[dict | None] = []
     skipped_origins: list[str] = []
     val_scores: dict = {}
     best = model_names[0]
@@ -612,19 +605,19 @@ def evaluate(
             thr = _peak_thresholds(peak_train)
             peaks_fit = model.train_peaks(x_train, pd.Series(peak_train, index=x_train.index), thr["p90"])
             if peaks_fit is None:
-                fold_peak_meta.append(None)
-                fold_peak_p.append(np.full(len(x_test), np.nan))
-                fold_peak_q.append(np.full(len(x_test), np.nan))
+                fold_peaks.append(None)
             else:
                 p_exceed, q90 = model.predict_peaks(peaks_fit, x_test)
                 base_train = _peak_baseline(x_train, station.kind)
-                fold_peak_p.append(p_exceed)
-                fold_peak_q.append(q90)
-                fold_peak_meta.append({
-                    **thr,
-                    "clim": float((peak_train >= thr["p90"]).mean()),
-                    "adv_p90": None if station.kind == "tide" else float(np.quantile(base_train, 0.9)),
-                    "adv_q90": float(np.quantile(peak_train - base_train, model.PEAK_QUANTILE)),
+                fold_peaks.append({
+                    "p_exceed": p_exceed,
+                    "q90": q90,
+                    "meta": {
+                        **thr,
+                        "clim": float((peak_train >= thr["p90"]).mean()),
+                        "adv_p90": None if station.kind == "tide" else float(np.quantile(base_train, 0.9)),
+                        "adv_q90": float(np.quantile(peak_train - base_train, model.PEAK_QUANTILE)),
+                    },
                 })
             # Keep the most recent origin's validation table for the report and use
             # its selected model for the production refit below. Its test remains
@@ -666,7 +659,7 @@ def evaluate(
     evaluation_ready = station.kind not in KIND_MODELS or protocol == "rolling-origin multi-saisons"
     peaks_row = _peak_verdicts(
         station.kind, x_test, obs_test, level_test, test_fold_ids,
-        fold_peak_p, fold_peak_q, fold_peak_meta, evaluation_ready,
+        fold_peaks, evaluation_ready,
     )
     # Once the reported heldouts are sealed, baseline selection and training may
     # use all available rows for the artefact served in production.  This is

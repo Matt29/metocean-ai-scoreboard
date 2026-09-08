@@ -330,10 +330,9 @@ def score_series(
     if not series:
         return _with_baseline_model({"date": day, "status": "missing"}, baseline_model)
 
-    times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in series])
+    times, matched = publish.align_obs(obs, series)
     ia = pd.Series([p["ia"] for p in series], index=times)
     baseline = pd.Series([p["baseline"] for p in series], index=times)
-    matched = obs.reindex(times, method="nearest", tolerance=pd.Timedelta("1h"))
     keep = matched.notna()
 
     # Leads with no obs yet (typically 25-48h the morning after the issue) are
@@ -542,13 +541,14 @@ def _issue_features(
     return artifact, feats
 
 
-def _series_from(station: Station, artifact: dict, feats: pd.DataFrame) -> list[dict]:
+def _series_from(station: Station, artifact: dict, feats: pd.DataFrame) -> tuple[list[dict], np.ndarray]:
     pred = model.predict(artifact["model"], feats)
     ia = feats["baseline"].to_numpy() + pred if station.kind == "tide" else pred
-    return [
+    series = [
         {"t": iso(t), "ia": round(float(i), 4), "baseline": round(float(b), 4)}
         for t, i, b in zip(feats.index, ia, feats["baseline"])
     ]
+    return series, ia
 
 
 def issue_series(
@@ -565,7 +565,8 @@ def issue_series(
     code path, résolution 1's "ne duplique pas la logique de prédiction".
     """
     artifact, feats = _issue_features(station, obs, t0, models, forcing, models_dir)
-    return _series_from(station, artifact, feats), artifact["baseline_model"]
+    series, _ = _series_from(station, artifact, feats)
+    return series, artifact["baseline_model"]
 
 
 PEAK_UNIT = {"wave": "m", "tide": "m", "wind": "m/s"}
@@ -671,7 +672,7 @@ def _run_station(
     try:
         model_frame, forcing, forcing_source = _fetch_inputs(station)
         artifact, feats = _issue_features(station, obs, t0, model_frame, forcing, models_dir)
-        series = _series_from(station, artifact, feats)
+        series, ia = _series_from(station, artifact, feats)
         baseline_model = artifact["baseline_model"]
     except Exception as exc:  # noqa: BLE001 - SourceError, a missing model file,
         # sklearn/pandas/utide raising on a degenerate input: none of it may
@@ -691,8 +692,7 @@ def _run_station(
         # Its own try/except (résolution 5, same spirit as the archiving block
         # below): a peaks artefact that fails to load or predict must never
         # undo the median publication that already happened above.
-        median = np.array([p["ia"] for p in series])
-        peaks = issue_peaks(station, feats, median, gate_peaks, models_dir)
+        peaks = issue_peaks(station, feats, ia, gate_peaks, models_dir)
         if peaks is not None:
             publish.write_peaks(out_dir, station.id, issued, peaks)
     except Exception as exc:  # noqa: BLE001 - peaks must never fail the median publication

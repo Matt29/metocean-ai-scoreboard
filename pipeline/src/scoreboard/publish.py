@@ -155,6 +155,12 @@ def score_day(obs, pred_ia, pred_baseline) -> tuple[float, float]:
     return float(np.abs(ia - obs).mean()), float(np.abs(baseline - obs).mean())
 
 
+def align_obs(obs: pd.Series, series: list[dict]) -> tuple[pd.DatetimeIndex, pd.Series]:
+    """`series`'s issue times, and `obs` matched to them (nearest hour, 1h tolerance)."""
+    times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in series])
+    return times, obs.reindex(times, method="nearest", tolerance=pd.Timedelta("1h"))
+
+
 def _atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # A unique tmp name (not a fixed `<file>.tmp` sibling) so a crash between
@@ -855,8 +861,7 @@ def score_peaks_day(obs: pd.Series, peaks: dict, kind: str, clim: float) -> dict
     series = peaks.get("series") or []
     if not series:
         return None
-    times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in series])
-    matched = obs.reindex(times, method="nearest", tolerance=pd.Timedelta("1h"))
+    _, matched = align_obs(obs, series)
     keep = matched.notna().to_numpy()
     if not keep.any():
         return None

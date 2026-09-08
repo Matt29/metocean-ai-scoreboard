@@ -35,10 +35,11 @@ MODEL_NAMES = ("hgb", "ridge", "hgb-per-lead")
 LEAD_SLICES = ((1, 12), (13, 24), (25, 48))
 
 
+_HGB_KWARGS = {"max_iter": 300, "learning_rate": 0.06, "early_stopping": True, "random_state": 0}
+
+
 def _hgb() -> HistGradientBoostingRegressor:
-    return HistGradientBoostingRegressor(
-        max_iter=300, learning_rate=0.06, early_stopping=True, random_state=0
-    )
+    return HistGradientBoostingRegressor(**_HGB_KWARGS)
 
 
 PEAK_MIN_CLASS_ROWS = 24  # less than a day of one class: a classifier learns nothing usable
@@ -46,16 +47,11 @@ PEAK_QUANTILE = 0.9
 
 
 def _hgb_classifier() -> HistGradientBoostingClassifier:
-    return HistGradientBoostingClassifier(
-        max_iter=300, learning_rate=0.06, early_stopping=True, random_state=0
-    )
+    return HistGradientBoostingClassifier(**_HGB_KWARGS)
 
 
 def _hgb_quantile() -> HistGradientBoostingRegressor:
-    return HistGradientBoostingRegressor(
-        loss="quantile", quantile=PEAK_QUANTILE,
-        max_iter=300, learning_rate=0.06, early_stopping=True, random_state=0,
-    )
+    return HistGradientBoostingRegressor(loss="quantile", quantile=PEAK_QUANTILE, **_HGB_KWARGS)
 
 
 def train_peaks(x: pd.DataFrame, target: pd.Series, threshold: float) -> dict | None:
