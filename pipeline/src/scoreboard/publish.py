@@ -916,7 +916,10 @@ def write_peaks_scores(out_dir: Path, station_ids: list[str], updated: str) -> d
         history = _read(out_dir / station_id / "history.json")
         days = history["days"] if history else []
         entry = {"id": station_id}
-        latest = _read(out_dir / station_id / "peaks.json")
+        try:  # a corrupt peaks.json (see daily._score_previous_issue) must not crash the sweep
+            latest = _read(out_dir / station_id / "peaks.json")
+        except json.JSONDecodeError:
+            latest = None
         if latest and "threshold_p90" in latest:
             entry["threshold_p90"] = latest["threshold_p90"]
         for label, n in (("30d", 30), ("90d", 90)):

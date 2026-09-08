@@ -1241,3 +1241,17 @@ def test_second_run_scores_yesterdays_peaks_into_history(tmp_path, patched_sourc
     assert set(scored[0]["peaks"]) == {"n", "events", "hits", "misses", "false_alarms",
                                        "brier", "brier_clim", "n_band", "covered"}
     assert (tmp_path / "peaks_scores.json").exists()
+
+
+def test_corrupt_peaks_json_does_not_lose_the_days_median_score(tmp_path, patched_sources):
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    (tmp_path / "wave-a" / "peaks.json").write_text("{not json")
+    next_date = date(2026, 7, 31)
+
+    daily.run(next_date, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+
+    history = json.loads((tmp_path / "wave-a" / "history.json").read_text())
+    scored_day = next(d for d in history["days"] if d["date"] == RUN_DATE.isoformat())
+    assert scored_day["status"] == "ok"
+    assert "mae_ia" in scored_day
+    assert "peaks" not in scored_day

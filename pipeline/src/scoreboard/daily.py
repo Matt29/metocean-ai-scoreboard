@@ -489,18 +489,24 @@ def _score_previous_issue(
     entry = score_series(obs, prev.get("series") or [], issued_ts, prev.get("baseline_model"))
     # Same issue only: a `peaks.json` overwritten by a later run's own
     # inference must never be scored against yesterday's obs a second time.
-    peaks_path = out_dir / station.id / "peaks.json"
-    peaks = publish._read(peaks_path)
-    if peaks and peaks.get("issued") == prev.get("issued"):
-        if station.kind == "tide":  # the surge needs the harmonic: take it from latest.json
-            baseline_by_t = {p["t"]: p["baseline"] for p in prev["series"]}
-            for point in peaks["series"]:
-                point["baseline"] = baseline_by_t.get(point["t"])
-            peaks["series"] = [p for p in peaks["series"] if p["baseline"] is not None]
-        clim = (gate_peaks or {}).get("alert", {}).get("clim", 0.1)
-        counts = publish.score_peaks_day(obs, peaks, station.kind, clim)
-        if counts:
-            entry["peaks"] = counts
+    # Its own try/except: a corrupt peaks.json or a malformed latest.json must
+    # never lose the median score (`entry`) already computed above.
+    try:
+        peaks_path = out_dir / station.id / "peaks.json"
+        peaks = publish._read(peaks_path)
+        if peaks and peaks.get("issued") == prev.get("issued"):
+            clim = (gate_peaks or {}).get("alert", {}).get("clim")
+            if clim is not None:  # no silent climatology: without it, skip peaks scoring
+                if station.kind == "tide":  # the surge needs the harmonic: take it from latest.json
+                    baseline_by_t = {p["t"]: p["baseline"] for p in prev["series"]}
+                    for point in peaks["series"]:
+                        point["baseline"] = baseline_by_t.get(point["t"])
+                    peaks["series"] = [p for p in peaks["series"] if p["baseline"] is not None]
+                counts = publish.score_peaks_day(obs, peaks, station.kind, clim)
+                if counts:
+                    entry["peaks"] = counts
+    except Exception as exc:  # noqa: BLE001
+        log.warning("%s: scoring the previous peaks failed: %s", station.id, exc)
     publish.upsert_history(out_dir, station.id, entry)
 
 
