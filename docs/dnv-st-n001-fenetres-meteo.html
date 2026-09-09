@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fenêtres météo, vocabulaire DNV-ST-N001</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --abyss:#08171E;
+  --hull:#0F2A34;
+  --hull-2:#163A46;
+  --mist:#DDE7E6;
+  --mist-dim:#8FA6AA;
+  --calm:#4FC3D9;
+  --warn:#F0A93C;
+  --stop:#E2685C;
+  --line:#23505E;
+  --disp:"IBM Plex Sans Condensed",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--abyss);color:var(--mist);
+  font-family:var(--body);font-size:15px;line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px 80px}
+
+/* ---------- header ---------- */
+header{padding:56px 0 32px;border-bottom:1px solid var(--line)}
+.eyebrow{
+  font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--calm);margin:0 0 14px;
+}
+h1{
+  font-family:var(--disp);font-weight:700;font-size:clamp(38px,6.5vw,68px);
+  line-height:.96;letter-spacing:-.02em;margin:0 0 16px;
+}
+h1 em{font-style:normal;color:var(--calm)}
+.lede{max-width:62ch;color:var(--mist-dim);margin:0}
+
+/* ---------- readout strip ---------- */
+.readout{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:1px;background:var(--line);border:1px solid var(--line);margin:32px 0 0;
+}
+.stat{background:var(--hull);padding:16px 18px}
+.stat .k{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mist-dim)}
+.stat .v{font-family:var(--disp);font-weight:700;font-size:30px;line-height:1.1;margin-top:4px}
+.stat .u{font-size:13px;color:var(--mist-dim);font-family:var(--body);font-weight:400}
+
+/* ---------- chart ---------- */
+.chart-block{margin:44px 0 0}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+.chip{
+  font-family:var(--mono);font-size:12px;letter-spacing:.04em;
+  background:transparent;color:var(--mist-dim);
+  border:1px solid var(--line);padding:7px 13px;cursor:pointer;
+  transition:.16s ease;
+}
+.chip:hover{color:var(--mist);border-color:var(--calm)}
+.chip[aria-pressed="true"]{background:var(--calm);color:var(--abyss);border-color:var(--calm);font-weight:600}
+.chip:focus-visible{outline:2px solid var(--warn);outline-offset:2px}
+
+.plot{background:var(--hull);border:1px solid var(--line);padding:14px}
+svg{display:block;width:100%;height:auto}
+.axis-txt{font-family:var(--mono);font-size:11px;fill:var(--mist-dim)}
+.anno-txt{font-family:var(--mono);font-size:12px;font-weight:500}
+
+.explain{
+  background:var(--hull-2);border:1px solid var(--line);border-top:none;
+  padding:20px 22px;display:grid;grid-template-columns:180px 1fr;gap:24px;
+}
+.explain .term{font-family:var(--disp);font-weight:700;font-size:24px;line-height:1.1}
+.explain .term span{display:block;font-family:var(--mono);font-size:11px;font-weight:400;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--calm);margin-top:6px}
+.explain .def{margin:0 0 12px}
+.explain .use{margin:0;padding-left:14px;border-left:2px solid var(--warn);color:var(--mist-dim);font-size:14px}
+.explain .use b{color:var(--mist);font-weight:600}
+
+/* ---------- glossary ---------- */
+h2{
+  font-family:var(--disp);font-weight:700;font-size:28px;letter-spacing:-.01em;
+  margin:64px 0 6px;
+}
+.sub{color:var(--mist-dim);margin:0 0 24px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
+.card{background:var(--hull);padding:20px}
+.card h3{font-family:var(--mono);font-size:13px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--calm);margin:0 0 4px;font-weight:600}
+.card .fr{font-family:var(--disp);font-size:19px;font-weight:600;margin:0 0 10px;line-height:1.2}
+.card p{margin:0;font-size:14px;color:var(--mist-dim)}
+.card p b{color:var(--mist);font-weight:600}
+
+/* ---------- quiz ---------- */
+.quiz{background:var(--hull);border:1px solid var(--line);padding:26px}
+.qcount{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mist-dim)}
+.qtext{font-family:var(--disp);font-size:23px;font-weight:600;line-height:1.25;margin:10px 0 20px}
+.opts{display:grid;gap:8px;margin-bottom:18px}
+.opt{
+  text-align:left;font-family:var(--body);font-size:14.5px;color:var(--mist);
+  background:var(--hull-2);border:1px solid var(--line);padding:13px 15px;cursor:pointer;transition:.14s;
+}
+.opt:hover:not(:disabled){border-color:var(--calm)}
+.opt:disabled{cursor:default}
+.opt.good{border-color:var(--calm);background:rgba(79,195,217,.14)}
+.opt.bad{border-color:var(--stop);background:rgba(226,104,92,.13)}
+.opt:focus-visible{outline:2px solid var(--warn);outline-offset:2px}
+.feedback{font-size:14px;color:var(--mist-dim);min-height:44px;padding-left:14px;border-left:2px solid var(--line)}
+.feedback.on{border-left-color:var(--warn)}
+.qbar{display:flex;justify-content:space-between;align-items:center;margin-top:18px;gap:16px;flex-wrap:wrap}
+.btn{
+  font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+  background:var(--calm);color:var(--abyss);border:none;padding:11px 20px;cursor:pointer;font-weight:600;
+}
+.btn:disabled{background:var(--line);color:var(--mist-dim);cursor:default}
+.btn.ghost{background:transparent;color:var(--mist-dim);border:1px solid var(--line)}
+.score{font-family:var(--mono);font-size:13px;color:var(--mist-dim)}
+.score b{color:var(--mist)}
+
+footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);
+  font-size:13px;color:var(--mist-dim)}
+
+@media(max-width:720px){
+  .explain{grid-template-columns:1fr;gap:14px}
+  header{padding:36px 0 24px}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">DNV-ST-N001 / Marine operations</p>
+  <h1>Fenêtres météo,<br>le vocabulaire <em>qui compte</em></h1>
+  <p class="lede">Tous ces termes décrivent une seule et même chose : un signal de houle, un seuil, et le temps qu'on passe à attendre. Le graphe ci-dessous est une série Hs simulée sur 30 jours. Choisis un terme, il s'allume sur les données.</p>
+
+  <div class="readout" id="readout"></div>
+</header>
+
+<section class="chart-block">
+  <div class="chips" id="chips" role="group" aria-label="Termes"></div>
+  <div class="plot"><svg id="plot" viewBox="0 0 1000 330" role="img" aria-label="Série temporelle de hauteur significative avec seuil opérationnel"></svg></div>
+  <div class="explain">
+    <div class="term" id="tTerm">OPLIM<span id="tSub">Operational limit</span></div>
+    <div>
+      <p class="def" id="tDef"></p>
+      <p class="use" id="tUse"></p>
+    </div>
+  </div>
+</section>
+
+<h2>Le reste du vocabulaire</h2>
+<p class="sub">Ce qui ne se lit pas directement sur le graphe mais qui tombe dans toutes les conversations.</p>
+<div class="grid" id="glossary"></div>
+
+<h2>Teste-toi</h2>
+<p class="sub">Huit questions. Réponds sans regarder au-dessus.</p>
+<div class="quiz">
+  <div class="qcount" id="qcount"></div>
+  <div class="qtext" id="qtext"></div>
+  <div class="opts" id="opts"></div>
+  <div class="feedback" id="feedback">Choisis une réponse.</div>
+  <div class="qbar">
+    <span class="score" id="score"></span>
+    <span>
+      <button class="btn ghost" id="restart">Recommencer</button>
+      <button class="btn" id="next" disabled>Suivant</button>
+    </span>
+  </div>
+</div>
+
+<footer>
+  Série Hs synthétique, générée de façon déterministe. Les valeurs de persistance et d'opérabilité affichées sont calculées sur ces données, pas inventées.
+</footer>
+
+</div>
+
+<script>
+/* ============ données ============ */
+const N = 240, DT = 3;               // 240 pas de 3 h = 30 jours
+const OPLIM = 1.5;                   // m
+const ALPHA = 0.75;
+const OPLIM_A = OPLIM * ALPHA;
+const TPOP = 24, TC = 12, TR = TPOP + TC;
+
+const hs = [];
+for (let i = 0; i < N; i++) {
+  const t = i * DT / 24;
+  let v = 1.42
+    + 0.92 * Math.sin(2*Math.PI*t/7.3 + 0.6)
+    + 0.48 * Math.sin(2*Math.PI*t/2.7 + 1.9)
+    + 0.31 * Math.sin(2*Math.PI*t/1.13 + 3.1)
+    + 0.17 * Math.sin(2*Math.PI*t/0.44 + 0.2);
+  hs.push(Math.max(0.22, v));
+}
+
+function spells(limit){
+  const work = [], wait = [];
+  let s = 0, cur = hs[0] <= limit;
+  for (let i = 1; i <= N; i++){
+    const st = i < N ? hs[i] <= limit : !cur;
+    if (st !== cur || i === N){
+      (cur ? work : wait).push({a:s, b:i, h:(i-s)*DT});
+      s = i; cur = st;
+    }
+  }
+  return {work, wait};
+}
+const SP = spells(OPLIM);
+const SPA = spells(OPLIM_A);
+
+const pct = (arr, p) => {
+  if (!arr.length) return 0;
+  const s = [...arr].sort((x,y)=>x-y);
+  const idx = (s.length - 1) * p;
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  return s[lo] + (s[hi]-s[lo]) * (idx-lo);
+};
+const durs = SP.work.map(d=>d.h);
+const P10 = pct(durs,.10), P50 = pct(durs,.50), P90 = pct(durs,.90);
+const oper  = hs.filter(v=>v<=OPLIM).length / N * 100;
+const operA = hs.filter(v=>v<=OPLIM_A).length / N * 100;
+const viable = SP.work.filter(d=>d.h >= TR);
+const target = viable[0] || SP.work.reduce((a,b)=>b.h>a.h?b:a);
+
+/* ============ bandeau chiffres ============ */
+document.getElementById('readout').innerHTML = [
+  ['OPLIM retenu', OPLIM.toFixed(2), 'm Hs'],
+  ['Opérabilité', oper.toFixed(1), '%'],
+  ['TR = TPOP + TC', TR, 'h'],
+  ['Fenêtres ≥ TR', viable.length, 'sur 30 j'],
+  ['Persistance P50', P50.toFixed(0), 'h']
+].map(([k,v,u])=>`<div class="stat"><div class="k">${k}</div><div class="v">${v} <span class="u">${u}</span></div></div>`).join('');
+
+/* ============ graphe ============ */
+const W=1000, H=330, ML=46, MR=16, MT=22, MB=34;
+const PW = W-ML-MR, PH = H-MT-MB, YMAX = 3.6;
+const X = i => ML + i/(N-1)*PW;
+const Y = v => MT + (1 - v/YMAX)*PH;
+
+function draw(mode){
+  let g = '';
+  // grille
+  for (let v=0; v<=3.5; v+=0.5){
+    g += `<line x1="${ML}" y1="${Y(v)}" x2="${W-MR}" y2="${Y(v)}" stroke="var(--line)" stroke-width="1"/>`;
+    g += `<text class="axis-txt" x="${ML-9}" y="${Y(v)+4}" text-anchor="end">${v.toFixed(1)}</text>`;
+  }
+  for (let d=0; d<=30; d+=5){
+    const x = X(d*24/DT >= N ? N-1 : d*24/DT);
+    g += `<text class="axis-txt" x="${x}" y="${H-12}" text-anchor="middle">J${d}</text>`;
+  }
+  g += `<text class="axis-txt" x="${ML-9}" y="${MT-8}" text-anchor="end">Hs</text>`;
+
+  // bandes
+  const band = (a,b,fill,op) =>
+    `<rect x="${X(a)}" y="${MT}" width="${Math.max(1,X(Math.min(b,N-1))-X(a))}" height="${PH}" fill="${fill}" opacity="${op}"/>`;
+
+  if (mode==='spell' || mode==='oper')
+    SP.work.forEach(s => g += band(s.a,s.b,'var(--calm)', mode==='oper'?0.22:0.16));
+  if (mode==='wow')
+    SP.wait.forEach(s => g += band(s.a,s.b,'var(--stop)',0.20));
+  if (mode==='alpha'){
+    SP.work.forEach(s => g += band(s.a,s.b,'var(--calm)',0.09));
+    SPA.work.forEach(s => g += band(s.a,s.b,'var(--warn)',0.20));
+  }
+  if (mode==='persist')
+    SP.work.forEach(s => {
+      const c = s.h>=P90 ? 'var(--calm)' : s.h<=P10 ? 'var(--stop)' : 'var(--warn)';
+      g += band(s.a,s.b,c,0.22);
+    });
+  if (mode==='tr'){
+    viable.forEach(s => g += band(s.a,s.b,'var(--calm)',0.10));
+    g += band(target.a, target.a+TR/DT, 'var(--calm)', 0.26);
+  }
+
+  // courbe
+  const pts = hs.map((v,i)=>`${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  g += `<polyline points="${pts}" fill="none" stroke="var(--mist)" stroke-width="1.6" stroke-linejoin="round"/>`;
+
+  // seuils
+  g += `<line x1="${ML}" y1="${Y(OPLIM)}" x2="${W-MR}" y2="${Y(OPLIM)}" stroke="var(--warn)" stroke-width="2" stroke-dasharray="7 5"/>`;
+  g += `<text class="anno-txt" x="${W-MR}" y="${Y(OPLIM)-8}" text-anchor="end" fill="var(--warn)">OPLIM ${OPLIM.toFixed(2)} m</text>`;
+  if (mode==='alpha'){
+    g += `<line x1="${ML}" y1="${Y(OPLIM_A)}" x2="${W-MR}" y2="${Y(OPLIM_A)}" stroke="var(--calm)" stroke-width="2" stroke-dasharray="3 4"/>`;
+    g += `<text class="anno-txt" x="${W-MR}" y="${Y(OPLIM_A)+18}" text-anchor="end" fill="var(--calm)">α·OPLIM ${OPLIM_A.toFixed(2)} m</text>`;
+  }
+
+  // bracket TPOP / TC
+  if (mode==='tr'){
+    const x0 = X(target.a), xm = X(target.a+TPOP/DT), x1 = X(target.a+TR/DT), yb = MT+14;
+    g += `<line x1="${x0}" y1="${yb}" x2="${x1}" y2="${yb}" stroke="var(--calm)" stroke-width="2"/>`;
+    [x0,xm,x1].forEach(x => g += `<line x1="${x}" y1="${yb-6}" x2="${x}" y2="${yb+6}" stroke="var(--calm)" stroke-width="2"/>`);
+    g += `<text class="anno-txt" x="${(x0+xm)/2}" y="${yb-11}" text-anchor="middle" fill="var(--calm)">TPOP ${TPOP} h</text>`;
+    g += `<text class="anno-txt" x="${(xm+x1)/2}" y="${yb-11}" text-anchor="middle" fill="var(--warn)">TC ${TC} h</text>`;
+  }
+  document.getElementById('plot').innerHTML = g;
+}
+
+/* ============ contenu des termes ============ */
+const TERMS = {
+  oplim: {
+    label:'OPLIM', sub:'Operational limit',
+    def:`Le seuil environnemental au-delà duquel l'opération ne peut pas se poursuivre. Ici Hs = ${OPLIM.toFixed(2)} m. Ce n'est pas une valeur météo, c'est une propriété de l'opération et du matériel : ce que la barge, la grue ou le navire de pose peut encaisser.`,
+    use:`Un OPLIM sérieux est <b>dérivé d'une analyse de réponse</b>, pas choisi à la louche. C'est exactement là que ta couche seakeeping se branche : passer d'un critère Hs brut à un critère de réponse réelle du navire.`
+  },
+  spell: {
+    label:'Spell', sub:'Fenêtre exploitable',
+    def:`Une période continue pendant laquelle Hs reste sous l'OPLIM. Sur ces 30 jours : ${SP.work.length} fenêtres, la plus longue fait ${Math.max(...durs).toFixed(0)} h, la plus courte ${Math.min(...durs).toFixed(0)} h.`,
+    use:`L'analyse de spells est la brique de base. Tout le reste, opérabilité, WoW, persistance, se calcule à partir de cette découpe. <b>Une moyenne de Hs ne dit rien</b>, c'est la structure temporelle qui décide.`
+  },
+  wow: {
+    label:'WoW', sub:'Waiting on Weather',
+    def:`Le temps passé à ne rien pouvoir faire parce que Hs dépasse l'OPLIM. Ici ${SP.wait.length} périodes d'attente, cumulant ${(100-oper).toFixed(1)} % du temps.`,
+    use:`Le WoW est ce qui coûte de l'argent : jour de navire immobilisé. Ce que le client veut, ce n'est pas la moyenne, c'est <b>la distribution complète des durées d'attente</b>, parce que c'est la queue qui casse un planning.`
+  },
+  tr: {
+    label:'TR', sub:'TPOP + TC = période de référence',
+    def:`TPOP est la durée planifiée de l'opération (${TPOP} h). TC est la contingence (${TC} h). Leur somme donne TR = ${TR} h, la période de référence. Une fenêtre n'est utilisable que si elle dure au moins TR : ici ${viable.length} sur ${SP.work.length}.`,
+    use:`Règle clé : si <b>TR ≤ 72 h</b> et qu'une prévision fiable existe, l'opération est <b>weather restricted</b> et se dimensionne sur un critère opérationnel. Au-delà, elle devient <b>unrestricted</b> et il faut passer sur des statistiques extrêmes.`
+  },
+  alpha: {
+    label:'Alpha factor', sub:'Facteur α',
+    def:`Un coefficient de réduction appliqué à l'OPLIM pour absorber l'incertitude de prévision. Il dépend de l'horizon de prévision, de la durée de l'opération et du niveau de Hs. Ici α = ${ALPHA}, donc le seuil effectif tombe à ${OPLIM_A.toFixed(2)} m.`,
+    use:`L'effet est brutal et sous-estimé : l'opérabilité passe de <b>${oper.toFixed(1)} % à ${operA.toFixed(1)} %</b> pour une réduction de seuil de seulement 25 %. C'est l'argument le plus parlant en réunion.`
+  },
+  persist: {
+    label:'Persistance', sub:'P10 / P50 / P90',
+    def:`La distribution des durées de fenêtres exploitables. Sur cette série : P10 = ${P10.toFixed(0)} h, P50 = ${P50.toFixed(0)} h, P90 = ${P90.toFixed(0)} h. En bleu les fenêtres les plus longues, en rouge les plus courtes.`,
+    use:`Attention au sens : P90 en persistance veut dire <b>fenêtre longue et rare</b>. Dans un contexte de valeurs extrêmes, P90 désigne au contraire un état de mer sévère. Précise toujours de quelle grandeur tu parles.`
+  },
+  oper: {
+    label:'Opérabilité', sub:'Operability',
+    def:`La fraction du temps pendant laquelle l'opération est possible : ${oper.toFixed(1)} % ici. Le complément est le downtime météo, ${(100-oper).toFixed(1)} %.`,
+    use:`Un chiffre d'opérabilité sans <b>fenêtre de départ ni saison</b> ne vaut rien. C'est la même série calculée en janvier ou en juin qui décide d'un planning, pas une moyenne annuelle.`
+  }
+};
+const ORDER = ['oplim','spell','wow','tr','alpha','persist','oper'];
+
+const chips = document.getElementById('chips');
+chips.innerHTML = ORDER.map((k,i)=>
+  `<button class="chip" data-k="${k}" aria-pressed="${i===0}">${TERMS[k].label}</button>`).join('');
+
+function select(k){
+  ORDER.forEach(o => chips.querySelector(`[data-k="${o}"]`).setAttribute('aria-pressed', o===k));
+  const t = TERMS[k];
+  document.getElementById('tTerm').innerHTML = `${t.label}<span>${t.sub}</span>`;
+  document.getElementById('tDef').innerHTML = t.def;
+  document.getElementById('tUse').innerHTML = t.use;
+  draw(k === 'oplim' ? 'none' : k);
+}
+chips.addEventListener('click', e => {
+  const b = e.target.closest('.chip'); if (b) select(b.dataset.k);
+});
+select('oplim');
+
+/* ============ glossaire ============ */
+const GLOSS = [
+  ['Weather restricted','Opération courte','Opération dont <b>TR ≤ 72 h</b> et qui démarre sur une prévision fiable. Elle se dimensionne sur un critère opérationnel, décidé au moment du go.'],
+  ['Weather unrestricted','Opération longue','TR dépasse 72 h. Plus aucune prévision ne couvre la durée, donc dimensionnement sur <b>statistiques extrêmes saisonnières</b>, période de retour à l\'appui.'],
+  ['Point of no return','PNR','L\'instant après lequel l\'opération ne peut plus être interrompue ni inversée. Il fixe le début réel de la fenêtre à sécuriser.'],
+  ['Design wave','Vague de calcul','L\'état de mer retenu pour le dimensionnement structurel, issu d\'une analyse de valeurs extrêmes (POT-GPD, GEV, Gumbel) sur une longue archive.'],
+  ['MWS','Marine Warranty Surveyor','Le tiers mandaté par l\'assureur qui approuve l\'opération. C\'est lui qui challenge la méthode et les sources. <b>Ton client final réel.</b>'],
+  ['Hs / Tp','Hauteur et période','Hauteur significative et période de pic. Un OPLIM sur Hs seul est incomplet : deux mers de même Hs et de Tp différentes ne produisent pas la même réponse navire.'],
+  ['Downtime','Indisponibilité','Le complément de l\'opérabilité. Se décline en downtime météo, technique et opérationnel, à ne pas mélanger dans un même chiffre.'],
+  ['Seuil de réponse','Response-based limit','Critère exprimé en réponse du navire (roulis, accélération verticale, slamming) plutôt qu\'en état de mer. Plus fin, plus défendable, plus difficile à produire.']
+];
+document.getElementById('glossary').innerHTML = GLOSS.map(([en,fr,d])=>
+  `<div class="card"><h3>${en}</h3><div class="fr">${fr}</div><p>${d}</p></div>`).join('');
+
+/* ============ quiz ============ */
+const Q = [
+  {q:'À quoi correspond TR ?', o:['La durée de l\'opération seule','TPOP plus la contingence TC','Le temps de retour de la vague de calcul','La durée totale du contrat'], a:1,
+   e:'TR = TPOP + TC. C\'est TR, pas TPOP, qui sert à choisir le critère et l\'alpha factor.'},
+  {q:'TR vaut 48 h avec une prévision fiable. L\'opération est :', o:['Weather unrestricted','Weather restricted','Indéterminée sans le Tp','Dimensionnée sur période de retour 100 ans'], a:1,
+   e:'Sous 72 h avec prévision fiable, l\'opération est weather restricted et se dimensionne sur un critère opérationnel.'},
+  {q:'L\'alpha factor sert à :', o:['Convertir Hs en Tp','Réduire l\'OPLIM pour couvrir l\'incertitude de prévision','Corriger le biais côtier d\'ERA5','Pondérer le coût du downtime'], a:1,
+   e:'C\'est un facteur de réduction sur le critère, fonction de l\'horizon de prévision, de la durée et du niveau de Hs.'},
+  {q:'Une fenêtre exploitable (spell) est :', o:['Une période continue sous l\'OPLIM','Le temps entre deux tempêtes nommées','La durée moyenne de bon temps','Une période de 72 h glissante'], a:0,
+   e:'Continue et sous le seuil. Toute l\'analyse d\'opérabilité découle de cette découpe.'},
+  {q:'En analyse de persistance, P90 désigne :', o:['Un état de mer sévère','Une fenêtre exploitable longue et rare','Le 90e jour de la saison','Un seuil de confiance à 90 %'], a:1,
+   e:'En persistance, le percentile porte sur la durée de fenêtre. En valeurs extrêmes, P90 désigne au contraire un état de mer sévère. Toujours préciser la grandeur.'},
+  {q:'Le WoW, c\'est :', o:['La marge de sécurité sur l\'OPLIM','Le temps d\'attente parce que le seuil est dépassé','La durée de mobilisation du navire','Le délai d\'approbation du MWS'], a:1,
+   e:'Waiting on Weather. C\'est le poste de coût que le client cherche vraiment à réduire.'},
+  {q:'Une opérabilité annoncée à 68 % est utilisable si :', o:['Elle vient d\'ERA5','La saison et la fenêtre de départ sont précisées','Le Tp est inférieur à 8 s','Elle est validée par altimétrie'], a:1,
+   e:'Sans saison ni fenêtre de départ, un pourcentage d\'opérabilité ne décide de rien. Une moyenne annuelle masque la saisonnalité.'},
+  {q:'Un critère response-based est préférable parce qu\'il :', o:['Se calcule plus vite','Exprime la limite en réponse du navire, pas en état de mer','Évite d\'avoir besoin d\'archives longues','Supprime le besoin d\'alpha factor'], a:1,
+   e:'Deux mers de même Hs et de Tp différentes ne produisent pas la même réponse. C\'est là que se joue la différenciation technique.'}
+];
+let qi=0, sc=0, done=false;
+const $=id=>document.getElementById(id);
+function render(){
+  const q=Q[qi];
+  $('qcount').textContent=`Question ${qi+1} sur ${Q.length}`;
+  $('qtext').textContent=q.q;
+  $('opts').innerHTML=q.o.map((o,i)=>`<button class="opt" data-i="${i}">${o}</button>`).join('');
+  $('feedback').textContent='Choisis une réponse.';
+  $('feedback').classList.remove('on');
+  $('next').disabled=true; done=false;
+  $('score').innerHTML=`Score <b>${sc}</b> / ${Q.length}`;
+}
+$('opts').addEventListener('click', e=>{
+  const b=e.target.closest('.opt'); if(!b||done) return;
+  done=true; const q=Q[qi], pick=+b.dataset.i;
+  [...$('opts').children].forEach((el,i)=>{
+    el.disabled=true;
+    if(i===q.a) el.classList.add('good');
+    else if(i===pick) el.classList.add('bad');
+  });
+  if(pick===q.a) sc++;
+  $('feedback').textContent=(pick===q.a?'Correct. ':'Non. ')+q.e;
+  $('feedback').classList.add('on');
+  $('score').innerHTML=`Score <b>${sc}</b> / ${Q.length}`;
+  $('next').disabled=false;
+});
+$('next').addEventListener('click',()=>{
+  if(qi<Q.length-1){ qi++; render(); }
+  else{
+    $('qcount').textContent='Terminé';
+    $('qtext').textContent = sc===Q.length ? 'Sans faute. Tu peux y aller.'
+      : sc>=6 ? 'Solide. Revois les cartes que tu as ratées.'
+      : 'À reprendre. Rejoue le graphe terme par terme avant de recommencer.';
+    $('opts').innerHTML=''; $('feedback').textContent=''; $('next').disabled=true;
+  }
+});
+$('restart').addEventListener('click',()=>{ qi=0; sc=0; render(); });
+render();
+</script>
+</body>
+</html>
