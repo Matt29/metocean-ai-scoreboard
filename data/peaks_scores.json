@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "updated": "2026-09-09T06:00:00Z",
+  "stations": [
+    {
+      "id": "pierres-noires",
+      "alert_30d": null,
+      "band_30d": null,
+      "alert_90d": null,
+      "band_90d": null
+    },
+    {
+      "id": "belle-ile",
+      "alert_30d": null,
+      "band_30d": null,
+      "alert_90d": null,
+      "band_90d": null
+    },
+    {
+      "id": "anglet",
+      "alert_30d": null,
+      "band_30d": null,
+      "alert_90d": null,
+      "band_90d": null
+    },
+    {
+      "id": "brest",
+      "threshold_p90": 0.20171120650075824,
+      "alert_30d": null,
+      "band_30d": null,
+      "alert_90d": null,
+      "band_90d": null
+    },
+    {
+      "id": "saint-malo",
+      "threshold_p90": 0.25501612445205524,
+      "alert_30d": null,
+      "band_30d": null,
+      "alert_90d": null,
+      "band_90d": null
+    },
+    {
+      "id": "ouessant",
+      "threshold_p90": 12.6,
+      "alert_30d": null,
+      "band_30d": null,
+      "alert_90d": null,
+      "band_90d": null
+    },
+    {
+      "id": "dieppe",
+      "threshold_p90": 8.0,
+      "alert_30d": null,
+      "band_30d": null,
+      "alert_90d": null,
+      "band_90d": null
+    },
+    {
+      "id": "cherbourg-vent",
+      "threshold_p90": 10.9,
+      "alert_30d": null,
+      "band_30d": null,
+      "alert_90d": null,
+      "band_90d": null
+    }
+  ]
+}

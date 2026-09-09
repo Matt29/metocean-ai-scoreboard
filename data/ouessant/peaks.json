@@ -2,247 +2,251 @@
   "schema_version": 1,
   "station": "ouessant",
   "issued": "2026-09-09T06:00:00Z",
+  "status": "ok",
+  "unit": "m/s",
+  "threshold_p90": 12.6,
+  "p_48h": 0.0001,
+  "t_peak_pred": "2026-09-10T15:00:00Z",
   "series": [
     {
       "t": "2026-09-09T07:00:00Z",
-      "ia": 6.437,
-      "baseline": 5.69
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T08:00:00Z",
-      "ia": 6.0161,
-      "baseline": 5.02
+      "p_exceed": 0.0001,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T09:00:00Z",
-      "ia": 5.7831,
-      "baseline": 5.3
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T10:00:00Z",
-      "ia": 5.809,
-      "baseline": 5.5
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T11:00:00Z",
-      "ia": 5.7259,
-      "baseline": 5.33
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T12:00:00Z",
-      "ia": 5.1182,
-      "baseline": 5.02
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T13:00:00Z",
-      "ia": 4.8504,
-      "baseline": 4.3
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T14:00:00Z",
-      "ia": 4.565,
-      "baseline": 4.0
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T15:00:00Z",
-      "ia": 4.1487,
-      "baseline": 3.44
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T16:00:00Z",
-      "ia": 3.8795,
-      "baseline": 2.83
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T17:00:00Z",
-      "ia": 3.3728,
-      "baseline": 2.12
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T18:00:00Z",
-      "ia": 3.1456,
-      "baseline": 1.43
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T19:00:00Z",
-      "ia": 3.0686,
-      "baseline": 0.81
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T20:00:00Z",
-      "ia": 2.6713,
-      "baseline": 0.7
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T21:00:00Z",
-      "ia": 2.1337,
-      "baseline": 1.2
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T22:00:00Z",
-      "ia": 2.4255,
-      "baseline": 1.92
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-09T23:00:00Z",
-      "ia": 2.5546,
-      "baseline": 2.02
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T00:00:00Z",
-      "ia": 2.9275,
-      "baseline": 2.5
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T01:00:00Z",
-      "ia": 3.8123,
-      "baseline": 3.45
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T02:00:00Z",
-      "ia": 4.0753,
-      "baseline": 4.1
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T03:00:00Z",
-      "ia": 4.2744,
-      "baseline": 4.7
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T04:00:00Z",
-      "ia": 4.3794,
-      "baseline": 5.43
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T05:00:00Z",
-      "ia": 4.419,
-      "baseline": 5.7
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T06:00:00Z",
-      "ia": 4.6144,
-      "baseline": 6.1
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T07:00:00Z",
-      "ia": 4.911,
-      "baseline": 6.23
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T08:00:00Z",
-      "ia": 4.8243,
-      "baseline": 5.51
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T09:00:00Z",
-      "ia": 5.3307,
-      "baseline": 5.31
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T10:00:00Z",
-      "ia": 6.5716,
-      "baseline": 6.87
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T11:00:00Z",
-      "ia": 6.3226,
-      "baseline": 6.7
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T12:00:00Z",
-      "ia": 6.4013,
-      "baseline": 6.05
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T13:00:00Z",
-      "ia": 6.72,
-      "baseline": 6.61
+      "p_exceed": 0.0001,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T14:00:00Z",
-      "ia": 7.0079,
-      "baseline": 7.24
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T15:00:00Z",
-      "ia": 7.0761,
-      "baseline": 7.45
+      "p_exceed": 0.0001,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T16:00:00Z",
-      "ia": 7.2123,
-      "baseline": 7.24
+      "p_exceed": 0.0001,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T17:00:00Z",
-      "ia": 7.3463,
-      "baseline": 7.52
+      "p_exceed": 0.0001,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T18:00:00Z",
-      "ia": 6.9588,
-      "baseline": 6.82
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T19:00:00Z",
-      "ia": 6.9881,
-      "baseline": 6.42
+      "p_exceed": 0.0001,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T20:00:00Z",
-      "ia": 6.8002,
-      "baseline": 6.36
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T21:00:00Z",
-      "ia": 6.807,
-      "baseline": 6.26
+      "p_exceed": 0.0001,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T22:00:00Z",
-      "ia": 6.9856,
-      "baseline": 7.53
+      "p_exceed": 0.0001,
+      "p90_upper": null
     },
     {
       "t": "2026-09-10T23:00:00Z",
-      "ia": 6.1483,
-      "baseline": 5.91
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-11T00:00:00Z",
-      "ia": 5.7096,
-      "baseline": 4.39
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-11T01:00:00Z",
-      "ia": 5.1064,
-      "baseline": 4.56
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-11T02:00:00Z",
-      "ia": 4.5617,
-      "baseline": 4.97
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-11T03:00:00Z",
-      "ia": 5.4197,
-      "baseline": 4.77
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-11T04:00:00Z",
-      "ia": 5.3369,
-      "baseline": 5.08
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-11T05:00:00Z",
-      "ia": 5.4199,
-      "baseline": 5.19
+      "p_exceed": 0.0,
+      "p90_upper": null
     },
     {
       "t": "2026-09-11T06:00:00Z",
-      "ia": 4.6321,
-      "baseline": 4.69
+      "p_exceed": 0.0,
+      "p90_upper": null
     }
-  ],
-  "baseline_model": "meteofrance_arpege_europe"
+  ]
 }

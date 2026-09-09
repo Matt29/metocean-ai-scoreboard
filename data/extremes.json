@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-09-08T06:00:00Z",
+  "updated": "2026-09-09T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -185,22 +185,22 @@
           "baseline_model": "meteofrance_arpege_europe"
         },
         {
+          "date": "2026-09-08",
+          "obs_peak": 17.0,
+          "t_peak": "2026-09-08T08:00:00Z",
+          "ia_at_peak": 13.4932,
+          "baseline_at_peak": 15.43,
+          "peak_error_ia": -3.5068,
+          "peak_error_baseline": -1.57,
+          "baseline_model": "meteofrance_arpege_europe"
+        },
+        {
           "date": "2026-07-12",
           "obs_peak": 16.6,
           "t_peak": "2026-07-13T08:00:00Z",
           "ia_at_peak": 12.6373,
           "baseline_at_peak": 13.76,
           "peak_error_ia": -3.9627,
-          "peak_error_baseline": -2.84,
-          "baseline_model": "meteofrance_arpege_europe"
-        },
-        {
-          "date": "2026-07-13",
-          "obs_peak": 16.6,
-          "t_peak": "2026-07-13T08:00:00Z",
-          "ia_at_peak": 12.4802,
-          "baseline_at_peak": 13.76,
-          "peak_error_ia": -4.1198,
           "peak_error_baseline": -2.84,
           "baseline_model": "meteofrance_arpege_europe"
         }
@@ -210,6 +210,26 @@
       "id": "dieppe",
       "episodes": [
         {
+          "date": "2026-09-07",
+          "obs_peak": 13.3,
+          "t_peak": "2026-09-08T15:00:00Z",
+          "ia_at_peak": 3.8366,
+          "baseline_at_peak": 4.36,
+          "peak_error_ia": -9.4634,
+          "peak_error_baseline": -8.94,
+          "baseline_model": "meteofrance_arpege_europe"
+        },
+        {
+          "date": "2026-09-08",
+          "obs_peak": 13.3,
+          "t_peak": "2026-09-08T15:00:00Z",
+          "ia_at_peak": 8.1398,
+          "baseline_at_peak": 9.36,
+          "peak_error_ia": -5.1602,
+          "peak_error_baseline": -3.94,
+          "baseline_model": "meteofrance_arpege_europe"
+        },
+        {
           "date": "2026-08-28",
           "obs_peak": 10.4,
           "t_peak": "2026-08-29T19:00:00Z",
@@ -217,26 +237,6 @@
           "baseline_at_peak": 9.65,
           "peak_error_ia": -1.2069,
           "peak_error_baseline": -0.75,
-          "baseline_model": "meteofrance_arpege_europe"
-        },
-        {
-          "date": "2026-08-29",
-          "obs_peak": 10.4,
-          "t_peak": "2026-08-29T19:00:00Z",
-          "ia_at_peak": 8.9112,
-          "baseline_at_peak": 8.79,
-          "peak_error_ia": -1.4888,
-          "peak_error_baseline": -1.61,
-          "baseline_model": "meteofrance_arpege_europe"
-        },
-        {
-          "date": "2026-07-25",
-          "obs_peak": 10.3,
-          "t_peak": "2026-07-26T15:00:00Z",
-          "ia_at_peak": 8.8309,
-          "baseline_at_peak": 8.41,
-          "peak_error_ia": -1.4691,
-          "peak_error_baseline": -1.89,
           "baseline_model": "meteofrance_arpege_europe"
         }
       ]

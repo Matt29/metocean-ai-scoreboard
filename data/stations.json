@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-09-08T06:00:00Z",
+  "updated": "2026-09-09T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -12,7 +12,9 @@
       "published": true,
       "weak": false,
       "baseline_model": "ncep_gfswave025",
-      "model_name": "hgb-per-lead"
+      "model_name": "hgb-per-lead",
+      "peaks_alert_published": false,
+      "peaks_band_published": false
     },
     {
       "id": "belle-ile",
@@ -24,7 +26,9 @@
       "published": true,
       "weak": false,
       "baseline_model": "ewam",
-      "model_name": "hgb-per-lead"
+      "model_name": "hgb-per-lead",
+      "peaks_alert_published": false,
+      "peaks_band_published": false
     },
     {
       "id": "anglet",
@@ -36,7 +40,9 @@
       "published": true,
       "weak": false,
       "baseline_model": "meteofrance_wave",
-      "model_name": "ridge"
+      "model_name": "ridge",
+      "peaks_alert_published": false,
+      "peaks_band_published": false
     },
     {
       "id": "cherbourg",
@@ -48,7 +54,9 @@
       "published": false,
       "weak": false,
       "baseline_model": "ewam",
-      "model_name": "hgb"
+      "model_name": "hgb",
+      "peaks_alert_published": false,
+      "peaks_band_published": false
     },
     {
       "id": "brest",
@@ -59,7 +67,9 @@
       "unit": "m",
       "published": true,
       "weak": false,
-      "model_name": "hgb-per-lead"
+      "model_name": "hgb-per-lead",
+      "peaks_alert_published": true,
+      "peaks_band_published": true
     },
     {
       "id": "saint-malo",
@@ -70,7 +80,9 @@
       "unit": "m",
       "published": true,
       "weak": false,
-      "model_name": "hgb-per-lead"
+      "model_name": "hgb-per-lead",
+      "peaks_alert_published": true,
+      "peaks_band_published": true
     },
     {
       "id": "ouessant",
@@ -82,7 +94,9 @@
       "published": true,
       "weak": false,
       "baseline_model": "meteofrance_arpege_europe",
-      "model_name": "hgb"
+      "model_name": "hgb",
+      "peaks_alert_published": true,
+      "peaks_band_published": false
     },
     {
       "id": "dieppe",
@@ -94,7 +108,9 @@
       "published": true,
       "weak": false,
       "baseline_model": "meteofrance_arpege_europe",
-      "model_name": "hgb-per-lead"
+      "model_name": "hgb",
+      "peaks_alert_published": true,
+      "peaks_band_published": false
     },
     {
       "id": "cherbourg-vent",
@@ -106,7 +122,9 @@
       "published": true,
       "weak": false,
       "baseline_model": "meteofrance_arpege_europe",
-      "model_name": "hgb-per-lead"
+      "model_name": "hgb",
+      "peaks_alert_published": true,
+      "peaks_band_published": true
     }
   ]
 }
