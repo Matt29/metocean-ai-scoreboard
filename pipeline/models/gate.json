@@ -18,11 +18,53 @@
     "weak": false
   },
   "brest": {
+    "ci_unit": "issue_day",
+    "evaluation_protocol": "holdout annuel",
+    "evaluation_ready": true,
+    "fold_baselines": [
+      null
+    ],
     "gain": 0.5421,
     "gain_debiased": 0.539,
+    "gain_debiased_ci95_high": 0.5669,
+    "gain_debiased_ci95_low": 0.5078,
     "mae_baseline": 0.1177,
     "mae_model": 0.0539,
+    "n_folds": 1,
+    "n_issue_days": 365,
     "pass": true,
+    "peaks": {
+      "alert": {
+        "bss_clim": 0.5086,
+        "bss_clim_ci95_high": 0.6078,
+        "bss_clim_ci95_low": 0.3953,
+        "clim": 0.1,
+        "far": 0.3073,
+        "far_baseline": null,
+        "n_days_48h": 365,
+        "n_events": 1428,
+        "n_events_p98": 140,
+        "p48_bss_clim": 0.7302,
+        "pass": true,
+        "pod": 0.7577,
+        "pod_baseline": null,
+        "threshold_p90": 0.2017,
+        "threshold_p98": 0.4136,
+        "weak": false
+      },
+      "band": {
+        "coverage": 0.8816,
+        "crossings_frac": 0.0264,
+        "gain_pinball": 0.6266,
+        "gain_pinball_ci95_high": 0.6604,
+        "gain_pinball_ci95_low": 0.5925,
+        "pass": true,
+        "pinball_baseline": 0.0307,
+        "pinball_model": 0.0115,
+        "weak": false
+      }
+    },
+    "test_days": 365,
     "weak": false
   },
   "cherbourg": {
@@ -36,29 +78,164 @@
   },
   "cherbourg-vent": {
     "baseline_model": "meteofrance_arpege_europe",
-    "gain": 0.2536,
-    "gain_debiased": 0.162,
-    "mae_baseline": 1.4956,
-    "mae_model": 1.1163,
+    "ci_unit": "issue_day",
+    "evaluation_protocol": "rolling-origin multi-saisons",
+    "evaluation_ready": true,
+    "fold_baselines": [
+      "meteofrance_arpege_europe",
+      "meteofrance_arpege_europe",
+      "meteofrance_arpege_europe",
+      "meteofrance_arpege_europe"
+    ],
+    "gain": 0.3362,
+    "gain_debiased": 0.2397,
+    "gain_debiased_ci95_high": 0.2656,
+    "gain_debiased_ci95_low": 0.2121,
+    "mae_baseline": 1.6353,
+    "mae_model": 1.0856,
+    "n_folds": 4,
+    "n_issue_days": 360,
     "pass": true,
+    "peaks": {
+      "alert": {
+        "bss_clim": 0.5979,
+        "bss_clim_ci95_high": 0.6426,
+        "bss_clim_ci95_low": 0.5485,
+        "clim": 0.1009,
+        "far": 0.2267,
+        "far_baseline": 0.4183,
+        "n_days_48h": 360,
+        "n_events": 2148,
+        "n_events_p98": 328,
+        "p48_bss_clim": 0.6222,
+        "pass": true,
+        "pod": 0.7481,
+        "pod_baseline": 0.6462,
+        "threshold_p90": 10.9,
+        "threshold_p98": 14.4,
+        "weak": false
+      },
+      "band": {
+        "coverage": 0.8801,
+        "crossings_frac": 0.0054,
+        "gain_pinball": 0.3134,
+        "gain_pinball_ci95_high": 0.3441,
+        "gain_pinball_ci95_low": 0.2842,
+        "pass": true,
+        "pinball_baseline": 0.3629,
+        "pinball_model": 0.2492,
+        "weak": false
+      }
+    },
+    "test_days": 90,
     "weak": false
   },
   "dieppe": {
     "baseline_model": "meteofrance_arpege_europe",
-    "gain": 0.1812,
-    "gain_debiased": 0.1073,
-    "mae_baseline": 0.9764,
-    "mae_model": 0.7994,
+    "ci_unit": "issue_day",
+    "evaluation_protocol": "rolling-origin multi-saisons",
+    "evaluation_ready": true,
+    "fold_baselines": [
+      "meteofrance_arpege_europe",
+      "meteofrance_arpege_europe",
+      "meteofrance_arpege_europe",
+      "meteofrance_arpege_europe"
+    ],
+    "gain": 0.3754,
+    "gain_debiased": 0.3432,
+    "gain_debiased_ci95_high": 0.3646,
+    "gain_debiased_ci95_low": 0.3194,
+    "mae_baseline": 1.2941,
+    "mae_model": 0.8084,
+    "n_folds": 4,
+    "n_issue_days": 360,
     "pass": true,
+    "peaks": {
+      "alert": {
+        "bss_clim": 0.6063,
+        "bss_clim_ci95_high": 0.6469,
+        "bss_clim_ci95_low": 0.5633,
+        "clim": 0.1041,
+        "far": 0.1764,
+        "far_baseline": 0.4838,
+        "n_days_48h": 360,
+        "n_events": 2090,
+        "n_events_p98": 416,
+        "p48_bss_clim": 0.6373,
+        "pass": true,
+        "pod": 0.7014,
+        "pod_baseline": 0.5656,
+        "threshold_p90": 8.0,
+        "threshold_p98": 11.1,
+        "weak": false
+      },
+      "band": {
+        "coverage": 0.8397,
+        "crossings_frac": 0.0012,
+        "gain_pinball": 0.3146,
+        "gain_pinball_ci95_high": 0.34,
+        "gain_pinball_ci95_low": 0.2884,
+        "pass": false,
+        "pinball_baseline": 0.3035,
+        "pinball_model": 0.208,
+        "weak": false
+      }
+    },
+    "test_days": 90,
     "weak": false
   },
   "ouessant": {
     "baseline_model": "meteofrance_arpege_europe",
-    "gain": 0.2385,
-    "gain_debiased": 0.2058,
-    "mae_baseline": 1.2309,
-    "mae_model": 0.9373,
+    "ci_unit": "issue_day",
+    "evaluation_protocol": "rolling-origin multi-saisons",
+    "evaluation_ready": true,
+    "fold_baselines": [
+      "meteofrance_arpege_europe",
+      "meteofrance_arpege_europe",
+      "meteofrance_arpege_europe",
+      "meteofrance_arpege_europe"
+    ],
+    "gain": 0.2174,
+    "gain_debiased": 0.2102,
+    "gain_debiased_ci95_high": 0.2275,
+    "gain_debiased_ci95_low": 0.1919,
+    "mae_baseline": 1.2383,
+    "mae_model": 0.969,
+    "n_folds": 4,
+    "n_issue_days": 360,
     "pass": true,
+    "peaks": {
+      "alert": {
+        "bss_clim": 0.6709,
+        "bss_clim_ci95_high": 0.7043,
+        "bss_clim_ci95_low": 0.634,
+        "clim": 0.1026,
+        "far": 0.1637,
+        "far_baseline": 0.2715,
+        "n_days_48h": 360,
+        "n_events": 2372,
+        "n_events_p98": 350,
+        "p48_bss_clim": 0.7192,
+        "pass": true,
+        "pod": 0.7626,
+        "pod_baseline": 0.7285,
+        "threshold_p90": 12.6,
+        "threshold_p98": 16.958,
+        "weak": false
+      },
+      "band": {
+        "coverage": 0.8495,
+        "crossings_frac": 0.0014,
+        "gain_pinball": 0.2114,
+        "gain_pinball_ci95_high": 0.2419,
+        "gain_pinball_ci95_low": 0.1828,
+        "pass": false,
+        "pinball_baseline": 0.3105,
+        "pinball_model": 0.2448,
+        "weak": false
+      }
+    },
+    "test_days": 90,
     "weak": false
   },
   "pierres-noires": {
@@ -71,11 +248,53 @@
     "weak": false
   },
   "saint-malo": {
+    "ci_unit": "issue_day",
+    "evaluation_protocol": "holdout annuel",
+    "evaluation_ready": true,
+    "fold_baselines": [
+      null
+    ],
     "gain": 0.3416,
     "gain_debiased": 0.3413,
+    "gain_debiased_ci95_high": 0.3644,
+    "gain_debiased_ci95_low": 0.3165,
     "mae_baseline": 0.1506,
     "mae_model": 0.0991,
+    "n_folds": 1,
+    "n_issue_days": 365,
     "pass": true,
+    "peaks": {
+      "alert": {
+        "bss_clim": 0.2307,
+        "bss_clim_ci95_high": 0.2947,
+        "bss_clim_ci95_low": 0.1635,
+        "clim": 0.1,
+        "far": 0.4681,
+        "far_baseline": null,
+        "n_days_48h": 365,
+        "n_events": 1448,
+        "n_events_p98": 204,
+        "p48_bss_clim": 0.3032,
+        "pass": true,
+        "pod": 0.4669,
+        "pod_baseline": null,
+        "threshold_p90": 0.255,
+        "threshold_p98": 0.4606,
+        "weak": false
+      },
+      "band": {
+        "coverage": 0.8616,
+        "crossings_frac": 0.0156,
+        "gain_pinball": 0.3473,
+        "gain_pinball_ci95_high": 0.3798,
+        "gain_pinball_ci95_low": 0.314,
+        "pass": true,
+        "pinball_baseline": 0.0356,
+        "pinball_model": 0.0233,
+        "weak": false
+      }
+    },
+    "test_days": 365,
     "weak": false
   }
 }
