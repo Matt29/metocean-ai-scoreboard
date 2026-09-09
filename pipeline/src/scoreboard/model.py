@@ -25,7 +25,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
 from sklearn.linear_model import Ridge
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -35,10 +35,58 @@ MODEL_NAMES = ("hgb", "ridge", "hgb-per-lead")
 LEAD_SLICES = ((1, 12), (13, 24), (25, 48))
 
 
+_HGB_KWARGS = {"max_iter": 300, "learning_rate": 0.06, "early_stopping": True, "random_state": 0}
+
+
 def _hgb() -> HistGradientBoostingRegressor:
-    return HistGradientBoostingRegressor(
-        max_iter=300, learning_rate=0.06, early_stopping=True, random_state=0
-    )
+    return HistGradientBoostingRegressor(**_HGB_KWARGS)
+
+
+PEAK_MIN_CLASS_ROWS = 24  # less than a day of one class: a classifier learns nothing usable
+PEAK_QUANTILE = 0.9
+
+
+def _hgb_classifier() -> HistGradientBoostingClassifier:
+    return HistGradientBoostingClassifier(**_HGB_KWARGS)
+
+
+def _hgb_quantile() -> HistGradientBoostingRegressor:
+    return HistGradientBoostingRegressor(loss="quantile", quantile=PEAK_QUANTILE, **_HGB_KWARGS)
+
+
+def train_peaks(x: pd.DataFrame, target: pd.Series, threshold: float) -> dict | None:
+    """Exceedance classifier + p90 regressor on the same columns as the median model.
+
+    `target` is on the peak scale (observation, or `obs - harmonic` for tide).
+    Returns None when either class has fewer than `PEAK_MIN_CLASS_ROWS` rows:
+    a degenerate fold is reported as such, never scored on a constant.
+    """
+    positive = (target.to_numpy() >= threshold)
+    if positive.sum() < PEAK_MIN_CLASS_ROWS or (~positive).sum() < PEAK_MIN_CLASS_ROWS:
+        return None
+    return {
+        "classifier": _hgb_classifier().fit(x, positive),
+        "quantile": _hgb_quantile().fit(x, target),
+        "feature_columns": list(x.columns),
+    }
+
+
+def predict_peaks(peaks: dict, x: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """`(p_exceed, q90)` on the target scale, columns reordered to the fitted list."""
+    ordered = _ordered(x, peaks["feature_columns"])
+    p_exceed = peaks["classifier"].predict_proba(ordered)[:, 1]
+    return p_exceed, peaks["quantile"].predict(ordered)
+
+
+def stage_peaks(peaks: dict, station_id: str, staging_dir: Path, thresholds: dict, kind: str) -> Path:
+    path = staging_dir / f"{station_id}-peaks.joblib"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump({**peaks, "thresholds": dict(thresholds), "kind": kind}, path)
+    return path
+
+
+def load_peaks_artifact(station_id: str, models_dir: Path | None = None) -> dict:
+    return joblib.load((models_dir or MODELS_DIR) / f"{station_id}-peaks.joblib")
 
 
 class PerLeadRegressor:

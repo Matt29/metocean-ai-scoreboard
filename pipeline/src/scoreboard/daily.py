@@ -22,7 +22,10 @@ that loses to its own baseline is never published):
    feature columns built here must match the artefact's `feature_columns`
    exactly, or the station is marked missing rather than served a frame the
    model was never fitted on.
-4. Publish today's `latest.json`.
+4. Publish today's `latest.json`, then — from the same `feats`, built once —
+   attempt today's `peaks.json` (`issue_peaks`/`publish.write_peaks`): its own
+   try/except, gated per-station by `gate[station]["peaks"]`, and a failure
+   here never undoes the median publication that already happened.
 5. Archive the served wind forecast (`archive.write_day`, Task A1) for every
    station that reached step 4 — the corpus a future retrain needs to measure
    what a *real* +48 h forecast costs. Training now uses past ARPEGE runs rather
@@ -56,6 +59,7 @@ import logging
 from datetime import date, timedelta
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from scoreboard import archive, harmonic, model, publish
@@ -326,10 +330,9 @@ def score_series(
     if not series:
         return _with_baseline_model({"date": day, "status": "missing"}, baseline_model)
 
-    times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in series])
+    times, matched = publish.align_obs(obs, series)
     ia = pd.Series([p["ia"] for p in series], index=times)
     baseline = pd.Series([p["baseline"] for p in series], index=times)
-    matched = obs.reindex(times, method="nearest", tolerance=pd.Timedelta("1h"))
     keep = matched.notna()
 
     # Leads with no obs yet (typically 25-48h the morning after the issue) are
@@ -381,7 +384,13 @@ def _with_baseline_model(entry: dict, baseline_model: str | None) -> dict:
     return entry
 
 
-def rescore_entry(entry: dict, obs: pd.Series, *, drop_pending_before: date | None = None) -> dict:
+def rescore_entry(
+    entry: dict,
+    obs: pd.Series,
+    *,
+    drop_pending_before: date | None = None,
+    kind: str | None = None,
+) -> dict:
     """Complete a partially scored day: match its `pending` leads against `obs`.
 
     Merge, never re-match: points already in `series` were scored against the
@@ -397,13 +406,22 @@ def rescore_entry(entry: dict, obs: pd.Series, *, drop_pending_before: date | No
     older than any obs window a future run will fetch — whatever is still
     unmatched *after* the merge is dead weight and is dropped, so every caller
     (daily sweep, backfill sweep) gets the same aging rule for free.
+
+    `kind` (the station's) unlocks the *same* completion for the peak outputs,
+    whose points live in `peaks_pending` — see `_merge_peaks_pending`. Without
+    it only the median half is completed (the peak half is left untouched,
+    never dropped as if it had been scored).
     """
-    pending = entry.get("pending") or []
-    if not pending:
-        return entry
     stale = (
         drop_pending_before is not None and date.fromisoformat(entry["date"]) < drop_pending_before
     )
+    return _merge_peaks_pending(_merge_median_pending(entry, obs, stale), obs, stale, kind)
+
+
+def _merge_median_pending(entry: dict, obs: pd.Series, stale: bool) -> dict:
+    pending = entry.get("pending") or []
+    if not pending:
+        return entry
     times = pd.DatetimeIndex([pd.Timestamp(p["t"]) for p in pending])
     matched = obs.reindex(times, method="nearest", tolerance=pd.Timedelta("1h"))
     keep = matched.notna()
@@ -435,9 +453,53 @@ def rescore_entry(entry: dict, obs: pd.Series, *, drop_pending_before: date | No
     still_pending = [p for p, ok in zip(pending, keep) if not ok]
     if still_pending and not stale:
         new_entry["pending"] = still_pending
-    if entry.get("backfilled"):
-        new_entry["backfilled"] = True
+    # The peak half of the day is rebuilt by `_merge_peaks_pending`, not here —
+    # but it must survive this rebuild, which starts from a fixed key list.
+    for key in ("peaks", "peaks_pending", "backfilled"):
+        if entry.get(key):
+            new_entry[key] = entry[key]
     return _with_baseline_model(new_entry, entry.get("baseline_model"))
+
+
+def _merge_peaks_pending(entry: dict, obs: pd.Series, stale: bool, kind: str | None) -> dict:
+    """Same mechanism as the median's `pending`, for the peak outputs.
+
+    A day scored the morning after its issue only meets ~24 h of its own leads;
+    without this merge the published `pod`/`far`/`bss_clim`/`coverage_published`
+    would be short-lead only while claiming the full 48 h horizon. The context
+    needed to count (`threshold_p90`, `clim`) travels *with* the pending points
+    rather than being re-read from `gate.json`: a retrain between the issue and
+    this merge would otherwise sum two thresholds into one day's counts.
+
+    When `kind` is None or no observations match, `peaks_pending` is left untouched
+    if the entry is recent; if stale, it is dropped along with expired data.
+    """
+    ctx = entry.get("peaks_pending")
+    if not ctx:
+        return entry
+    points = ctx["points"]
+    _, matched = publish.align_obs(obs, points)
+    keep = matched.notna().to_numpy()
+    if kind is None or not keep.any():
+        if not stale:
+            return entry
+        return {k: v for k, v in entry.items() if k != "peaks_pending"}
+    counts = publish.score_peaks_day(
+        obs,
+        {"threshold_p90": ctx["threshold_p90"], "series": [p for p, ok in zip(points, keep) if ok]},
+        kind,
+        ctx["clim"],
+    )
+    new_entry = dict(entry)
+    if counts:
+        previous = entry.get("peaks") or {}
+        new_entry["peaks"] = {k: previous.get(k, 0) + v for k, v in counts.items()}
+    rest = [p for p, ok in zip(points, keep) if not ok]
+    if rest and not stale:
+        new_entry["peaks_pending"] = {**ctx, "points": rest}
+    else:
+        new_entry.pop("peaks_pending", None)
+    return new_entry
 
 
 def _rescore_pending(station: Station, obs: pd.Series, out_dir: Path, run_date: date) -> None:
@@ -446,22 +508,28 @@ def _rescore_pending(station: Station, obs: pd.Series, out_dir: Path, run_date: 
     those leads only meet their obs two days after issuance, one day after
     `_score_previous_issue` has come and gone. Called from both scoring paths
     (daily's `_run_station` and backfill's `_backfill_station`) — wherever
-    `score_series` can write `pending`, this sweep must be reachable too."""
+    `score_series` can write `pending`, this sweep must be reachable too.
+
+    Same sweep, same aging rule, for the peak outputs' own `peaks_pending`:
+    without it `peaks_scores.json` would publish full-horizon-looking metrics
+    measured on the ~24 h of leads that happened to have obs the next morning."""
     history = publish.read_history(out_dir, station.id)
     if not history:
         return
     cutoff = run_date - timedelta(days=PENDING_MAX_AGE_DAYS)
     for entry in history["days"]:
-        if not entry.get("pending"):
+        if not (entry.get("pending") or entry.get("peaks_pending")):
             continue
         if date.fromisoformat(entry["date"]) >= run_date:
             continue  # this run's own issue: no obs beyond what already scored it
-        new_entry = rescore_entry(entry, obs, drop_pending_before=cutoff)
+        new_entry = rescore_entry(entry, obs, drop_pending_before=cutoff, kind=station.kind)
         if new_entry != entry:
             publish.upsert_history(out_dir, station.id, new_entry)
 
 
-def _score_previous_issue(station: Station, obs: pd.Series, out_dir: Path, run_date: date) -> None:
+def _score_previous_issue(
+    station: Station, obs: pd.Series, out_dir: Path, run_date: date, gate_peaks: dict | None = None
+) -> None:
     """Score a *previous* `latest.json` against today's freshly fetched obs.
 
     Day label = that issue's own `issued` date — never `run_date` — because
@@ -481,7 +549,85 @@ def _score_previous_issue(station: Station, obs: pd.Series, out_dir: Path, run_d
     # `.get`, not `[...]`: a `latest.json` written before Task 6 has no
     # `baseline_model` key at all and must still be scored, not crash the sweep.
     entry = score_series(obs, prev.get("series") or [], issued_ts, prev.get("baseline_model"))
+    # Same issue only: a `peaks.json` overwritten by a later run's own
+    # inference must never be scored against yesterday's obs a second time.
+    # Its own try/except: a corrupt peaks.json or a malformed latest.json must
+    # never lose the median score (`entry`) already computed above.
+    try:
+        peaks_path = out_dir / station.id / "peaks.json"
+        peaks = publish._read(peaks_path)
+        # `status: missing` = the peaks inference failed for that issue; the file
+        # exists so a stale payload cannot be served, but there is nothing to score.
+        fresh = peaks and peaks.get("status", "ok") == "ok"
+        if fresh and peaks.get("issued") == prev.get("issued"):
+            clim = (gate_peaks or {}).get("alert", {}).get("clim")
+            if clim is not None:  # no silent climatology: without it, skip peaks scoring
+                if station.kind == "tide":  # the surge needs the harmonic: take it from latest.json
+                    baseline_by_t = {p["t"]: p["baseline"] for p in prev["series"]}
+                    for point in peaks["series"]:
+                        point["baseline"] = baseline_by_t.get(point["t"])
+                    peaks["series"] = [p for p in peaks["series"] if p["baseline"] is not None]
+                counts = publish.score_peaks_day(obs, peaks, station.kind, clim)
+                if counts:
+                    entry["peaks"] = counts
+                # The 25-48h leads have no obs yet: same "pending" mechanism as the
+                # median above, completed by `_rescore_pending` on a later run.
+                # Without it the published peak metrics would be short-lead only.
+                _, matched = publish.align_obs(obs, peaks["series"])
+                unmatched = [
+                    p for p, ok in zip(peaks["series"], matched.notna().to_numpy()) if not ok
+                ]
+                if unmatched:
+                    entry["peaks_pending"] = {
+                        "threshold_p90": peaks["threshold_p90"],
+                        "clim": clim,
+                        "points": unmatched,
+                    }
+    except Exception as exc:  # noqa: BLE001
+        log.warning("%s: scoring the previous peaks failed: %s", station.id, exc)
     publish.upsert_history(out_dir, station.id, entry)
+
+
+def _issue_features(
+    station: Station,
+    obs: pd.Series,
+    t0: pd.Timestamp,
+    models: pd.DataFrame | None,
+    forcing: pd.DataFrame,
+    models_dir: Path | None,
+) -> tuple[dict, pd.DataFrame]:
+    """`(artifact, feats)` — the one feature build per station per run, shared by
+    the median (`issue_series`/`_series_from`) and the peak outputs
+    (`issue_peaks`): résolution 1's "ne duplique pas la logique de prédiction",
+    now spanning both models rather than just the median's.
+
+    The artefact drives everything about a multi-model path: which Open-Meteo model
+    is the baseline, and which feature columns the estimator was fitted on. A frame
+    that does not match those columns exactly is refused (`SourceError` — the
+    caller marks the station missing) rather than silently reordered or subset by
+    `model.predict`: a model asked to correct a different baseline, or fed a
+    column list from another training generation, produces plausible garbage.
+    """
+    artifact = model.load_artifact(station.id, models_dir=models_dir)
+    baseline = _baseline_window(station, t0, models, artifact["baseline_model"], models_dir)
+    feats = build_features(baseline, obs, t0, forcing, models=models)
+    if list(feats.columns) != list(artifact["feature_columns"]):
+        raise SourceError(
+            station.id,
+            f"feature columns {list(feats.columns)} do not match the artefact's "
+            f"{list(artifact['feature_columns'])}",
+        )
+    return artifact, feats
+
+
+def _series_from(station: Station, artifact: dict, feats: pd.DataFrame) -> tuple[list[dict], np.ndarray]:
+    pred = model.predict(artifact["model"], feats)
+    ia = feats["baseline"].to_numpy() + pred if station.kind == "tide" else pred
+    series = [
+        {"t": iso(t), "ia": round(float(i), 4), "baseline": round(float(b), 4)}
+        for t, i, b in zip(feats.index, ia, feats["baseline"])
+    ]
+    return series, ia
 
 
 def issue_series(
@@ -496,31 +642,55 @@ def issue_series(
     "baseline"}], baseline_model)`. Shared by `_run_station` (live forcing, today's
     issue) and `backfill.py` (a-posteriori forcing/obs, a past day's issue) — one
     code path, résolution 1's "ne duplique pas la logique de prédiction".
-
-    The artefact drives everything about a multi-model path: which Open-Meteo model
-    is the baseline, and which feature columns the estimator was fitted on. A frame
-    that does not match those columns exactly is refused (`SourceError` — the
-    caller marks the station missing) rather than silently reordered or subset by
-    `model.predict`: a model asked to correct a different baseline, or fed a
-    column list from another training generation, produces plausible garbage.
     """
-    artifact = model.load_artifact(station.id, models_dir=models_dir)
-    baseline_model = artifact["baseline_model"]
-    baseline = _baseline_window(station, t0, models, baseline_model, models_dir)
-    feats = build_features(baseline, obs, t0, forcing, models=models)
-    if list(feats.columns) != list(artifact["feature_columns"]):
-        raise SourceError(
-            station.id,
-            f"feature columns {list(feats.columns)} do not match the artefact's "
-            f"{list(artifact['feature_columns'])}",
-        )
-    pred = model.predict(artifact["model"], feats)
-    ia = feats["baseline"].to_numpy() + pred if station.kind == "tide" else pred
+    artifact, feats = _issue_features(station, obs, t0, models, forcing, models_dir)
+    series, _ = _series_from(station, artifact, feats)
+    return series, artifact["baseline_model"]
+
+
+PEAK_UNIT = {"wave": "m", "tide": "m", "wind": "m/s"}
+
+
+def issue_peaks(
+    station: Station,
+    feats: pd.DataFrame,
+    median_ia: np.ndarray,
+    gate_peaks: dict | None,
+    models_dir: Path | None,
+) -> dict | None:
+    """Peak outputs for one issue, or None when the gate publishes neither.
+
+    Same features as the median (`feats`); tide outputs come back on the level
+    scale (harmonic added to the p90 surge), the threshold stays on the surge.
+    """
+    publish_alert = bool((gate_peaks or {}).get("alert", {}).get("pass"))
+    publish_band = bool((gate_peaks or {}).get("band", {}).get("pass"))
+    if not (publish_alert or publish_band):
+        return None
+    art = model.load_peaks_artifact(station.id, models_dir=models_dir)
+    p_exceed, q90 = model.predict_peaks(art, feats)
+    if station.kind == "tide":
+        q90 = q90 + feats["baseline"].to_numpy()
+    upper = np.maximum(q90, np.asarray(median_ia, dtype=float))
     series = [
-        {"t": iso(t), "ia": round(float(i), 4), "baseline": round(float(b), 4)}
-        for t, i, b in zip(feats.index, ia, feats["baseline"])
+        {
+            "t": iso(t),
+            "p_exceed": round(float(p), 4) if publish_alert else None,
+            "p90_upper": round(float(u), 4) if publish_band else None,
+        }
+        for t, p, u in zip(feats.index, p_exceed, upper)
     ]
-    return series, baseline_model
+    peak_idx = int(np.argmax(p_exceed))
+    return {
+        # `"missing"` is written instead by `_run_station` when this call raises —
+        # a reader must never mistake yesterday's payload for today's.
+        "status": "ok",
+        "unit": PEAK_UNIT[station.kind],
+        "threshold_p90": art["thresholds"]["p90"],
+        "p_48h": round(float(p_exceed.max()), 4) if publish_alert else None,
+        "t_peak_pred": iso(feats.index[peak_idx]) if publish_alert else None,
+        "series": series,
+    }
 
 
 def _fetch_inputs(station: Station) -> tuple[pd.DataFrame | None, pd.DataFrame, str]:
@@ -556,6 +726,7 @@ def _run_station(
     models_dir: Path | None,
     archive_dir: Path,
     obs_archive_dir: Path,
+    gate_peaks: dict | None = None,
 ) -> dict:
     try:
         # Avant tout le reste : des constantes fraîches, sinon la station est
@@ -575,14 +746,16 @@ def _run_station(
         # A malformed/truncated latest.json (bad JSON, missing "issued") must
         # not abort today's inference below — scoring the past and issuing
         # today are independent, so a failure here is swallowed, not raised.
-        _score_previous_issue(station, obs, out_dir, run_date)
+        _score_previous_issue(station, obs, out_dir, run_date, gate_peaks)
         _rescore_pending(station, obs, out_dir, run_date)
     except Exception as exc:  # noqa: BLE001
         log.warning("%s: scoring the previous issue failed: %s", station.id, exc)
 
     try:
         model_frame, forcing, forcing_source = _fetch_inputs(station)
-        series, baseline_model = issue_series(station, obs, t0, model_frame, forcing, models_dir)
+        artifact, feats = _issue_features(station, obs, t0, model_frame, forcing, models_dir)
+        series, ia = _series_from(station, artifact, feats)
+        baseline_model = artifact["baseline_model"]
     except Exception as exc:  # noqa: BLE001 - SourceError, a missing model file,
         # sklearn/pandas/utide raising on a degenerate input: none of it may
         # escape and abort the other stations' loop iteration.
@@ -596,6 +769,23 @@ def _run_station(
         return {"status": "missing", "reason": str(exc)}
 
     publish.write_latest(out_dir, station.id, issued, series, baseline_model=baseline_model)
+
+    try:
+        # Its own try/except (résolution 5, same spirit as the archiving block
+        # below): a peaks artefact that fails to load or predict must never
+        # undo the median publication that already happened above.
+        peaks = issue_peaks(station, feats, ia, gate_peaks, models_dir)
+        if peaks is not None:
+            publish.write_peaks(out_dir, station.id, issued, peaks)
+    except Exception as exc:  # noqa: BLE001 - peaks must never fail the median publication
+        # Leaving yesterday's peaks.json in place would serve a stale alert as if
+        # it were today's; the file is marked missing instead (same meaning as a
+        # history day's `status`), and `_score_previous_issue` skips it.
+        try:
+            publish.write_peaks(out_dir, station.id, issued, {"status": "missing"})
+        except Exception as marker_exc:  # noqa: BLE001 - filesystem must not escape _run_station
+            log.warning("%s: writing the missing peaks marker failed: %s", station.id, marker_exc)
+        log.warning("%s: peak outputs failed: %s", station.id, exc)
 
     try:
         # Archived *after* a successful issuance only (résolution: a failed
@@ -647,7 +837,15 @@ def run(
     # try/except and a dead source takes down exactly one station.
     summary = {
         st.id: _run_station(
-            st, run_date, t0, issued, out_dir, models_dir, archive_dir, obs_archive_dir
+            st,
+            run_date,
+            t0,
+            issued,
+            out_dir,
+            models_dir,
+            archive_dir,
+            obs_archive_dir,
+            gate.get(st.id, {}).get("peaks"),
         )
         for st in published
     }
@@ -669,6 +867,9 @@ def run(
     # that also gained a peak day would leave extremes.json stale until the
     # next daily run — an acceptable lag, extremes are not backfill's job.
     publish.write_extremes(out_dir, [s.id for s in published], issued)
+    # Same additive/separate-from-scores.json reasoning as extremes.json above,
+    # for the peak outputs' own scoring (`history.json`'s `"peaks"` key).
+    publish.write_peaks_scores(out_dir, [s.id for s in published], issued)
     # Lead magnet CSV, same "not backfill's job" reasoning as `write_extremes`
     # above (see its comment) — one per published station, from the same
     # on-disk history just updated.

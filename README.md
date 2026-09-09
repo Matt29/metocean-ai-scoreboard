@@ -111,6 +111,9 @@ GitHub Actions (cron, voir .github/workflows/daily.yml)
         ├─ 4. prévision atmosphérique Open-Meteo (ARPEGE/ICON/ECMWF selon le kind)
         │      → inférence du modèle IA (par station)
         ├─ 5. publie data/<station>/latest.json + history.json + data/scores.json
+        │      + data/extremes.json (épisodes bruts, pas une évaluation) et,
+        │      quand le gate publie au moins une sortie « pics »,
+        │      data/<station>/peaks.json + data/peaks_scores.json
         └─ 6. archive le vent + les modèles vague servis → pipeline/data_forecast_archive/YYYY-MM-DD.parquet
         │
         ▼
@@ -131,6 +134,39 @@ l'archive n'est plus le seul instrument possible — elle reste la seule mesure
 véritablement vraie, à des mois d'échéance. Il archive aussi, depuis Task 7,
 les colonnes `hs_*` des 5 modèles vague effectivement servis à chaque station —
 pas seulement le vent.
+
+Produit « pics » (alerte de dépassement + borne haute p90, à côté du médian,
+gate propre `gate.json["peaks"]`) — voir
+[`docs/demandes-produit.md`](docs/demandes-produit.md) § 6 et
+[`docs/plan-dev-modele.md`](docs/plan-dev-modele.md) pour le détail. Deux
+fichiers additifs, écrits seulement quand le gate publie au moins une sortie :
+
+```
+data/<id>/peaks.json    {"schema_version":1,"station","issued","status","unit",
+                         "threshold_p90","p_48h","t_peak_pred",
+                         "series":[{"t","p_exceed","p90_upper"}]}
+data/peaks_scores.json  {"schema_version":1,"updated","stations":[{"id",
+                         "threshold_p90"?,
+                         "alert_30d"|"alert_90d":{"n_events","pod","far",
+                         "bss_clim","n_days"}|null,
+                         "band_30d"|"band_90d":{"coverage_published",
+                         "n_points","n_days"}|null}]}
+```
+
+`p_exceed`/`p90_upper` (resp. `p_48h`/`t_peak_pred`) valent `null` sans sortie
+publiée pour la station. `status` vaut `"missing"` — et le fichier se réduit
+alors à `schema_version`/`station`/`issued`/`status` — quand l'inférence pics a
+échoué pour l'émission du jour : mieux vaut un fichier qui le dit qu'un
+`peaks.json` de la veille servi comme s'il était du jour.
+
+`coverage_published` **n'est pas** le `coverage` du gate (`gate.json` →
+`peaks.band.coverage`) et ne se compare pas à sa bande 0,85–0,95 : le gate
+mesure `cible ≤ q90`, la production mesure `cible ≤ max(médian, q90)`, la borne
+réellement servie. Le second est donc mécaniquement ≥ le premier — deux
+estimandes, deux noms.
+
+Contrat complet, dont la réserve sur `extremes.json`
+qu'ils remplacent comme évaluation : docstring de `pipeline/src/scoreboard/publish.py`.
 
 ## Commandes
 

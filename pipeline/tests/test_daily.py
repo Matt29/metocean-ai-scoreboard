@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from scoreboard import daily, publish
+from scoreboard import daily, model, publish
 from scoreboard.config import Station
 from scoreboard.features import FEATURE_COLUMNS, WAVE_FEATURE_COLUMNS, WIND_FEATURE_COLUMNS
 from scoreboard.sources import SourceError
@@ -262,6 +262,56 @@ def patched_sources(monkeypatch):
     monkeypatch.setattr(daily.model, "load_artifact", _artifact)
     _patch_harmonic(monkeypatch)
     return monkeypatch
+
+
+def _peak_trainable(patched_sources):
+    """`_issue_features`'s forecast window is always exactly 48 rows (`t0+1h` to
+    `t0+48h`, fixed by `BASELINE_HORIZON_H` — no fixture can widen it). A
+    `train_peaks` call whose threshold is a 90th percentile of that same
+    48-row array only ever isolates ~5 rows on one side of it, always below
+    `PEAK_MIN_CLASS_ROWS` (24) on *some* split of the peaks tests' fixed
+    target arrays. That guard is a training-quality concern (Task 1); these
+    tests use `train_peaks` only to obtain a fitted artefact for an
+    *inference* test, so it is lowered here rather than reshaping the target
+    arrays to hit an exact, brittle 24/24 boundary."""
+    patched_sources.setattr(model, "PEAK_MIN_CLASS_ROWS", 1)
+
+
+def _wave_inference_fixture(tmp_path, patched_sources):
+    """`(station, models_dir, obs, t0, models, forcing)` for a wave station,
+    every source patched by `patched_sources` — the inputs `_issue_features`
+    needs, built the same way `_run_station` builds them."""
+    _peak_trainable(patched_sources)
+    station = WAVE
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    t0 = pd.Timestamp(RUN_DATE, tz="UTC") + pd.Timedelta(hours=daily.ISSUE_HOUR)
+    obs = daily._fetch_obs(station, RUN_DATE, obs_archive_dir=tmp_path / "obs")
+    # A varying (not constant) baseline: `test_issue_peaks_publishes_only_the_passing_outputs`
+    # trains on `feats["baseline"] + 0.1` against a threshold derived from
+    # `feats["baseline"]` itself — a constant baseline makes every row exceed
+    # it, a single-class target `predict_proba` cannot serve column 1 for.
+    patched_sources.setattr(
+        daily,
+        "fetch_wave_models_forecast",
+        lambda station, session=None, forecast_days=3, past_days=2: _marine_df(
+            forecast_days=forecast_days, past_days=past_days
+        ).assign(**{f"hs_{BASELINE_MODEL}": lambda df: np.linspace(1.0, 5.0, len(df))}),
+    )
+    models, forcing, _ = daily._fetch_inputs(station)
+    return station, models_dir, obs, t0, models, forcing
+
+
+def _tide_inference_fixture(tmp_path, patched_sources):
+    """Same as `_wave_inference_fixture`, for the tide station."""
+    _peak_trainable(patched_sources)
+    station = TIDE
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    t0 = pd.Timestamp(RUN_DATE, tz="UTC") + pd.Timedelta(hours=daily.ISSUE_HOUR)
+    obs = daily._fetch_obs(station, RUN_DATE, obs_archive_dir=tmp_path / "obs")
+    models, forcing, _ = daily._fetch_inputs(station)
+    return station, models_dir, obs, t0, models, forcing
 
 
 def test_first_run_publishes_latest_for_every_passing_station(tmp_path, patched_sources):
@@ -1129,3 +1179,163 @@ def test_issue_hour_matches_publish_lead_decomposition():
     """`publish._ISSUE_HOUR` est dupliqué (sens de la dépendance : `daily`
     importe `publish`, jamais l'inverse) — ce test est le garde anti-dérive."""
     assert daily.ISSUE_HOUR == publish._ISSUE_HOUR
+
+
+def test_issue_peaks_publishes_only_the_passing_outputs(tmp_path, patched_sources):
+    # Arrange: a wave station with a median artefact (existing fixture) plus a peaks artefact.
+    station, models_dir, obs, t0, models, forcing = _wave_inference_fixture(tmp_path, patched_sources)
+    artifact, feats = daily._issue_features(station, obs, t0, models, forcing, models_dir)
+    x = feats[artifact["feature_columns"]]
+    peaks = model.train_peaks(x, feats["baseline"] + 0.1, float(np.quantile(feats["baseline"], 0.9)))
+    model.stage_peaks(peaks, station.id, models_dir, {"p90": 1.5, "p98": 2.0}, "wave")
+    median = model.predict(artifact["model"], feats)
+
+    out = daily.issue_peaks(station, feats, median, {"alert": {"pass": True}, "band": {"pass": False}}, models_dir)
+    assert out["unit"] == "m" and out["threshold_p90"] == 1.5
+    assert all(p["p90_upper"] is None for p in out["series"])
+    assert all(0.0 <= p["p_exceed"] <= 1.0 for p in out["series"])
+    assert out["p_48h"] == max(p["p_exceed"] for p in out["series"])
+    assert out["t_peak_pred"] in {p["t"] for p in out["series"]}
+
+    out = daily.issue_peaks(station, feats, median, {"alert": {"pass": False}, "band": {"pass": True}}, models_dir)
+    assert out["p_48h"] is None and out["t_peak_pred"] is None
+    assert all(p["p_exceed"] is None and p["p90_upper"] >= m for p, m in zip(out["series"], median))
+
+    assert daily.issue_peaks(station, feats, median, {"alert": {"pass": False}, "band": {"pass": False}}, models_dir) is None
+    assert daily.issue_peaks(station, feats, median, None, models_dir) is None
+
+
+def test_tide_peaks_band_adds_the_harmonic_back(tmp_path, patched_sources):
+    station, models_dir, obs, t0, models, forcing = _tide_inference_fixture(tmp_path, patched_sources)
+    artifact, feats = daily._issue_features(station, obs, t0, models, forcing, models_dir)
+    x = feats[artifact["feature_columns"]]
+    surge = pd.Series(np.linspace(-0.2, 0.4, len(x)), index=x.index)
+    peaks = model.train_peaks(x, surge, float(np.quantile(surge, 0.9)))
+    model.stage_peaks(peaks, station.id, models_dir, {"p90": 0.3, "p98": 0.4}, "tide")
+    median = feats["baseline"].to_numpy() + model.predict(artifact["model"], feats)
+    out = daily.issue_peaks(station, feats, median, {"alert": {"pass": True}, "band": {"pass": True}}, models_dir)
+    upper = np.array([p["p90_upper"] for p in out["series"]])
+    assert (upper >= feats["baseline"].to_numpy() - 0.5).all()  # level scale, not surge scale
+    assert (upper >= median).all()
+
+
+def test_second_run_scores_yesterdays_peaks_into_history(tmp_path, patched_sources):
+    station, models_dir, obs, t0, models, forcing = _wave_inference_fixture(tmp_path, patched_sources)
+    artifact, feats = daily._issue_features(station, obs, t0, models, forcing, models_dir)
+    x = feats[artifact["feature_columns"]]
+    peaks = model.train_peaks(x, feats["baseline"] + 0.1, float(np.quantile(feats["baseline"], 0.9)))
+    model.stage_peaks(peaks, station.id, models_dir, {"p90": 1.5, "p98": 2.0}, "wave")
+
+    gate = {**GATE, "wave-a": {"pass": True, "weak": False,
+                                "peaks": {"alert": {"pass": True, "clim": 0.1}, "band": {"pass": True}}}}
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=gate,
+              archive_dir=tmp_path / "archive", models_dir=models_dir)
+    next_date = date(2026, 7, 31)
+    daily.run(next_date, tmp_path, stations=STATIONS, gate=gate,
+              archive_dir=tmp_path / "archive", models_dir=models_dir)
+
+    STATION_ID = "wave-a"
+    history = json.loads((tmp_path / STATION_ID / "history.json").read_text())
+    scored = [d for d in history["days"] if d.get("status") == "ok" and "peaks" in d]
+    assert scored, "yesterday's peaks.json was not scored"
+    assert set(scored[0]["peaks"]) == {"n", "events", "hits", "misses", "false_alarms",
+                                       "brier", "brier_clim", "n_band", "covered"}
+    assert (tmp_path / "peaks_scores.json").exists()
+
+
+def _peaks_gate():
+    return {**GATE, "wave-a": {"pass": True, "weak": False,
+                               "peaks": {"alert": {"pass": True, "clim": 0.1},
+                                         "band": {"pass": True}}}}
+
+
+def _stage_wave_peaks(tmp_path, patched_sources):
+    """A wave station with a peaks artefact staged, ready for `daily.run`."""
+    station, models_dir, obs, t0, models, forcing = _wave_inference_fixture(tmp_path, patched_sources)
+    artifact, feats = daily._issue_features(station, obs, t0, models, forcing, models_dir)
+    x = feats[artifact["feature_columns"]]
+    peaks = model.train_peaks(x, feats["baseline"] + 0.1, float(np.quantile(feats["baseline"], 0.9)))
+    model.stage_peaks(peaks, station.id, models_dir, {"p90": 1.5, "p98": 2.0}, "wave")
+    return models_dir
+
+
+def test_peaks_pending_completes_the_second_half_of_the_horizon(tmp_path, patched_sources):
+    """The published peak metrics must cover the full 48 h, like the median.
+
+    Scored the morning after the issue, a day only meets ~24 h of its own leads.
+    The obs window is truncated here on purpose — that truncation is the whole
+    point of the test, so it is asserted (`peaks.n` short, `peaks_pending`
+    non-empty) rather than assumed, then lifted on a third run.
+    """
+    models_dir = _stage_wave_peaks(tmp_path, patched_sources)
+    obs_end = {"t": pd.Timestamp("2026-08-02", tz="UTC")}
+    patched_sources.setattr(
+        daily,
+        "fetch_wave_obs",
+        lambda station, start: _wave_obs_df(
+            start, int((obs_end["t"] - pd.Timestamp(start, tz="UTC")) / pd.Timedelta("1h"))
+        ),
+    )
+    gate = _peaks_gate()
+    run = lambda day: daily.run(day, tmp_path, stations=STATIONS, gate=gate,
+                                archive_dir=tmp_path / "archive", models_dir=models_dir)
+
+    run(RUN_DATE)
+    issued_day = RUN_DATE.isoformat()
+    n_leads = len(json.loads((tmp_path / "wave-a" / "peaks.json").read_text())["series"])
+
+    # Second run: obs stop at +24h of the issue, half its horizon unobserved.
+    obs_end["t"] = pd.Timestamp("2026-07-31T07:00:00Z")
+    run(date(2026, 7, 31))
+    day = next(d for d in json.loads((tmp_path / "wave-a" / "history.json").read_text())["days"]
+               if d["date"] == issued_day)
+    assert 0 < day["peaks"]["n"] < n_leads, "the fixture obs must truncate the horizon"
+    pending = day["peaks_pending"]
+    assert len(pending["points"]) == n_leads - day["peaks"]["n"]
+    assert pending["threshold_p90"] == 1.5 and pending["clim"] == 0.1
+    partial = day["peaks"]
+
+    # Third run: the obs caught up — the same day's counts must grow to the
+    # full horizon and stop pending.
+    obs_end["t"] = pd.Timestamp("2026-08-03", tz="UTC")
+    run(date(2026, 8, 1))
+    day = next(d for d in json.loads((tmp_path / "wave-a" / "history.json").read_text())["days"]
+               if d["date"] == issued_day)
+    assert day["peaks"]["n"] == n_leads
+    assert day["peaks"]["events"] >= partial["events"]
+    assert day["peaks"]["brier"] >= partial["brier"]
+    assert "peaks_pending" not in day
+
+
+def test_failed_peak_inference_marks_peaks_json_missing(tmp_path, patched_sources):
+    """A stale peaks.json would serve yesterday's alert as today's."""
+    models_dir = _stage_wave_peaks(tmp_path, patched_sources)
+    gate = _peaks_gate()
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=gate,
+              archive_dir=tmp_path / "archive", models_dir=models_dir)
+    (models_dir / "wave-a-peaks.joblib").unlink()  # artefact gone: inference must fail
+
+    daily.run(date(2026, 7, 31), tmp_path, stations=STATIONS, gate=gate,
+              archive_dir=tmp_path / "archive", models_dir=models_dir)
+
+    peaks = json.loads((tmp_path / "wave-a" / "peaks.json").read_text())
+    assert peaks == {"schema_version": 1, "station": "wave-a",
+                     "issued": "2026-07-31T06:00:00Z", "status": "missing"}
+    # A missing file is treated as absent, not as a scorable payload.
+    assert (tmp_path / "wave-a" / "latest.json").exists()
+    scores = json.loads((tmp_path / "peaks_scores.json").read_text())
+    assert "threshold_p90" not in next(s for s in scores["stations"] if s["id"] == "wave-a")
+
+
+def test_corrupt_peaks_json_does_not_lose_the_days_median_score(tmp_path, patched_sources):
+    daily.run(RUN_DATE, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+    (tmp_path / "wave-a" / "peaks.json").write_text("{not json")
+    next_date = date(2026, 7, 31)
+
+    daily.run(next_date, tmp_path, stations=STATIONS, gate=GATE, archive_dir=tmp_path / "archive")
+
+    history = json.loads((tmp_path / "wave-a" / "history.json").read_text())
+    scored_day = next(d for d in history["days"] if d["date"] == RUN_DATE.isoformat())
+    assert scored_day["status"] == "ok"
+    assert "mae_ia" in scored_day
+    assert "peaks" not in scored_day

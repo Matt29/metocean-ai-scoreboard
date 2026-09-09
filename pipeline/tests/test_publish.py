@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from scoreboard import publish
-from scoreboard.config import Station
+from scoreboard.config import Station, load_stations
 
 STATIONS = [
     Station(id="a", name="A", kind="wave", lat=1.0, lon=2.0,
@@ -948,3 +948,89 @@ def test_write_series_csv_header_only_when_no_history(tmp_path):
 
     assert text == "date,t,lead_h,obs,ia,baseline,baseline_model\n"
     assert (tmp_path / "empty-station" / "series.csv").read_text() == text
+
+
+def test_write_peaks_writes_the_additive_contract(tmp_path):
+    publish.write_peaks(tmp_path, "brest", "2026-09-08T06:00:00Z", {
+        "unit": "m", "threshold_p90": 0.21, "p_48h": 0.7, "t_peak_pred": "2026-09-09T03:00:00Z",
+        "series": [{"t": "2026-09-08T07:00:00Z", "p_exceed": 0.1, "p90_upper": 5.2}],
+    })
+    payload = json.loads((tmp_path / "brest" / "peaks.json").read_text())
+    assert payload["schema_version"] == 1 and payload["station"] == "brest"
+    assert payload["issued"] == "2026-09-08T06:00:00Z" and payload["p_48h"] == 0.7
+
+
+def test_station_entry_carries_peak_publication_flags(tmp_path):
+    gate = {"brest": {"pass": True, "weak": False,
+                      "peaks": {"alert": {"pass": True}, "band": {"pass": False}}},
+            "dieppe": {"pass": True, "weak": False}}
+    stations = [s for s in load_stations() if s.id in gate]
+    publish.write_stations(tmp_path, stations, gate, updated="2026-09-08T06:00:00Z")
+    entries = {e["id"]: e for e in json.loads((tmp_path / "stations.json").read_text())["stations"]}
+    assert entries["brest"]["peaks_alert_published"] is True
+    assert entries["brest"]["peaks_band_published"] is False
+    assert entries["dieppe"]["peaks_alert_published"] is False
+
+
+def test_peak_flags_need_a_published_median(tmp_path):
+    """`daily.run` only runs median-passing stations: a flag on a station it
+    never visits would promise a `peaks.json` that never exists."""
+    gate = {"brest": {"pass": False, "weak": False,
+                      "peaks": {"alert": {"pass": True}, "band": {"pass": True}}}}
+    stations = [s for s in load_stations() if s.id in gate]
+    publish.write_stations(tmp_path, stations, gate, updated="2026-09-08T06:00:00Z")
+    entry = json.loads((tmp_path / "stations.json").read_text())["stations"][0]
+    assert entry["published"] is False
+    assert entry["peaks_alert_published"] is False and entry["peaks_band_published"] is False
+
+
+def _peaks_payload(times, p, upper):
+    return {"threshold_p90": 1.0, "series": [
+        {"t": t.isoformat().replace("+00:00", "Z"), "p_exceed": pe, "p90_upper": u}
+        for t, pe, u in zip(times, p, upper)
+    ]}
+
+
+def test_score_peaks_day_counts_hits_misses_false_alarms_and_coverage():
+    times = pd.date_range("2026-09-08T07:00", periods=4, freq="h", tz="UTC")
+    obs = pd.Series([1.5, 0.5, 1.2, 0.2], index=times)  # events: 0, 2
+    payload = _peaks_payload(times, [0.9, 0.7, 0.2, 0.1], [2.0, 0.4, 1.5, 0.3])
+    day = publish.score_peaks_day(obs, payload, "wave", clim=0.1)
+    assert day == {
+        "n": 4, "events": 2, "hits": 1, "misses": 1, "false_alarms": 1,
+        "brier": pytest.approx(0.01 + 0.49 + 0.64 + 0.01),
+        "brier_clim": pytest.approx(0.81 + 0.01 + 0.81 + 0.01),
+        "n_band": 4, "covered": 3,
+    }
+
+
+def test_score_peaks_day_scores_the_surge_for_tide():
+    times = pd.date_range("2026-09-08T07:00", periods=2, freq="h", tz="UTC")
+    obs = pd.Series([5.0, 3.0], index=times)
+    payload = _peaks_payload(times, [0.8, 0.1], [None, None])
+    payload["series"][0]["baseline"] = 3.8  # level → surge 1.2 ≥ 1.0
+    payload["series"][1]["baseline"] = 2.9
+    day = publish.score_peaks_day(obs, payload, "tide", clim=0.1)
+    assert day["events"] == 1 and day["hits"] == 1 and day["n_band"] == 0
+
+
+def test_write_peaks_scores_aggregates_windows(tmp_path):
+    days = []
+    for i in range(40):
+        days.append({"date": (pd.Timestamp("2026-08-01") + pd.Timedelta(days=i)).date().isoformat(),
+                     "status": "ok",
+                     "peaks": {"n": 48, "events": 5, "hits": 4, "misses": 1, "false_alarms": 2,
+                               "brier": 2.0, "brier_clim": 4.0, "n_band": 48, "covered": 44}})
+    days.append({"date": "2026-09-10", "status": "missing"})
+    (tmp_path / "brest").mkdir()
+    (tmp_path / "brest" / "history.json").write_text(json.dumps({"schema_version": 1, "station": "brest", "days": days}))
+    (tmp_path / "brest" / "peaks.json").write_text(json.dumps({"threshold_p90": 0.2}))
+    payload = publish.write_peaks_scores(tmp_path, ["brest", "ghost"], "2026-09-10T06:00:00Z")
+    brest = payload["stations"][0]
+    assert brest["threshold_p90"] == 0.2
+    assert brest["alert_30d"]["n_days"] == 30 and brest["alert_90d"]["n_days"] == 40
+    assert brest["alert_30d"]["pod"] == pytest.approx(0.8) and brest["alert_30d"]["far"] == pytest.approx(2 / 6)
+    assert brest["alert_30d"]["bss_clim"] == pytest.approx(0.5)
+    assert brest["band_90d"]["coverage_published"] == pytest.approx(44 / 48)
+    assert payload["stations"][1] == {"id": "ghost", "alert_30d": None, "alert_90d": None,
+                                      "band_30d": None, "band_90d": None}

@@ -653,8 +653,8 @@ def test_event_diagnostic_debiases_on_the_whole_window_not_on_the_band():
     x_ev, obs_ev = _eval_window(resid)
 
     # Niveaux d'un modèle à résidu nul : la baseline elle-même.
-    events = train._event_scores(x_ev["baseline"].to_numpy(), x_ev, obs_ev)
-    storm = next(e for e in events if e["label"] == "|résidu| > 30 cm")
+    events = train._event_scores(x_ev["baseline"].to_numpy(), x_ev, obs_ev, "tide")
+    storm = next(e for e in events if e["label"] == "|résidu| > 0.3 m")
 
     assert storm["n"] == 100
     whole_window_bias = resid.mean()
@@ -670,6 +670,226 @@ def test_event_diagnostic_skips_a_band_too_thin_to_mean_anything():
     x_ev, obs_ev = _eval_window(resid)
 
     levels = x_ev["baseline"].to_numpy()
-    labels = [e["label"] for e in train._event_scores(levels, x_ev, obs_ev)]
+    labels = [e["label"] for e in train._event_scores(levels, x_ev, obs_ev, "tide")]
 
-    assert "|résidu| > 30 cm" not in labels
+    assert "|résidu| > 0.3 m" not in labels
+
+
+def _peak_fixture(n_days=20, seed=1):
+    rng = np.random.default_rng(seed)
+    lead = np.tile(np.arange(1, 49), n_days)
+    valid = pd.date_range("2026-01-02T07:00", periods=48, freq="h", tz="UTC")
+    times = pd.DatetimeIndex(np.concatenate(
+        [valid + pd.Timedelta(days=d) for d in range(n_days)]
+    ))
+    x = pd.DataFrame({"lead_h": lead, "baseline": rng.normal(2.0, 0.5, len(lead))}, index=times)
+    target = pd.Series(x["baseline"].to_numpy() + rng.normal(0, 0.2, len(lead)), index=times)
+    fold_ids = np.zeros(len(lead), dtype=int)
+    return x, target, fold_ids
+
+
+def test_peak_target_is_the_surge_for_tide_and_the_observation_otherwise():
+    x, target, _ = _peak_fixture()
+    assert train._peak_target(target, x, "tide").equals(target - x["baseline"])
+    assert train._peak_target(target, x, "wave").equals(target)
+    assert (train._peak_baseline(x, "tide") == 0).all()
+
+
+def test_peak_thresholds_are_train_quantiles():
+    thr = train._peak_thresholds(np.arange(1000, dtype=float))
+    assert thr == {"p90": pytest.approx(899.1), "p98": pytest.approx(979.02)}
+
+
+def test_issue_day_bootstrap_is_deterministic_and_degenerate_on_one_day():
+    x, target, _ = _peak_fixture(n_days=1)
+    lo, hi = train._issue_day_bootstrap(x, lambda idx: float(target.to_numpy()[idx].mean()))
+    assert lo == hi == pytest.approx(target.mean())
+    x, target, _ = _peak_fixture(n_days=20)
+    first = train._issue_day_bootstrap(x, lambda idx: float(target.to_numpy()[idx].mean()))
+    assert first == train._issue_day_bootstrap(x, lambda idx: float(target.to_numpy()[idx].mean()))
+    assert first[0] < target.mean() < first[1]
+
+
+def test_peak_scores_perfect_classifier_and_exact_band():
+    # n_days=1: a single issue day, so the bootstrap CI degenerates to the point.
+    x, target, fold_ids = _peak_fixture(n_days=1)
+    t = target.to_numpy()
+    p90 = float(np.quantile(t, 0.9))
+    fold = {"p90": p90, "p98": float(np.quantile(t, 0.98)), "clim": 0.1,
+            "adv_p90": float(np.quantile(x["baseline"], 0.9)), "adv_q90": 0.3}
+    s = train._peak_scores(t, (t >= p90).astype(float), t, fold_ids, [fold], x["baseline"].to_numpy(), x)
+    assert s["alert"]["bss_clim"] == pytest.approx(1.0)
+    assert s["alert"]["pod"] == 1.0 and s["alert"]["far"] == 0.0
+    assert s["alert"]["n_events"] == int((t >= p90).sum())
+    assert s["band"]["coverage"] == 1.0 and s["band"]["pinball_model"] == 0.0
+    assert s["band"]["gain_pinball"] == 1.0
+    assert s["alert"]["bss_clim_ci95_low"] == s["alert"]["bss_clim_ci95_high"] == pytest.approx(s["alert"]["bss_clim"])
+    assert s["band"]["gain_pinball_ci95_low"] == s["band"]["gain_pinball_ci95_high"] == pytest.approx(s["band"]["gain_pinball"])
+
+
+def test_peak_scores_climatology_has_zero_skill():
+    # n_days=1: a single issue day, so the bootstrap CI degenerates to the point.
+    x, target, fold_ids = _peak_fixture(n_days=1)
+    t = target.to_numpy()
+    p90 = float(np.quantile(t, 0.9))
+    clim = float((t >= p90).mean())
+    fold = {"p90": p90, "p98": p90, "clim": clim, "adv_p90": None, "adv_q90": 0.3}
+    s = train._peak_scores(t, np.full(len(t), clim), t + 1, fold_ids, [fold], np.zeros(len(t)), x)
+    assert s["alert"]["bss_clim"] == pytest.approx(0.0)
+    assert s["alert"]["pod_baseline"] is None
+    assert s["band"]["coverage"] == 1.0
+    assert s["alert"]["bss_clim_ci95_low"] == s["alert"]["bss_clim_ci95_high"] == pytest.approx(s["alert"]["bss_clim"])
+    assert s["band"]["gain_pinball_ci95_low"] == s["band"]["gain_pinball_ci95_high"] == pytest.approx(s["band"]["gain_pinball"])
+
+
+def test_peak_scores_evaluates_p_48h_by_issue_day():
+    """`p_48h` is served, so it is scored: one row per issue day, against « au
+    moins un dépassement dans les 48 h »."""
+    x, target, fold_ids = _peak_fixture(n_days=20)
+    t = target.to_numpy()
+    # A rare-event threshold on purpose: at the p90 of the target, *every* issue
+    # day carries an exceedance, the day-level target is constant and the score
+    # is `None` by construction (asserted at the end).
+    rare = float(np.quantile(t, 0.99))
+    fold = {"p90": rare, "p98": rare, "clim": 0.1, "adv_p90": None, "adv_q90": 0.3}
+    event = (t >= rare).astype(float)
+
+    perfect = train._peak_scores(t, event, t, fold_ids, [fold], np.zeros(len(t)), x)
+    assert perfect["alert"]["n_days_48h"] == 20
+    assert perfect["alert"]["p48_bss_clim"] == pytest.approx(1.0)
+
+    # A constant `p_h` collapses to the day-level base rate: no skill at all.
+    days = train.issue_days(x)
+    base = float(np.mean([event[np.flatnonzero(days == d)].max() for d in days.unique()]))
+    assert 0.0 < base < 1.0, "the fixture must leave some issue days event-free"
+    flat = train._peak_scores(t, np.full(len(t), base), t, fold_ids, [fold], np.zeros(len(t)), x)
+    assert flat["alert"]["p48_bss_clim"] == pytest.approx(0.0)
+
+    # Degenerate day-level target (every day exceeds): `None`, never a score
+    # computed against a constant reference.
+    p90 = float(np.quantile(t, 0.9))
+    dense = train._peak_scores(t, (t >= p90).astype(float), t, fold_ids,
+                               [{**fold, "p90": p90}], np.zeros(len(t)), x)
+    assert dense["alert"]["p48_bss_clim"] is None
+
+
+def test_evaluate_reports_peak_verdicts_on_the_same_sealed_rows(tmp_path, monkeypatch):
+    raw = _raw(days=45)
+    raw["hs_gwam"] = raw["hs"] + 0.02
+    monkeypatch.setattr(train, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(model, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(train, "GATE_PATH", tmp_path / "gate.json")
+    raw.to_parquet(tmp_path / "synthetic_raw.parquet")
+
+    row = train.evaluate(STATION, test_days=10, model_names=("ridge",))
+
+    peaks = row["peaks"]
+    assert set(peaks) == {"alert", "band"}
+    alert, band = peaks["alert"], peaks["band"]
+    assert {"pass", "weak", "threshold_p90", "threshold_p98", "clim", "bss_clim",
+            "bss_clim_ci95_low", "bss_clim_ci95_high", "pod", "far", "pod_baseline",
+            "far_baseline", "n_events"} <= set(alert)
+    assert {"pass", "weak", "coverage", "pinball_model", "pinball_baseline", "gain_pinball",
+            "gain_pinball_ci95_low", "gain_pinball_ci95_high", "crossings_frac"} <= set(band)
+    assert isinstance(alert["pass"], bool) and isinstance(band["pass"], bool)
+    assert not any(k.startswith("_") for k in alert) and not any(k.startswith("_") for k in band)
+    assert row["_peaks_estimator"] is not None
+    assert row["_peaks_estimator"]["feature_columns"] == list(row["_estimator"].feature_names_in_)
+    # degraded protocol on 45 days: nothing publishable, exactly like the median
+    assert alert["pass"] is False and band["pass"] is False
+    assert json.dumps(peaks)  # serialisable
+
+
+def test_evaluate_reports_no_peaks_when_no_fold_has_enough_events(tmp_path, monkeypatch):
+    raw = _raw(days=45)
+    raw["hs"] = 2.0  # constant: no exceedance class at all
+    for col in MODEL_COLUMNS:
+        raw[col] = 2.0
+    monkeypatch.setattr(train, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(model, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(train, "GATE_PATH", tmp_path / "gate.json")
+    raw.to_parquet(tmp_path / "synthetic_raw.parquet")
+
+    row = train.evaluate(STATION, test_days=10, model_names=("ridge",))
+    assert row["peaks"] is None and row["_peaks_estimator"] is None
+
+
+def _peaks_row(station="first", passing=True):
+    return {
+        "station": station, "kind": "wind", "pass": True, "weak": False,
+        "mae_model": 1.0, "mae_base": 1.2, "gain": 0.1, "gain_debiased": 0.1,
+        "baseline_model": None,
+        "peaks": {
+            "alert": {"pass": passing, "weak": False, "threshold_p90": 12.0, "threshold_p98": 15.0,
+                      "clim": 0.1, "bss_clim": 0.2, "bss_clim_ci95_low": 0.1,
+                      "bss_clim_ci95_high": 0.3, "pod": 0.6, "far": 0.3, "pod_baseline": 0.5,
+                      "far_baseline": 0.4, "n_events": 300, "n_events_p98": 60,
+                      "p48_bss_clim": 0.15, "n_days_48h": 360},
+            "band": {"pass": passing, "weak": False, "coverage": 0.9, "pinball_model": 0.2,
+                     "pinball_baseline": 0.3, "gain_pinball": 0.33, "gain_pinball_ci95_low": 0.2,
+                     "gain_pinball_ci95_high": 0.4, "crossings_frac": 0.01},
+        },
+    }
+
+
+def test_merge_gate_persists_the_peaks_sub_entry_and_survives_a_targeted_retrain():
+    gate = train.merge_gate({}, [_peaks_row("first"), {**_peaks_row("second"), "peaks": None}],
+                            known={"first", "second"})
+    assert gate["first"]["peaks"]["alert"]["threshold_p90"] == 12.0
+    assert "peaks" not in gate["second"]
+    again = train.merge_gate(gate, [_peaks_row("second")], known={"first", "second"})
+    assert again["first"]["peaks"] == gate["first"]["peaks"]
+    assert again["second"]["peaks"]["band"]["coverage"] == 0.9
+
+
+def test_merge_gate_drops_the_peaks_sub_entry_when_a_retrain_loses_it():
+    """The other direction: a station retrained into `peaks: None` (no fold with
+    enough events any more) must not keep advertising the previous verdict —
+    `daily` would publish an output the artefact no longer supports."""
+    gate = train.merge_gate({}, [_peaks_row("first")], known={"first"})
+    assert gate["first"]["peaks"]["alert"]["pass"] is True
+
+    again = train.merge_gate(gate, [{**_peaks_row("first"), "peaks": None}], known={"first"})
+
+    assert "peaks" not in again["first"]
+
+
+def test_release_promotes_the_peaks_artefact_in_the_same_transaction(tmp_path, monkeypatch):
+    models_dir, gate_path, rows = _release_fixture(tmp_path, monkeypatch)
+    staged = []
+
+    def fake_stage_peaks(peaks, station_id, staging_dir, thresholds, kind):
+        path = staging_dir / f"{station_id}-peaks.joblib"
+        path.write_bytes(peaks)
+        staged.append((station_id, thresholds, kind))
+        return path
+
+    monkeypatch.setattr(model, "stage_peaks", fake_stage_peaks)
+    rows[0].update({"_peaks_estimator": b"peaks-first", "_peaks_thresholds": {"p90": 1.0, "p98": 2.0}, "kind": "wave"})
+    rows[1].update({"_peaks_estimator": None, "_peaks_thresholds": None, "kind": "wave"})
+    train.release(rows, {"first": {"pass": True, "weak": False}, "second": {"pass": True, "weak": False}})
+    assert (models_dir / "first-peaks.joblib").read_bytes() == b"peaks-first"
+    assert not (models_dir / "second-peaks.joblib").exists()
+    assert staged == [("first", {"p90": 1.0, "p98": 2.0}, "wave")]
+
+
+def test_event_bands_absolute_threshold_depends_on_kind():
+    assert train.EVENT_ABSOLUTE["tide"] == 0.30
+    assert train.EVENT_ABSOLUTE["wave"] == 0.50
+    assert train.EVENT_ABSOLUTE["wind"] == 2.0
+
+
+def test_write_report_has_a_peaks_section(tmp_path, monkeypatch):
+    monkeypatch.setattr(train, "REPORT_PATH", tmp_path / "model-eval.md")
+    row = {**_peaks_row("first"), "events": [], "val_scores": {}, "n_train": 10, "n_test": 5,
+           "n_val": 0, "n_folds": 4, "n_issue_days": 360, "test_days": 90, "ml_model": "hgb",
+           "fold_models": ["hgb"], "fold_baselines": [None], "skipped_origins": [],
+           "evaluation_protocol": "rolling-origin multi-saisons", "evaluation_ready": True,
+           "gain_debiased_ci95_low": 0.05, "gain_debiased_ci95_high": 0.15, "ci_unit": "issue_day",
+           "bias": 0.0, "mae_debiased": 1.1}
+    train.write_report([row], {"first": {"pass": True, "weak": False}})
+    text = (tmp_path / "model-eval.md").read_text()
+    assert "## Pics — alerte de dépassement et borne haute" in text
+    assert "| first | 12.000 | 15.000 | +0.200 | [+0.100 ; +0.300] |" in text
+    assert "| 300 | +0.150 | 360 | PASS |" in text  # le diagnostic p_48h
+    assert "ne modifie pas le gate" in text
