@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-09-10T06:00:00Z",
+  "updated": "2026-09-11T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -28,55 +28,55 @@
       "threshold_p90": 0.20171120650075824,
       "alert_30d": {
         "n_events": 0,
-        "n_days": 1,
+        "n_days": 2,
         "pod": null,
         "far": null,
-        "bss_clim": 0.99999996875
+        "bss_clim": 0.9999999113924051
       },
       "band_30d": {
-        "coverage_published": 0.84375,
-        "n_points": 32,
-        "n_days": 1
+        "coverage_published": 0.810126582278481,
+        "n_points": 79,
+        "n_days": 2
       },
       "alert_90d": {
         "n_events": 0,
-        "n_days": 1,
+        "n_days": 2,
         "pod": null,
         "far": null,
-        "bss_clim": 0.99999996875
+        "bss_clim": 0.9999999113924051
       },
       "band_90d": {
-        "coverage_published": 0.84375,
-        "n_points": 32,
-        "n_days": 1
+        "coverage_published": 0.810126582278481,
+        "n_points": 79,
+        "n_days": 2
       }
     },
     {
       "id": "saint-malo",
       "threshold_p90": 0.25501612445205524,
       "alert_30d": {
-        "n_events": 0,
-        "n_days": 1,
-        "pod": null,
+        "n_events": 7,
+        "n_days": 2,
+        "pod": 0.0,
         "far": null,
-        "bss_clim": 0.9841103437500001
+        "bss_clim": 0.017850370892018907
       },
       "band_30d": {
-        "coverage_published": 0.9375,
-        "n_points": 32,
-        "n_days": 1
+        "coverage_published": 0.759493670886076,
+        "n_points": 79,
+        "n_days": 2
       },
       "alert_90d": {
-        "n_events": 0,
-        "n_days": 1,
-        "pod": null,
+        "n_events": 7,
+        "n_days": 2,
+        "pod": 0.0,
         "far": null,
-        "bss_clim": 0.9841103437500001
+        "bss_clim": 0.017850370892018907
       },
       "band_90d": {
-        "coverage_published": 0.9375,
-        "n_points": 32,
-        "n_days": 1
+        "coverage_published": 0.759493670886076,
+        "n_points": 79,
+        "n_days": 2
       }
     },
     {
@@ -84,18 +84,18 @@
       "threshold_p90": 12.6,
       "alert_30d": {
         "n_events": 0,
-        "n_days": 1,
+        "n_days": 2,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9999996734512804
+        "bss_clim": 0.9999996392557298
       },
       "band_30d": null,
       "alert_90d": {
         "n_events": 0,
-        "n_days": 1,
+        "n_days": 2,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9999996734512804
+        "bss_clim": 0.9999996392557298
       },
       "band_90d": null
     },
@@ -104,18 +104,18 @@
       "threshold_p90": 8.0,
       "alert_30d": {
         "n_events": 0,
-        "n_days": 1,
+        "n_days": 2,
         "pod": null,
         "far": 1.0,
-        "bss_clim": -1.1636900930716711
+        "bss_clim": 0.12041317357638437
       },
       "band_30d": null,
       "alert_90d": {
         "n_events": 0,
-        "n_days": 1,
+        "n_days": 2,
         "pod": null,
         "far": 1.0,
-        "bss_clim": -1.1636900930716711
+        "bss_clim": 0.12041317357638437
       },
       "band_90d": null
     },
@@ -124,27 +124,27 @@
       "threshold_p90": 10.9,
       "alert_30d": {
         "n_events": 0,
-        "n_days": 1,
+        "n_days": 2,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9999430607682492
+        "bss_clim": 0.99995888268272
       },
       "band_30d": {
-        "coverage_published": 0.90625,
-        "n_points": 32,
-        "n_days": 1
+        "coverage_published": 0.9113924050632911,
+        "n_points": 79,
+        "n_days": 2
       },
       "alert_90d": {
         "n_events": 0,
-        "n_days": 1,
+        "n_days": 2,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9999430607682492
+        "bss_clim": 0.99995888268272
       },
       "band_90d": {
-        "coverage_published": 0.90625,
-        "n_points": 32,
-        "n_days": 1
+        "coverage_published": 0.9113924050632911,
+        "n_points": 79,
+        "n_days": 2
       }
     }
   ]
