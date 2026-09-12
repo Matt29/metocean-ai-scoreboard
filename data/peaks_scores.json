@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-09-11T06:00:00Z",
+  "updated": "2026-09-12T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -28,55 +28,55 @@
       "threshold_p90": 0.20171120650075824,
       "alert_30d": {
         "n_events": 0,
-        "n_days": 2,
+        "n_days": 3,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9999999125
+        "bss_clim": 0.9999999444444444
       },
       "band_30d": {
-        "coverage_published": 0.8125,
-        "n_points": 80,
-        "n_days": 2
+        "coverage_published": 0.7698412698412699,
+        "n_points": 126,
+        "n_days": 3
       },
       "alert_90d": {
         "n_events": 0,
-        "n_days": 2,
+        "n_days": 3,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9999999125
+        "bss_clim": 0.9999999444444444
       },
       "band_90d": {
-        "coverage_published": 0.8125,
-        "n_points": 80,
-        "n_days": 2
+        "coverage_published": 0.7698412698412699,
+        "n_points": 126,
+        "n_days": 3
       }
     },
     {
       "id": "saint-malo",
       "threshold_p90": 0.25501612445205524,
       "alert_30d": {
-        "n_events": 7,
-        "n_days": 2,
+        "n_events": 15,
+        "n_days": 3,
         "pod": 0.0,
         "far": null,
-        "bss_clim": 0.019384954687500122
+        "bss_clim": -0.0491289351432882
       },
       "band_30d": {
-        "coverage_published": 0.7625,
-        "n_points": 80,
-        "n_days": 2
+        "coverage_published": 0.7063492063492064,
+        "n_points": 126,
+        "n_days": 3
       },
       "alert_90d": {
-        "n_events": 7,
-        "n_days": 2,
+        "n_events": 15,
+        "n_days": 3,
         "pod": 0.0,
         "far": null,
-        "bss_clim": 0.019384954687500122
+        "bss_clim": -0.0491289351432882
       },
       "band_90d": {
-        "coverage_published": 0.7625,
-        "n_points": 80,
-        "n_days": 2
+        "coverage_published": 0.7063492063492064,
+        "n_points": 126,
+        "n_days": 3
       }
     },
     {
@@ -84,18 +84,18 @@
       "threshold_p90": 12.6,
       "alert_30d": {
         "n_events": 0,
-        "n_days": 2,
+        "n_days": 3,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9999996437650331
+        "bss_clim": 0.9999997738190687
       },
       "band_30d": null,
       "alert_90d": {
         "n_events": 0,
-        "n_days": 2,
+        "n_days": 3,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9999996437650331
+        "bss_clim": 0.9999997738190687
       },
       "band_90d": null
     },
@@ -104,18 +104,18 @@
       "threshold_p90": 8.0,
       "alert_30d": {
         "n_events": 0,
-        "n_days": 2,
+        "n_days": 3,
         "pod": null,
         "far": 1.0,
-        "bss_clim": 0.13108631599151355
+        "bss_clim": 0.4415779724200741
       },
       "band_30d": null,
       "alert_90d": {
         "n_events": 0,
-        "n_days": 2,
+        "n_days": 3,
         "pod": null,
         "far": 1.0,
-        "bss_clim": 0.13108631599151355
+        "bss_clim": 0.4415779724200741
       },
       "band_90d": null
     },
@@ -124,27 +124,27 @@
       "threshold_p90": 10.9,
       "alert_30d": {
         "n_events": 0,
-        "n_days": 2,
+        "n_days": 3,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9999593475371803
+        "bss_clim": 0.9999739316591315
       },
       "band_30d": {
-        "coverage_published": 0.9,
-        "n_points": 80,
-        "n_days": 2
+        "coverage_published": 0.8650793650793651,
+        "n_points": 126,
+        "n_days": 3
       },
       "alert_90d": {
         "n_events": 0,
-        "n_days": 2,
+        "n_days": 3,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9999593475371803
+        "bss_clim": 0.9999739316591315
       },
       "band_90d": {
-        "coverage_published": 0.9,
-        "n_points": 80,
-        "n_days": 2
+        "coverage_published": 0.8650793650793651,
+        "n_points": 126,
+        "n_days": 3
       }
     }
   ]
