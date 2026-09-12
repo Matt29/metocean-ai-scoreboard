@@ -5,7 +5,7 @@
   "status": "ok",
   "unit": "m/s",
   "threshold_p90": 8.0,
-  "p_48h": 0.2099,
+  "p_48h": 0.2225,
   "t_peak_pred": "2026-09-12T14:00:00Z",
   "series": [
     {
@@ -20,52 +20,52 @@
     },
     {
       "t": "2026-09-12T09:00:00Z",
-      "p_exceed": 0.0004,
+      "p_exceed": 0.0003,
       "p90_upper": null
     },
     {
       "t": "2026-09-12T10:00:00Z",
-      "p_exceed": 0.0012,
+      "p_exceed": 0.0015,
       "p90_upper": null
     },
     {
       "t": "2026-09-12T11:00:00Z",
-      "p_exceed": 0.0012,
+      "p_exceed": 0.0014,
       "p90_upper": null
     },
     {
       "t": "2026-09-12T12:00:00Z",
-      "p_exceed": 0.0031,
+      "p_exceed": 0.0039,
       "p90_upper": null
     },
     {
       "t": "2026-09-12T13:00:00Z",
-      "p_exceed": 0.0872,
+      "p_exceed": 0.1143,
       "p90_upper": null
     },
     {
       "t": "2026-09-12T14:00:00Z",
-      "p_exceed": 0.2099,
+      "p_exceed": 0.2225,
       "p90_upper": null
     },
     {
       "t": "2026-09-12T15:00:00Z",
-      "p_exceed": 0.0693,
+      "p_exceed": 0.0686,
       "p90_upper": null
     },
     {
       "t": "2026-09-12T16:00:00Z",
-      "p_exceed": 0.0209,
+      "p_exceed": 0.0275,
       "p90_upper": null
     },
     {
       "t": "2026-09-12T17:00:00Z",
-      "p_exceed": 0.006,
+      "p_exceed": 0.0136,
       "p90_upper": null
     },
     {
       "t": "2026-09-12T18:00:00Z",
-      "p_exceed": 0.0009,
+      "p_exceed": 0.0015,
       "p90_upper": null
     },
     {
@@ -80,7 +80,7 @@
     },
     {
       "t": "2026-09-12T21:00:00Z",
-      "p_exceed": 0.0,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
@@ -100,7 +100,7 @@
     },
     {
       "t": "2026-09-13T01:00:00Z",
-      "p_exceed": 0.0,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
@@ -120,67 +120,67 @@
     },
     {
       "t": "2026-09-13T05:00:00Z",
-      "p_exceed": 0.0003,
+      "p_exceed": 0.0004,
       "p90_upper": null
     },
     {
       "t": "2026-09-13T06:00:00Z",
-      "p_exceed": 0.0006,
+      "p_exceed": 0.0021,
       "p90_upper": null
     },
     {
       "t": "2026-09-13T07:00:00Z",
-      "p_exceed": 0.0015,
+      "p_exceed": 0.0007,
       "p90_upper": null
     },
     {
       "t": "2026-09-13T08:00:00Z",
-      "p_exceed": 0.0005,
+      "p_exceed": 0.0003,
       "p90_upper": null
     },
     {
       "t": "2026-09-13T09:00:00Z",
-      "p_exceed": 0.0051,
+      "p_exceed": 0.0009,
       "p90_upper": null
     },
     {
       "t": "2026-09-13T10:00:00Z",
-      "p_exceed": 0.0029,
+      "p_exceed": 0.0014,
       "p90_upper": null
     },
     {
       "t": "2026-09-13T11:00:00Z",
-      "p_exceed": 0.0026,
+      "p_exceed": 0.0036,
       "p90_upper": null
     },
     {
       "t": "2026-09-13T12:00:00Z",
-      "p_exceed": 0.0044,
+      "p_exceed": 0.0139,
       "p90_upper": null
     },
     {
       "t": "2026-09-13T13:00:00Z",
-      "p_exceed": 0.0181,
+      "p_exceed": 0.0233,
       "p90_upper": null
     },
     {
       "t": "2026-09-13T14:00:00Z",
-      "p_exceed": 0.0378,
+      "p_exceed": 0.0272,
       "p90_upper": null
     },
     {
       "t": "2026-09-13T15:00:00Z",
-      "p_exceed": 0.0183,
+      "p_exceed": 0.0056,
       "p90_upper": null
     },
     {
       "t": "2026-09-13T16:00:00Z",
-      "p_exceed": 0.0059,
+      "p_exceed": 0.0058,
       "p90_upper": null
     },
     {
       "t": "2026-09-13T17:00:00Z",
-      "p_exceed": 0.0024,
+      "p_exceed": 0.0035,
       "p90_upper": null
     },
     {
@@ -190,12 +190,12 @@
     },
     {
       "t": "2026-09-13T19:00:00Z",
-      "p_exceed": 0.0008,
+      "p_exceed": 0.0011,
       "p90_upper": null
     },
     {
       "t": "2026-09-13T20:00:00Z",
-      "p_exceed": 0.0,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
@@ -230,12 +230,12 @@
     },
     {
       "t": "2026-09-14T03:00:00Z",
-      "p_exceed": 0.0001,
+      "p_exceed": 0.0,
       "p90_upper": null
     },
     {
       "t": "2026-09-14T04:00:00Z",
-      "p_exceed": 0.0,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
