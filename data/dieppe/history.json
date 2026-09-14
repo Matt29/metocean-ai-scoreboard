@@ -21447,28 +21447,31 @@
           "obs": 2.4,
           "ia": 3.3464,
           "baseline": 2.64
-        }
-      ],
-      "mae_ia": 0.8324,
-      "mae_baseline": 0.8643,
-      "n_points": 30,
-      "max_lead_h": 30,
-      "pending": [
+        },
         {
           "t": "2026-09-14T13:00:00Z",
+          "obs": 3.0,
           "ia": 2.4644,
           "baseline": 2.7
         },
         {
           "t": "2026-09-14T14:00:00Z",
+          "obs": 2.1,
           "ia": 2.5564,
           "baseline": 2.97
         },
         {
           "t": "2026-09-14T15:00:00Z",
+          "obs": 2.1,
           "ia": 2.7738,
           "baseline": 3.48
-        },
+        }
+      ],
+      "mae_ia": 0.8072,
+      "mae_baseline": 0.863,
+      "n_points": 33,
+      "max_lead_h": 33,
+      "pending": [
         {
           "t": "2026-09-14T16:00:00Z",
           "ia": 2.6294,
@@ -21545,15 +21548,14 @@
           "baseline": 5.28
         }
       ],
-      "baseline_model": "meteofrance_arpege_europe",
       "peaks": {
-        "n": 30,
+        "n": 33,
         "events": 0,
         "hits": 0,
         "misses": 0,
         "false_alarms": 0,
-        "brier": 0.007871489999999998,
-        "brier_clim": 0.3251042999999998,
+        "brier": 0.007871589999999998,
+        "brier_clim": 0.35761472999999977,
         "n_band": 0,
         "covered": 0
       },
@@ -21561,21 +21563,6 @@
         "threshold_p90": 8.0,
         "clim": 0.1041,
         "points": [
-          {
-            "t": "2026-09-14T13:00:00Z",
-            "p_exceed": 0.0,
-            "p90_upper": null
-          },
-          {
-            "t": "2026-09-14T14:00:00Z",
-            "p_exceed": 0.0001,
-            "p90_upper": null
-          },
-          {
-            "t": "2026-09-14T15:00:00Z",
-            "p_exceed": 0.0003,
-            "p90_upper": null
-          },
           {
             "t": "2026-09-14T16:00:00Z",
             "p_exceed": 0.0,
@@ -21652,7 +21639,8 @@
             "p90_upper": null
           }
         ]
-      }
+      },
+      "baseline_model": "meteofrance_arpege_europe"
     }
   ]
 }

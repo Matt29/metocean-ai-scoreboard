@@ -21447,28 +21447,31 @@
           "obs": 4.0,
           "ia": 3.3916,
           "baseline": 2.97
-        }
-      ],
-      "mae_ia": 0.52,
-      "mae_baseline": 0.8907,
-      "n_points": 30,
-      "max_lead_h": 30,
-      "pending": [
+        },
         {
           "t": "2026-09-14T13:00:00Z",
+          "obs": 3.0,
           "ia": 3.2698,
           "baseline": 3.02
         },
         {
           "t": "2026-09-14T14:00:00Z",
+          "obs": 3.2,
           "ia": 2.8587,
           "baseline": 2.84
         },
         {
           "t": "2026-09-14T15:00:00Z",
+          "obs": 3.2,
           "ia": 3.092,
           "baseline": 2.84
-        },
+        }
+      ],
+      "mae_ia": 0.4945,
+      "mae_baseline": 0.8321,
+      "n_points": 33,
+      "max_lead_h": 33,
+      "pending": [
         {
           "t": "2026-09-14T16:00:00Z",
           "ia": 3.1149,
@@ -21545,37 +21548,21 @@
           "baseline": 2.75
         }
       ],
-      "baseline_model": "meteofrance_arpege_europe",
       "peaks": {
-        "n": 30,
+        "n": 33,
         "events": 0,
         "hits": 0,
         "misses": 0,
         "false_alarms": 0,
-        "brier": 9.4e-07,
-        "brier_clim": 0.3054242999999999,
-        "n_band": 30,
-        "covered": 27
+        "brier": 9.6e-07,
+        "brier_clim": 0.33596672999999994,
+        "n_band": 33,
+        "covered": 30
       },
       "peaks_pending": {
         "threshold_p90": 10.9,
         "clim": 0.1009,
         "points": [
-          {
-            "t": "2026-09-14T13:00:00Z",
-            "p_exceed": 0.0,
-            "p90_upper": 4.5173
-          },
-          {
-            "t": "2026-09-14T14:00:00Z",
-            "p_exceed": 0.0001,
-            "p90_upper": 4.3734
-          },
-          {
-            "t": "2026-09-14T15:00:00Z",
-            "p_exceed": 0.0001,
-            "p90_upper": 4.8104
-          },
           {
             "t": "2026-09-14T16:00:00Z",
             "p_exceed": 0.0001,
@@ -21652,7 +21639,8 @@
             "p90_upper": 3.8488
           }
         ]
-      }
+      },
+      "baseline_model": "meteofrance_arpege_europe"
     }
   ]
 }
