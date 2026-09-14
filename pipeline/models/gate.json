@@ -1,20 +1,107 @@
 {
   "anglet": {
     "baseline_model": "meteofrance_wave",
-    "gain": 0.0978,
-    "gain_debiased": 0.0543,
-    "mae_baseline": 0.1178,
-    "mae_model": 0.1063,
-    "pass": true,
+    "ci_unit": "issue_day",
+    "evaluation_protocol": "holdout d\u00e9grad\u00e9",
+    "evaluation_ready": false,
+    "fold_baselines": [
+      "meteofrance_wave"
+    ],
+    "gain": 0.0983,
+    "gain_debiased": 0.066,
+    "gain_debiased_ci95_high": 0.1103,
+    "gain_debiased_ci95_low": 0.0138,
+    "mae_baseline": 0.1095,
+    "mae_model": 0.0987,
+    "n_folds": 1,
+    "n_issue_days": 90,
+    "pass": false,
+    "peaks": {
+      "alert": {
+        "bss_clim": 1.0,
+        "bss_clim_ci95_high": 1.0,
+        "bss_clim_ci95_low": 1.0,
+        "clim": 0.1037,
+        "far": null,
+        "far_baseline": null,
+        "n_days_48h": 90,
+        "n_events": 0,
+        "n_events_p98": 0,
+        "p48_bss_clim": null,
+        "pass": false,
+        "pod": null,
+        "pod_baseline": null,
+        "threshold_p90": 3.4,
+        "threshold_p98": 5.15,
+        "weak": true
+      },
+      "band": {
+        "coverage": 0.6725,
+        "crossings_frac": 0.1519,
+        "gain_pinball": -0.3061,
+        "gain_pinball_ci95_high": -0.1461,
+        "gain_pinball_ci95_low": -0.4807,
+        "pass": false,
+        "pinball_baseline": 0.0303,
+        "pinball_model": 0.0396,
+        "weak": true
+      }
+    },
+    "test_days": 90,
     "weak": false
   },
   "belle-ile": {
     "baseline_model": "ewam",
-    "gain": 0.1412,
-    "gain_debiased": 0.1167,
-    "mae_baseline": 0.1174,
-    "mae_model": 0.1009,
+    "ci_unit": "issue_day",
+    "evaluation_protocol": "rolling-origin multi-saisons",
+    "evaluation_ready": true,
+    "fold_baselines": [
+      "ewam",
+      "ewam",
+      "ewam",
+      "ewam"
+    ],
+    "gain": 0.2903,
+    "gain_debiased": 0.2334,
+    "gain_debiased_ci95_high": 0.2577,
+    "gain_debiased_ci95_low": 0.2038,
+    "mae_baseline": 0.1777,
+    "mae_model": 0.1261,
+    "n_folds": 4,
+    "n_issue_days": 360,
     "pass": true,
+    "peaks": {
+      "alert": {
+        "bss_clim": 0.8646,
+        "bss_clim_ci95_high": 0.8902,
+        "bss_clim_ci95_low": 0.834,
+        "clim": 0.1023,
+        "far": 0.0491,
+        "far_baseline": 0.0387,
+        "n_days_48h": 360,
+        "n_events": 3649,
+        "n_events_p98": 1105,
+        "p48_bss_clim": 0.8887,
+        "pass": true,
+        "pod": 0.9082,
+        "pod_baseline": 0.878,
+        "threshold_p90": 3.25,
+        "threshold_p98": 4.6,
+        "weak": false
+      },
+      "band": {
+        "coverage": 0.7803,
+        "crossings_frac": 0.054,
+        "gain_pinball": 0.1104,
+        "gain_pinball_ci95_high": 0.2115,
+        "gain_pinball_ci95_low": -0.0201,
+        "pass": false,
+        "pinball_baseline": 0.0437,
+        "pinball_model": 0.0389,
+        "weak": true
+      }
+    },
+    "test_days": 90,
     "weak": false
   },
   "brest": {
@@ -69,11 +156,55 @@
   },
   "cherbourg": {
     "baseline_model": "ewam",
-    "gain": 0.1932,
-    "gain_debiased": 0.0305,
-    "mae_baseline": 0.0869,
-    "mae_model": 0.0701,
+    "ci_unit": "issue_day",
+    "evaluation_protocol": "holdout d\u00e9grad\u00e9",
+    "evaluation_ready": false,
+    "fold_baselines": [
+      "ewam",
+      "ewam",
+      "ewam"
+    ],
+    "gain": 0.3952,
+    "gain_debiased": 0.2395,
+    "gain_debiased_ci95_high": 0.2749,
+    "gain_debiased_ci95_low": 0.2031,
+    "mae_baseline": 0.1571,
+    "mae_model": 0.095,
+    "n_folds": 3,
+    "n_issue_days": 267,
     "pass": false,
+    "peaks": {
+      "alert": {
+        "bss_clim": 0.6443,
+        "bss_clim_ci95_high": 0.7033,
+        "bss_clim_ci95_low": 0.5784,
+        "clim": 0.1098,
+        "far": 0.1766,
+        "far_baseline": 0.1995,
+        "n_days_48h": 267,
+        "n_events": 1724,
+        "n_events_p98": 302,
+        "p48_bss_clim": 0.7365,
+        "pass": false,
+        "pod": 0.7517,
+        "pod_baseline": 0.768,
+        "threshold_p90": 1.15,
+        "threshold_p98": 1.9,
+        "weak": false
+      },
+      "band": {
+        "coverage": 0.8401,
+        "crossings_frac": 0.0157,
+        "gain_pinball": 0.1065,
+        "gain_pinball_ci95_high": 0.1484,
+        "gain_pinball_ci95_low": 0.0625,
+        "pass": false,
+        "pinball_baseline": 0.0268,
+        "pinball_model": 0.0239,
+        "weak": false
+      }
+    },
+    "test_days": 90,
     "weak": false
   },
   "cherbourg-vent": {
@@ -240,11 +371,56 @@
   },
   "pierres-noires": {
     "baseline_model": "ncep_gfswave025",
-    "gain": 0.2578,
-    "gain_debiased": 0.2588,
-    "mae_baseline": 0.213,
-    "mae_model": 0.1581,
+    "ci_unit": "issue_day",
+    "evaluation_protocol": "rolling-origin multi-saisons",
+    "evaluation_ready": true,
+    "fold_baselines": [
+      "ncep_gfswave025",
+      "ncep_gfswave025",
+      "ncep_gfswave025",
+      "ncep_gfswave025"
+    ],
+    "gain": 0.236,
+    "gain_debiased": 0.2211,
+    "gain_debiased_ci95_high": 0.2496,
+    "gain_debiased_ci95_low": 0.1885,
+    "mae_baseline": 0.2694,
+    "mae_model": 0.2058,
+    "n_folds": 4,
+    "n_issue_days": 347,
     "pass": true,
+    "peaks": {
+      "alert": {
+        "bss_clim": 0.8241,
+        "bss_clim_ci95_high": 0.8535,
+        "bss_clim_ci95_low": 0.789,
+        "clim": 0.1043,
+        "far": 0.0948,
+        "far_baseline": 0.1134,
+        "n_days_48h": 347,
+        "n_events": 3478,
+        "n_events_p98": 600,
+        "p48_bss_clim": 0.8516,
+        "pass": true,
+        "pod": 0.9112,
+        "pod_baseline": 0.8631,
+        "threshold_p90": 3.5,
+        "threshold_p98": 4.95,
+        "weak": false
+      },
+      "band": {
+        "coverage": 0.8345,
+        "crossings_frac": 0.015,
+        "gain_pinball": 0.2669,
+        "gain_pinball_ci95_high": 0.3089,
+        "gain_pinball_ci95_low": 0.2188,
+        "pass": false,
+        "pinball_baseline": 0.064,
+        "pinball_model": 0.0469,
+        "weak": false
+      }
+    },
+    "test_days": 90,
     "weak": false
   },
   "saint-malo": {

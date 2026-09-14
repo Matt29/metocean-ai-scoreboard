@@ -42,6 +42,13 @@ def test_empty_successful_payload_raises_source_error():
         fetch_wave_obs(ST, date(2026, 7, 28), session=make_session(empty))
 
 
+def test_no_data_payload_with_null_header_raises_source_error():
+    no_data = {"success": True, "nbLig": 0, "entete": None, "results": None,
+               "message": "Pas de données pour la campagne `02911`"}
+    with pytest.raises(SourceError, match="aucune observation exploitable"):
+        fetch_wave_obs(ST, date(2026, 9, 12), session=make_session(no_data))
+
+
 def test_successful_payload_with_only_filtered_values_raises_source_error():
     filtered = {**FIX, "results": [["2026-07-28 00:00", "-1", "", "8", "", "", ""]]}
     with pytest.raises(SourceError, match="aucune observation exploitable"):

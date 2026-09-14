@@ -38,9 +38,13 @@ def _fetch_chunk(
     if resp.status_code != 200 or not payload.get("success"):
         raise SourceError(station.id, payload.get("message", f"HTTP {resp.status_code}"))
 
-    entete = payload["entete"]
     results = payload["results"] or []
-    df = pd.DataFrame(results, columns=entete)
+    if not results:
+        # "Pas de données pour la campagne…" comes back as success with
+        # `entete: null` — the columns below would not exist (seen 2026-09-14,
+        # Candhis silent on every station since 2026-09-08 12:00).
+        return pd.DataFrame(columns=["hs", "tp"], index=pd.DatetimeIndex([], tz="UTC", name="time"))
+    df = pd.DataFrame(results, columns=payload["entete"])
 
     df = df.rename(columns={"Date": "time", "H1/3 (m)": "hs", "TH1/3 (s)": "tp"})
     df = df[["time", "hs", "tp"]]

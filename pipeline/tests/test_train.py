@@ -51,9 +51,9 @@ def _raw(days: int = 45, seed: int = 0) -> pd.DataFrame:
 
 
 def test_select_baseline_ignores_the_test_days():
-    """`hs_ewam` wins on the train days, `hs_gwam` on the test days.
+    """`hs_ewam` wins on the train days, `hs_ncep_gfswave025` on the test days.
 
-    A selection that peeked at the test window would return `hs_gwam`.
+    A selection that peeked at the test window would return `hs_ncep_gfswave025`.
     """
     raw = _raw(days=40)
     day = pd.DatetimeIndex(raw.index).normalize()
@@ -62,11 +62,11 @@ def test_select_baseline_ignores_the_test_days():
     is_train = day.isin(train_days)
 
     raw["hs_ewam"] = raw["hs"] + np.where(is_train, 0.01, 2.00)
-    raw["hs_gwam"] = raw["hs"] + np.where(is_train, 0.10, 0.02)
+    raw["hs_ncep_gfswave025"] = raw["hs"] + np.where(is_train, 0.10, 0.02)
 
     assert train.select_baseline(raw, train_days) == "hs_ewam"
     # …and the whole window really would have picked the other one.
-    assert train.select_baseline(raw, all_days) == "hs_gwam"
+    assert train.select_baseline(raw, all_days) == "hs_ncep_gfswave025"
 
 
 def test_per_lead_router_routes_each_slice_to_its_own_model():
@@ -106,7 +106,7 @@ def test_per_lead_router_routes_each_slice_to_its_own_model():
 def test_model_selection_never_looks_at_the_test_window(tmp_path, monkeypatch):
     """Candidate selection calls the scorer on validation, never on the test."""
     raw = _raw(days=120)
-    raw["hs_gwam"] = raw["hs"] + 0.02
+    raw["hs_ncep_gfswave025"] = raw["hs"] + 0.02
     monkeypatch.setattr(train, "DATA_DIR", tmp_path)
     monkeypatch.setattr(model, "MODELS_DIR", tmp_path)
     raw.to_parquet(tmp_path / "synthetic_raw.parquet")
@@ -133,7 +133,7 @@ def test_wave_evaluation_uses_multiple_rolling_issue_day_folds_and_reports_ci(tm
     """A wave verdict spans several origins; its uncertainty is resampled by
     issue day, never by correlated lead rows."""
     raw = _raw(days=160)
-    raw["hs_gwam"] = raw["hs"] + 0.02
+    raw["hs_ncep_gfswave025"] = raw["hs"] + 0.02
     monkeypatch.setattr(train, "DATA_DIR", tmp_path)
     raw.to_parquet(tmp_path / "synthetic_raw.parquet")
 
@@ -159,7 +159,7 @@ def test_a_degenerate_origin_is_dropped_for_every_candidate_and_never_silently(
     a forced candidate exactly as for the automatic selection — and it must say so.
     """
     raw = _raw(days=160)
-    raw["hs_gwam"] = raw["hs"] + 0.02
+    raw["hs_ncep_gfswave025"] = raw["hs"] + 0.02
     # Forcing gap over the first 112 days: `assemble` drops those issues, so the
     # first origin keeps far fewer train issue days than the observation history
     # suggests — the wave-station shape that exposed the asymmetry.
@@ -183,7 +183,7 @@ def test_write_report_publishes_skipped_origins(tmp_path, monkeypatch):
     without being propagated to `gate.json` (a station's `n_folds` alone can't
     tell a reader how many origins were planned but dropped)."""
     raw = _raw(days=160)
-    raw["hs_gwam"] = raw["hs"] + 0.02
+    raw["hs_ncep_gfswave025"] = raw["hs"] + 0.02
     raw.loc[raw.index < raw.index[0] + pd.Timedelta(days=112), MULTI_FORCING_COLUMNS] = np.nan
     monkeypatch.setattr(train, "DATA_DIR", tmp_path)
     monkeypatch.setattr(train, "SEASONAL_HISTORY_DAYS", 100)
@@ -234,7 +234,7 @@ def test_each_rolling_origin_selects_its_baseline_without_later_observations(
     tmp_path, monkeypatch
 ):
     raw = _raw(days=160)
-    raw["hs_gwam"] = raw["hs"] + 0.02
+    raw["hs_ncep_gfswave025"] = raw["hs"] + 0.02
     monkeypatch.setattr(train, "DATA_DIR", tmp_path)
     monkeypatch.setattr(train, "SEASONAL_HISTORY_DAYS", 100)
     monkeypatch.setattr(train, "SEASONAL_STRIDE_DAYS", 10)
@@ -260,7 +260,7 @@ def test_each_rolling_origin_selects_its_baseline_without_later_observations(
 
 def test_gate_rejects_a_positive_point_gain_when_its_ci_crosses_zero(tmp_path, monkeypatch):
     raw = _raw(days=120)
-    raw["hs_gwam"] = raw["hs"] + 0.02
+    raw["hs_ncep_gfswave025"] = raw["hs"] + 0.02
     monkeypatch.setattr(train, "DATA_DIR", tmp_path)
     raw.to_parquet(tmp_path / "synthetic_raw.parquet")
     monkeypatch.setattr(
@@ -308,7 +308,7 @@ def test_merge_gate_persists_the_station_uncertainty_contract():
         "gain_debiased_ci95_high": 0.654321, "n_folds": 4,
         "n_issue_days": 360, "evaluation_protocol": "rolling-origin multi-saisons",
         "evaluation_ready": True, "ci_unit": "issue_day",
-        "fold_baselines": ["ewam", "gwam", "ewam", "mfwam"],
+        "fold_baselines": ["ewam", "ncep_gfswave025", "ewam", "mfwam"],
     }
 
     gate = train.merge_gate({}, [row], known={"anglet"})
@@ -319,7 +319,7 @@ def test_merge_gate_persists_the_station_uncertainty_contract():
         "gain_debiased_ci95_low": 0.1235, "gain_debiased_ci95_high": 0.6543,
         "n_folds": 4, "n_issue_days": 360,
         "evaluation_protocol": "rolling-origin multi-saisons", "evaluation_ready": True,
-        "ci_unit": "issue_day", "fold_baselines": ["ewam", "gwam", "ewam", "mfwam"],
+        "ci_unit": "issue_day", "fold_baselines": ["ewam", "ncep_gfswave025", "ewam", "mfwam"],
     }
 
 
@@ -339,8 +339,8 @@ def test_evaluate_is_side_effect_free_until_release(
     tmp_path, monkeypatch
 ):
     raw = _raw(days=45)
-    # `hs_gwam` is deliberately the closest model on every day.
-    raw["hs_gwam"] = raw["hs"] + 0.02
+    # `hs_ncep_gfswave025` is deliberately the closest model on every day.
+    raw["hs_ncep_gfswave025"] = raw["hs"] + 0.02
     monkeypatch.setattr(train, "DATA_DIR", tmp_path)
     monkeypatch.setattr(model, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(train, "GATE_PATH", tmp_path / "gate.json")
@@ -349,14 +349,14 @@ def test_evaluate_is_side_effect_free_until_release(
     row = train.evaluate(STATION, test_days=10, model_names=("ridge",))
 
     assert row is not None
-    assert row["baseline_model"] == "gwam"
+    assert row["baseline_model"] == "ncep_gfswave025"
     assert row["n_test"] > 0 and row["n_train"] > 0
     assert not (tmp_path / "synthetic.joblib").exists()
 
     gate = train.merge_gate({}, [row], known={STATION.id})
     train.release([row], gate)
     artefact = model.load_artifact("synthetic", models_dir=tmp_path)
-    assert artefact["baseline_model"] == "gwam"
+    assert artefact["baseline_model"] == "ncep_gfswave025"
     assert artefact["feature_columns"] == WAVE_FEATURE_COLUMNS
 
 
@@ -775,7 +775,7 @@ def test_peak_scores_evaluates_p_48h_by_issue_day():
 
 def test_evaluate_reports_peak_verdicts_on_the_same_sealed_rows(tmp_path, monkeypatch):
     raw = _raw(days=45)
-    raw["hs_gwam"] = raw["hs"] + 0.02
+    raw["hs_ncep_gfswave025"] = raw["hs"] + 0.02
     monkeypatch.setattr(train, "DATA_DIR", tmp_path)
     monkeypatch.setattr(model, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(train, "GATE_PATH", tmp_path / "gate.json")

@@ -439,7 +439,8 @@ du gate mesuré sur `q90` seul, ni comparer à sa bande 0,85–0,95), voir
    + `_rescore_pending`).
 3. ~~Ré-entraîner sur les prévisions archivées~~ — **fait (2026-08-03)** pour
    les vagues : retrain multi-modèles Task 7, baseline vague basculée sur
-   Open-Meteo Marine (meilleur des 5 modèles par station), CMEMS/MFWAM
+   Open-Meteo Marine (meilleur des 5 modèles par station — 4 depuis le
+   2026-09-14, `gwam` retiré), CMEMS/MFWAM
    retiré du pipeline (voir `docs/data-sources.md` § 4ter). **Mise à jour
    2026-08-03** : plus besoin d'attendre un mois de collecte propre —
    l'API Historical Forecast d'Open-Meteo sert `meteofrance_arpege_europe`

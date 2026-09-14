@@ -145,7 +145,7 @@ def _deep_inputs(
     """`(models, forcing)` over the whole replay window — the one place the
     wave, wind and tide paths pick different sources, mirroring `daily._fetch_inputs`.
 
-    Archived fields, not live forecasts (résolution 2): the 5 wave models plus
+    Archived fields, not live forecasts (résolution 2): the 4 wave models plus
     the 3 candidate winds for a wave station, the run-stratified ECMWF leg for a
     tide station — `daily.issue_series` narrows it per replayed issue, so a
     backfilled day is forced by the run it would really have had. Whatever of the last replayed day's +48h horizon falls beyond

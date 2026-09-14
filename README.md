@@ -1,7 +1,7 @@
 # Scoreboard Metocean IA
 
 Un modèle IA **post-traite** la prévision physique officielle (le meilleur des
-5 modèles de vagues Open-Meteo Marine pour la houle et le meilleur des 3
+4 modèles de vagues Open-Meteo Marine pour la houle et le meilleur des 3
 modèles de vent — `baseline_model`, choisi par station à l'entraînement — un
 modèle harmonique ajusté sur 2 ans glissants pour le niveau d'eau) sur des stations françaises de
 référence, et publie chaque jour son écart mesuré face à cette baseline
@@ -61,8 +61,8 @@ le décide pas. En cas de désaccord, c'est le tableau qui a vieilli.
 
 Pour les stations houle **et vent**, la baseline officielle n'est pas un modèle
 fixe : à l'entraînement, `scripts/train.py` retient par station le **meilleur**
-des 5 modèles de vagues Open-Meteo Marine (`meteofrance_wave`, `ecmwf_wam025`,
-`gwam`, `ewam`, `ncep_gfswave025`) ou des 3 modèles de vent
+des 4 modèles de vagues Open-Meteo Marine (`meteofrance_wave`, `ecmwf_wam025`,
+`ewam`, `ncep_gfswave025`) ou des 3 modèles de vent
 (`meteofrance_arpege_europe`, `ecmwf_ifs025`, `icon_eu`) et l'écrit dans
 l'artefact (`baseline_model`) — c'est ce choix, pas un nom générique "MFWAM",
 que le gate et le serve utilisent ensuite.
@@ -71,8 +71,8 @@ que le gate et le serve utilisent ensuite.
 |---|---|---|---|---|
 | Pierres Noires | houle (Hs) | Candhis | Open-Meteo Marine (`ncep_gfswave025`) | oui |
 | Belle-Île | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | oui |
-| Anglet | houle (Hs) | Candhis | Open-Meteo Marine (`meteofrance_wave`) | oui |
-| Cherbourg | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | non (sous le gate) |
+| Anglet | houle (Hs) | Candhis | Open-Meteo Marine (`meteofrance_wave`) | non (holdout dégradé, dépubliée le 2026-09-14) |
+| Cherbourg | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | non (holdout dégradé) |
 | Bouée Gascogne | houle (Hs) | Météo-France DPObs `/bouees` | Open-Meteo Marine (à sélectionner) | pilote inactif |
 | Brest | niveau d'eau | SHOM REFMAR | harmonique (utide, 2 ans) | oui |
 | Saint-Malo | niveau d'eau | SHOM REFMAR | harmonique (utide, 2 ans) | oui |
@@ -132,7 +132,7 @@ traité en amont sur les trois kinds (chacun s'entraîne sur des runs passés du
 modèle qu'on lui sert, et la marée sur des runs stratifiés par âge), donc
 l'archive n'est plus le seul instrument possible — elle reste la seule mesure
 véritablement vraie, à des mois d'échéance. Il archive aussi, depuis Task 7,
-les colonnes `hs_*` des 5 modèles vague effectivement servis à chaque station —
+les colonnes `hs_*` des modèles vague effectivement servis à chaque station —
 pas seulement le vent.
 
 Produit « pics » (alerte de dépassement + borne haute p90, à côté du médian,

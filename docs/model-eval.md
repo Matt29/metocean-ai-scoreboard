@@ -1,10 +1,10 @@
 # Évaluation des modèles de post-traitement
 
-Généré par `pipeline/scripts/train.py` le 2026-09-09 05:20 UTC (fenêtres temporelles et protocole détaillés par station ci-dessous).
+Généré par `pipeline/scripts/train.py` le 2026-09-14 11:33 UTC (fenêtres temporelles et protocole détaillés par station ci-dessous).
 
 Le modèle **post-traite** une prévision physique officielle : il la corrige, il
 ne la remplace jamais. Cette baseline n'est plus imposée : pour une station
-`wave`, c'est le **meilleur modèle physique** parmi les 5 modèles de vagues
+`wave`, c'est le **meilleur modèle physique** parmi les 4 modèles de vagues
 Open-Meteo, et pour une station `wind` le meilleur des 3 modèles de vent
 Open-Meteo — dans les deux cas choisi station par station comme le plus proche
 de son observation **sur les seuls jours d'émission d'entraînement** (colonne
@@ -14,18 +14,22 @@ de son observation **sur les seuls jours d'émission d'entraînement** (colonne
 
 | Station | Type | Baseline production / folds de test | Modèle ML | Rows train / test | MAE baseline | MAE baseline débiaisée | MAE modèle | Gain affiché | **Gain hors biais** | IC95% gain | Protocole | Verdict |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| brest | tide | harmonique / harmonique | `hgb-per-lead` | 42084 / 17484 | 0.118 | 0.117 | 0.054 | +54.2% | **+53.9%** | [+50.8%, +56.7%] (365 jours) | holdout annuel (1×365j) | PASS |
-| saint-malo | tide | harmonique / harmonique | `hgb-per-lead` | 43596 / 17484 | 0.151 | 0.151 | 0.099 | +34.2% | **+34.1%** | [+31.6%, +36.4%] (365 jours) | holdout annuel (1×365j) | PASS |
-| ouessant | wind | meteofrance_arpege_europe / meteofrance_arpege_europe, meteofrance_arpege_europe, meteofrance_arpege_europe, meteofrance_arpege_europe | `hgb` | 43772 / 17238 | 1.238 | 1.227 | 0.969 | +21.7% | **+21.0%** | [+19.2%, +22.7%] (360 jours) | rolling-origin multi-saisons (4×90j) | PASS |
-| dieppe | wind | meteofrance_arpege_europe / meteofrance_arpege_europe, meteofrance_arpege_europe, meteofrance_arpege_europe, meteofrance_arpege_europe | `hgb` | 43768 / 17236 | 1.294 | 1.231 | 0.808 | +37.5% | **+34.3%** | [+31.9%, +36.5%] (360 jours) | rolling-origin multi-saisons (4×90j) | PASS |
-| cherbourg-vent | wind | meteofrance_arpege_europe / meteofrance_arpege_europe, meteofrance_arpege_europe, meteofrance_arpege_europe, meteofrance_arpege_europe | `hgb` | 43736 / 17232 | 1.635 | 1.428 | 1.086 | +33.6% | **+24.0%** | [+21.2%, +26.6%] (360 jours) | rolling-origin multi-saisons (4×90j) | PASS |
+| pierres-noires | wave | ncep_gfswave025 / ncep_gfswave025, ncep_gfswave025, ncep_gfswave025, ncep_gfswave025 | `hgb` | 35952 / 16426 | 0.269 | 0.264 | 0.206 | +23.6% | **+22.1%** | [+18.9%, +25.0%] (347 jours) | rolling-origin multi-saisons (4×90j) | PASS |
+| belle-ile | wave | ewam / ewam, ewam, ewam, ewam | `hgb` | 35710 / 17017 | 0.178 | 0.164 | 0.126 | +29.0% | **+23.3%** | [+20.4%, +25.8%] (360 jours) | rolling-origin multi-saisons (4×90j) | PASS |
+| anglet | wave | meteofrance_wave / meteofrance_wave | `ridge` | 12484 / 4260 | 0.109 | 0.106 | 0.099 | +9.8% | **+6.6%** | [+1.4%, +11.0%] (90 jours) | holdout dégradé (1×90j) | FAIL |
+| cherbourg | wave | ewam / ewam, ewam, ewam | `hgb` | 35134 / 12668 | 0.157 | 0.125 | 0.095 | +39.5% | **+23.9%** | [+20.3%, +27.5%] (267 jours) | holdout dégradé (3×90j) | FAIL |
 
-**Stations non ré-entraînées sur cette fenêtre : pierres-noires, belle-ile, anglet, cherbourg** — leur
+**4 origine(s) rolling écartée(s) avant de compter dans `n_folds` ci-dessus** — une origine prévue par le calendrier saisonnier mais dont le split train/test ou la couverture ne suffisait pas (voir `_origin_split` / `MIN_FOLD_COVERAGE`) :
+
+   * `anglet` : vide: split train/test dégénéré; 2025-11-17: split train/test dégénéré; 2026-02-07: validation interne dégénérée (train plus court que ses 90 jours de validation)
+   * `cherbourg` : 2026-02-07: couverture 57/72 jours d'émission
+
+**Stations non ré-entraînées sur cette fenêtre : brest, saint-malo, ouessant, dieppe, cherbourg-vent** — leur
 jeu d'entraînement est absent de `pipeline/data_train/`. Leur artefact et leur
 entrée `gate.json` du run précédent sont **conservés tels quels** : ils ne sont
 ni supprimés ni rafraîchis, et les chiffres ci-dessus ne les couvrent pas.
 
-MAE en m (water level) pour les stations `tide`, m/s (vent 10 m) pour les stations `wind`. « MAE baseline débiaisée » = MAE de la baseline après retrait
+MAE en m (Hs) pour les stations `wave`. « MAE baseline débiaisée » = MAE de la baseline après retrait
 de son biais moyen dans chaque fold de test — c'est le garde-fou de la
 réserve 4 : un modèle qui ne bat pas cette colonne n'apporte rien de plus
 qu'une constante. Gate de mise en ligne : **+5 % de MAE gagnée hors biais**
@@ -54,7 +58,7 @@ evaluation_protocol, evaluation_ready, ci_unit, baseline_model,
 fold_baselines}}`) — c'est cette
 source, pas ce tableau, que le publisher doit lire.
 
-**Stations sous le gate dans `gate.json` : cherbourg** — à ne pas mettre en ligne en l'état.
+**Stations sous le gate dans `gate.json` : anglet, cherbourg** — à ne pas mettre en ligne en l'état.
 
 ## Skill sur les événements — diagnostic, pas un critère
 
@@ -75,16 +79,14 @@ que la baseline pourrait connaître à l'avance.
 
 | Station | Bande | Heures | MAE baseline | MAE baseline débiaisée | MAE modèle | Gain hors biais |
 |---|---|---|---|---|---|---|
-| brest | décile sup. | 1750 | 0.325 | 0.326 | 0.092 | **+72.0%** |
-| brest | |résidu| > 0.3 m | 814 | 0.389 | 0.393 | 0.098 | **+75.1%** |
-| saint-malo | décile sup. | 1750 | 0.411 | 0.411 | 0.165 | **+59.8%** |
-| saint-malo | |résidu| > 0.3 m | 2032 | 0.397 | 0.397 | 0.160 | **+59.7%** |
-| ouessant | décile sup. | 1728 | 3.559 | 3.563 | 2.224 | **+37.6%** |
-| ouessant | |résidu| > 2 m/s | 3302 | 2.941 | 2.942 | 1.831 | **+37.7%** |
-| dieppe | décile sup. | 1727 | 3.450 | 3.451 | 1.743 | **+49.5%** |
-| dieppe | |résidu| > 2 m/s | 3771 | 2.845 | 2.845 | 1.316 | **+53.8%** |
-| cherbourg-vent | décile sup. | 1726 | 4.728 | 3.709 | 1.724 | **+53.5%** |
-| cherbourg-vent | |résidu| > 2 m/s | 5250 | 3.357 | 2.499 | 1.525 | **+39.0%** |
+| pierres-noires | décile sup. | 1664 | 0.748 | 0.748 | 0.454 | **+39.3%** |
+| pierres-noires | |résidu| > 0.5 m | 2392 | 0.682 | 0.683 | 0.415 | **+39.2%** |
+| belle-ile | décile sup. | 1703 | 0.504 | 0.475 | 0.270 | **+43.2%** |
+| belle-ile | |résidu| > 0.5 m | 690 | 0.618 | 0.591 | 0.328 | **+44.5%** |
+| anglet | décile sup. | 429 | 0.311 | 0.316 | 0.278 | **+12.0%** |
+| anglet | |résidu| > 0.5 m | 42 | 0.568 | 0.587 | 0.550 | **+6.2%** |
+| cherbourg | décile sup. | 1305 | 0.491 | 0.381 | 0.202 | **+46.9%** |
+| cherbourg | |résidu| > 0.5 m | 408 | 0.702 | 0.586 | 0.268 | **+54.2%** |
 
 ## Pics — alerte de dépassement et borne haute
 
@@ -104,11 +106,10 @@ jours à événement mesurée sur le test lui-même, donc un skill optimiste.
 
 | Station | Seuil p90 | Seuil p98 | BSS clim. | IC95 % | POD / FAR modèle | POD / FAR baseline | Événements | p48 BSS | n jours | Verdict |
 |---|---|---|---|---|---|---|---|---|---|---|
-| brest | 0.202 | 0.414 | +0.509 | [+0.395 ; +0.608] | 0.76 / 0.31 | — / — | 1428 | +0.730 | 365 | PASS |
-| saint-malo | 0.255 | 0.461 | +0.231 | [+0.163 ; +0.295] | 0.47 / 0.47 | — / — | 1448 | +0.303 | 365 | PASS |
-| ouessant | 12.600 | 16.958 | +0.671 | [+0.634 ; +0.704] | 0.76 / 0.16 | 0.73 / 0.27 | 2372 | +0.719 | 360 | PASS |
-| dieppe | 8.000 | 11.100 | +0.606 | [+0.563 ; +0.647] | 0.70 / 0.18 | 0.57 / 0.48 | 2090 | +0.637 | 360 | PASS |
-| cherbourg-vent | 10.900 | 14.400 | +0.598 | [+0.549 ; +0.643] | 0.75 / 0.23 | 0.65 / 0.42 | 2148 | +0.622 | 360 | PASS |
+| pierres-noires | 3.500 | 4.950 | +0.824 | [+0.789 ; +0.853] | 0.91 / 0.09 | 0.86 / 0.11 | 3478 | +0.852 | 347 | PASS |
+| belle-ile | 3.250 | 4.600 | +0.865 | [+0.834 ; +0.890] | 0.91 / 0.05 | 0.88 / 0.04 | 3649 | +0.889 | 360 | PASS |
+| anglet | 3.400 | 5.150 | +1.000 | [+1.000 ; +1.000] | — / — | — / — | 0 | — | 90 | FAIL |
+| cherbourg | 1.150 | 1.900 | +0.644 | [+0.578 ; +0.703] | 0.75 / 0.18 | 0.77 / 0.20 | 1724 | +0.737 | 267 | FAIL |
 
 Borne haute : quantile 0,9 de la cible. Adversaire : la baseline décalée de son
 propre quantile 0,9 d'erreur de train. `max(médian, p90)` est publié ; la part de
@@ -116,11 +117,10 @@ croisements est un diagnostic (`weak` au-delà de 5 %).
 
 | Station | Couverture | Pinball modèle | Pinball baseline | Gain pinball | IC95 % | Croisements | Verdict |
 |---|---|---|---|---|---|---|---|
-| brest | 0.882 | 0.0115 | 0.0307 | +62.7% | [+59.2% ; +66.0%] | 2.6% | PASS |
-| saint-malo | 0.862 | 0.0233 | 0.0356 | +34.7% | [+31.4% ; +38.0%] | 1.6% | PASS |
-| ouessant | 0.849 | 0.2448 | 0.3105 | +21.1% | [+18.3% ; +24.2%] | 0.1% | FAIL |
-| dieppe | 0.840 | 0.2080 | 0.3035 | +31.5% | [+28.8% ; +34.0%] | 0.1% | FAIL |
-| cherbourg-vent | 0.880 | 0.2492 | 0.3629 | +31.3% | [+28.4% ; +34.4%] | 0.5% | PASS |
+| pierres-noires | 0.834 | 0.0469 | 0.0640 | +26.7% | [+21.9% ; +30.9%] | 1.5% | FAIL |
+| belle-ile | 0.780 | 0.0389 | 0.0437 | +11.0% | [-2.0% ; +21.2%] | 5.4% | FAIL* |
+| anglet | 0.673 | 0.0396 | 0.0303 | -30.6% | [-48.1% ; -14.6%] | 15.2% | FAIL* |
+| cherbourg | 0.840 | 0.0239 | 0.0268 | +10.7% | [+6.3% ; +14.8%] | 1.6% | FAIL |
 
 ## Comparaison des modèles ML
 
@@ -137,11 +137,10 @@ ne paie pas sa complexité, et c'est un résultat, pas un échec.
 
 | Station | Baseline physique | `hgb` | `ridge` | `hgb-per-lead` | Publié |
 |---|---|---|---|---|---|
-| brest | tide | +40.8% | +41.0% | **+42.8%** | `hgb-per-lead` |
-| saint-malo | tide | +25.5% | +10.7% | **+28.4%** | `hgb-per-lead` |
-| ouessant | meteofrance_arpege_europe | **+21.5%** | +10.2% | +20.9% | `hgb` |
-| dieppe | meteofrance_arpege_europe | **+32.4%** | +28.0% | +31.8% | `hgb` |
-| cherbourg-vent | meteofrance_arpege_europe | **+25.3%** | +15.2% | +23.8% | `hgb` |
+| pierres-noires | ncep_gfswave025 | **+28.9%** | +21.4% | +27.1% | `hgb` |
+| belle-ile | ewam | **+34.4%** | +30.1% | +30.9% | `hgb` |
+| anglet | meteofrance_wave | -8.2% | **+4.9%** | -11.9% | `ridge` |
+| cherbourg | ewam | **+31.8%** | +23.8% | +29.8% | `hgb` |
 
 ## Protocole
 
@@ -151,7 +150,7 @@ ne paie pas sa complexité, et c'est un résultat, pas un échec.
   fuir une émission entre train et test. Le jour d'émission est reconstruit
   comme `valid_time - lead_h`. Une émission entière reste toujours du même
   côté d'une frontière. Jamais de split aléatoire.
-* **Choix de la baseline (stations `wave`).** Les 5 modèles de vagues
+* **Choix de la baseline (stations `wave`).** Les 4 modèles de vagues
   Open-Meteo sont comparés à la bouée **sur les seuls jours d'émission
   d'entraînement**, et le plus proche devient la baseline de la station — donc
   le dénominateur de tous les gains ci-dessus. La sélection ne voit jamais la
@@ -161,7 +160,7 @@ ne paie pas sa complexité, et c'est un résultat, pas un échec.
   séparément de la baseline re-sélectionnée sur tout l'historique pour la
   production.
 * **Choix du modèle ML — sur validation, jamais sur le test.** Les
-  120 derniers jours d'émission **du train** forment une fenêtre de
+  90 derniers jours d'émission **du train** forment une fenêtre de
   validation. Les trois candidats (`hgb`, `ridge`, `hgb-per-lead`) y sont
   comparés, à features et baseline identiques ; le meilleur gain hors biais
   gagne, est ré-entraîné sur tout le train, puis évalué **une seule fois** sur
@@ -217,26 +216,35 @@ ne paie pas sa complexité, et c'est un résultat, pas un échec.
    de run, avec la limite de granularité journalière explicitée ci-dessus :
    ce n'est plus une analyse parfaite a posteriori, sans être une causalité
    exacte à l'heure près.
-4. **Sur 0 des 5 stations ré-entraînées, plus de la
+4. **Sur 0 des 4 stations ré-entraînées, plus de la
    moitié du gain
    affiché n'est qu'une correction de biais constant** — chaque baseline dérive
    sur la fenêtre de test, et retirer ce seul offset capte déjà l'essentiel du
    gain. Le chiffre à citer est donc **« Gain hors biais »**, jamais « Gain
    affiché ». Détail par station (biais obs − baseline, puis les deux gains) :
 
-   * `brest` : biais -0.009 m — gain affiché +54.2%, **hors biais +53.9%**
-   * `saint-malo` : biais -0.003 m — gain affiché +34.2%, **hors biais +34.1%**
-   * `ouessant` : biais -0.033 m — gain affiché +21.7%, **hors biais +21.0%**
-   * `dieppe` : biais -0.013 m — gain affiché +37.5%, **hors biais +34.3%**
-   * `cherbourg-vent` : biais +1.090 m — gain affiché +33.6%, **hors biais +24.0%**
+   * `pierres-noires` : biais -0.016 m — gain affiché +23.6%, **hors biais +22.1%**
+   * `belle-ile` : biais -0.072 m — gain affiché +29.0%, **hors biais +23.3%**
+   * `anglet` : biais -0.018 m — gain affiché +9.8%, **hors biais +6.6%**
+   * `cherbourg` : biais -0.118 m — gain affiché +39.5%, **hors biais +23.9%**
 
    Aucune station ré-entraînée n'a un gain affiché supérieur au double de son gain hors biais.
    Aucune station de `gate.json` n'est `weak` : toutes battent ce simple débiaisage.
-5. **Aucune station ré-entraînée n'est sous le gate sur cette fenêtre de
-   test.**
+5. **Stations sous le gate — à ne pas publier en l'état.** Le modèle n'y
+   atteint pas les +5% exigés : il ne trouve pas de signal exploitable
+   dans les features actuelles. Le forçage vent 10 m (`wind_u10`/`wind_v10`)
+   en fait partie depuis Task 7B — il a payé sur les stations de houle exposée
+   mais **pas** sur celles ci-dessous. La pression au niveau de la mer, elle,
+   n'est servie qu'aux stations `tide` (voir « Pistes testées et écartées ») :
+   ce n'est donc pas un levier disponible ici. L'explication est ailleurs :
+   historique d'entraînement trop court, forçage local mal représenté par la
+   maille du modèle atmosphérique, ou grandeur encore absente. À trancher
+   station par station, mesure à l'appui — `train.py --ablate <colonnes>` chiffre
+   ce que chaque feature apporte réellement (p. ex.
+   `--ablate wind_u10,wind_v10`).
 
-   Hors de ce run, `gate.json` garde sous le gate : cherbourg —
-   station(s) non ré-entraînée(s) ici, verdict inchangé.
+   * `anglet` (wave) : 12484 lignes de train, MAE baseline 0.109 → modèle 0.099 (+9.8% affiché, +6.6% hors biais)
+   * `cherbourg` (wave) : 35134 lignes de train, MAE baseline 0.157 → modèle 0.095 (+39.5% affiché, +23.9% hors biais)
 
 
 ## Pistes testées et écartées

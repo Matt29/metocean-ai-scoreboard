@@ -360,7 +360,10 @@ comparaison faits en Task 0, rapport complet dans
 
 - **Entraînement et inférence +48 h (Marine API, un seul et même chemin)** :
   `https://marine-api.open-meteo.com/v1/marine`
-  `?...&hourly=wave_height&models=meteofrance_wave,ecmwf_wam025,gwam,ewam,ncep_gfswave025`,
+  `?...&hourly=wave_height&models=meteofrance_wave,ecmwf_wam025,ewam,ncep_gfswave025`
+  (`gwam` retiré le 2026-09-14 : son trou 2024-T3 → 2025-T2 bornait l'historique
+  assemblable à ~1 an, voir `docs/plan-dev-modele.md` « Houle sur 3 ans » ; il
+  n'est donc plus archivé non plus),
   en mode archive (`start_date`/`end_date`) pour l'entraînement, en mode
   prévision pour l'inférence — même URL, même contrat JSON, même parseur
   (`pipeline/src/scoreboard/sources/marine.py`, `fetch_wave_models_history` /

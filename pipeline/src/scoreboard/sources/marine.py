@@ -1,4 +1,4 @@
-"""Open-Meteo Marine API fetcher — the 5 wave models, live and historical.
+"""Open-Meteo Marine API fetcher — the 4 wave models, live and historical.
 
 Same JSON contract for both legs (train = historical, serve = live), same
 parser — the anti-skew guarantee of `sources/wind.py`, applied to waves.
@@ -9,8 +9,8 @@ as NaN so downstream coverage checks (features.py) can refuse to serve — they
 must NEVER be silently zero-filled here.
 
 Key format confirmed by Task 0 (raw probe, see task-0-coverage.md): a
-multi-model request (this module always requests all 5) suffixes every
-`hourly` key with `_<model>`, e.g. `wave_height_gwam`.
+multi-model request (this module always requests all of them) suffixes every
+`hourly` key with `_<model>`, e.g. `wave_height_ewam`.
 """
 from __future__ import annotations
 
@@ -23,7 +23,11 @@ import requests
 from scoreboard.config import Station
 from scoreboard.sources import SourceError, make_session
 
-WAVE_MODELS = ["meteofrance_wave", "ecmwf_wam025", "gwam", "ewam", "ncep_gfswave025"]
+# `gwam` dropped 2026-09-14: its archive hole (2024-Q3 -> 2025-Q2) cut every
+# wave station's assemblable history to ~1 year, below the 730 days the
+# multi-season protocol needs. It was no station's baseline. See
+# docs/plan-dev-modele.md « Houle sur 3 ans ».
+WAVE_MODELS = ["meteofrance_wave", "ecmwf_wam025", "ewam", "ncep_gfswave025"]
 MODEL_COLUMNS = [f"hs_{m}" for m in WAVE_MODELS]
 _MARINE_URL = "https://marine-api.open-meteo.com/v1/marine"
 _TIMEOUT = 60

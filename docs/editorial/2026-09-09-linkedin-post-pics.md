@@ -1,7 +1,10 @@
 # Post LinkedIn — « mon IA écrase les pics, et c'est normal »
 
 **Date de rédaction** : 2026-09-09
-**Statut** : **à poster**. Avant envoi, revérifier les chiffres contre le
+**Statut** : **à poster**. ⚠️ **Périmé sur un point depuis le 2026-09-14** : « les quatre
+stations de houle n'ont pas de verdict » est faux — pierres-noires et belle-ile
+ont une entrée `peaks` (alerte PASS, borne FAIL) après le ré-entraînement houle
+(`docs/plan-dev-modele.md` « Houle sur 3 ans »). Réécrire ce paragraphe avant envoi. Avant envoi, revérifier les chiffres contre le
 `gate.json` du jour et `docs/plan-dev-modele.md` § Pics ; si un retrain est
 passé entre-temps, mettre à jour le tableau des sources ci-dessous, puis
 figer ce fichier comme archive (voir le post du 2026-08-05 pour la règle).

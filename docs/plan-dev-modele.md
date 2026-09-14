@@ -836,12 +836,58 @@ référence forcée sur `ewam`.
   C ne mesure **pas** le biais de latence Météo-France : `ewam` y est un
   adversaire plus faible (MAE brute 0,223 contre 0,188 m), le +20,1 % n'est
   qu'un changement d'adversaire. Le design de C était faux pour cette question.
-- Rien n'est promu. Passer B en production changerait les features servies
-  (2 modèles de vagues, 2 vents) pour les 4 stations houle.
+- **B n'est pas retenu.** Retirer le vent `ecmwf_ifs025` changerait aussi les
+  features des 3 stations vent (`MULTI_FORCING_COLUMNS` est partagé), qui
+  tomberaient `missing` jusqu'au ré-entraînement.
+
+**Pierres-noires contre `ncep` — mesuré le 2026-09-14 sur `aec7527`.** Mêmes
+lignes de test que B, prédictions B, référence remplacée par
+`ncep_gfswave025` : **+25,4 % hors biais [+22,0 ; +28,3]** (contre `ewam` :
++21,7 %). Hors biais, `ewam` est l'adversaire le plus exigeant (MAE débiaisée
+0,252 contre 0,264 m) : la crainte d'un adversaire affaibli ne tenait pas.
+
+### D — retirer `gwam` seul : ✅ retenu, en production le 2026-09-14
+
+Le trou qui décide est celui de `gwam` (absent 2024-T3 → 2025-T2 sur les 4
+stations) ; `ecmwf_wam025`, `ncep_gfswave025` et le vent `ecmwf_ifs025` sont
+complets dès 2024-T2/T3, assez pour 13 mois de train à la première origine.
+`gwam` n'était la référence d'aucune station. Changement : une constante,
+`marine.WAVE_MODELS`. Mesuré le 2026-09-14 sur `aec7527`, mêmes datasets :
+
+| station | folds | protocole | référence | gain hors biais | IC95 % |
+|---|---|---|---|---|---|
+| pierres-noires | **4** | **multi-saisons** | `ncep_gfswave025` | +22,1 % | [+18,9 ; +25,0] |
+| belle-ile | **4** | **multi-saisons** | `ewam` | +23,3 % | [+20,4 ; +25,8] |
+| cherbourg | 3 | dégradé | `ewam` | +23,9 % | [+20,3 ; +27,5] |
+| anglet | 1 | dégradé | `meteofrance_wave` | +6,6 % | [+1,4 ; +11,0] |
+
+Aucune référence ne change par rapport à la production. Anglet reste dégradé
+quelle que soit la configuration : obs bouée à 23 % en 2025-T2 et 0 % en
+2025-T3, `ncep` n'y démarre qu'en 2025-T2 — réserve ouverte ci-dessous.
+Conséquence publiée : anglet, qui passait sur une entrée `gate.json` d'avant le
+protocole multi-saisons, est **dépublié** par le ré-entraînement.
+
+**Ré-entraînement de production, 2026-09-14** (`train.py --station` sur les 4
+stations houle, datasets du 2026-08-05) : `gate.json` reproduit la mesure D au
+chiffre près — pierres-noires et belle-ile PASS, anglet et cherbourg FAIL. Les
+2 stations houle obtiennent aussi leur première entrée `peaks` : **alerte PASS,
+borne p90 FAIL** sur les deux (voir `docs/model-eval.md`). Pas de dataset
+reconstruit : les 40 jours postérieurs au 2026-08-05 ne sont pas dans le fit.
 
 ---
 
 ## Réserves ouvertes
+
+- **Anglet ne peut pas atteindre le protocole multi-saisons — ouverte le
+  2026-09-14, mesurée.** Obs Candhis à 23 % en 2025-T2 et 0 % en 2025-T3 :
+  première origine vide, une seule origine utilisable. `ncep_gfswave025` n'y
+  démarre qu'en 2025-T2 et y montre 1,81 m de MAE horaire brute sur les blocs de
+  test (point de grille probablement inadapté, **non vérifié**). Station
+  dépubliée tant que l'historique ne couvre pas 4 origines.
+- **Biais de latence `meteofrance_wave` — ouvert le 2026-09-14, non mesuré.**
+  L'archive recolle vraisemblablement des runs publiés ~12 h après l'heure
+  d'émission du scoreboard (`docs/data-sources.md` § 4ter). Effet sur le gain
+  d'une station dont c'est la référence (anglet) : inconnu.
 
 - **Comptes pics perdus sur les jours backfillés — ouverte le 2026-09-08
   (`bfff192`), non mesurée.** `backfill._backfill_station` reconstruit l'entrée
