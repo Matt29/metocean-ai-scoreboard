@@ -1,9 +1,7 @@
 # Post LinkedIn — « L'IA bat la physique sur 7 stations sur 8 »
 
 **Date de rédaction** : 2026-09-14
-**Statut** : **prêt à poster** après le daily qui suit le push de `d3cfae9`
-(dépublication d'anglet). Fenêtre fermée (émissions du 2026-08-05 au
-2026-09-08) : les chiffres ne bougent plus. Une fois posté, figer ce fichier.
+**Statut** : **posté le 2026-09-14. Archive figée : ne plus modifier le texte.**
 **Angle** : une seule question, celle que se pose le lecteur — sur des
 prévisions réellement servies, l'IA bat-elle la prévision physique ? Oui sur 7,
 non sur 1, et celle-là sort.
