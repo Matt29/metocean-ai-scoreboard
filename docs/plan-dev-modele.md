@@ -840,7 +840,7 @@ référence forcée sur `ewam`.
   features des 3 stations vent (`MULTI_FORCING_COLUMNS` est partagé), qui
   tomberaient `missing` jusqu'au ré-entraînement.
 
-**Pierres-noires contre `ncep` — mesuré le 2026-09-14 sur `aec7527`.** Mêmes
+**Pierres-noires contre `ncep` — mesuré le 2026-09-14 sur `5ec41e6`.** Mêmes
 lignes de test que B, prédictions B, référence remplacée par
 `ncep_gfswave025` : **+25,4 % hors biais [+22,0 ; +28,3]** (contre `ewam` :
 +21,7 %). Hors biais, `ewam` est l'adversaire le plus exigeant (MAE débiaisée
@@ -852,7 +852,7 @@ Le trou qui décide est celui de `gwam` (absent 2024-T3 → 2025-T2 sur les 4
 stations) ; `ecmwf_wam025`, `ncep_gfswave025` et le vent `ecmwf_ifs025` sont
 complets dès 2024-T2/T3, assez pour 13 mois de train à la première origine.
 `gwam` n'était la référence d'aucune station. Changement : une constante,
-`marine.WAVE_MODELS`. Mesuré le 2026-09-14 sur `aec7527`, mêmes datasets :
+`marine.WAVE_MODELS`. Mesuré le 2026-09-14 sur `5ec41e6`, mêmes datasets :
 
 | station | folds | protocole | référence | gain hors biais | IC95 % |
 |---|---|---|---|---|---|

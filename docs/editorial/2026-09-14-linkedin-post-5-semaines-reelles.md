@@ -24,7 +24,7 @@ Un backtest ne prouve rien tant que le modèle n'a pas tourné pour de vrai. Voi
 
 Chaque matin depuis le 5 août, mon post-traitement IA corrige la prévision physique à 48 h sur 8 stations françaises : vent, houle, niveau de la mer. Rien n'est rejoué. La prévision part, l'observation arrive, l'écart est archivé.
 
-Sur la figure, pour chaque station : le gain mesuré en backtest avant la mise en ligne, et le gain réel sur les prévisions servies. Même métrique, mêmes modèles.
+Sur la figure, pour chaque station : le gain mesuré en backtest avant la mise en ligne, et le gain réel sur les prévisions servies. Même métrique, mêmes modèles. Le backtest, c'est le modèle entraîné sur le passé puis jugé sur une période qu'il n'a jamais vue : pour le vent et la houle, les 30 derniers jours avant la mise en ligne (juillet) ; pour la marée, les 365 derniers.
 
 Ce qui tient. Cherbourg (vent) : +25 % en réel, +25 % en backtest. Les Pierres Noires (houle) : +26 % et +26 %. Ouessant et Dieppe restent à 4 points de leur promesse.
 
@@ -44,7 +44,7 @@ https://oceandataconsulting.fr/scoreboard
 
 <!-- FIN DU POST -->
 
-**Longueur** : ~2 200 signes espaces compris.
+**Longueur** : ~2 450 signes espaces compris.
 
 ---
 
@@ -54,6 +54,13 @@ https://oceandataconsulting.fr/scoreboard
 2026-09-13), jours `status = "ok"` **non** `backfilled`, émissions du
 2026-08-05 au 2026-09-08, MAE pondérée par heure scorée. Calcul :
 `pipeline/scripts/figure_live_vs_backtest.py`, exécuté le 2026-09-14.
+
+**Nature du backtest** (vérifié dans `docs/model-eval.md` aux révisions d'entraînement) :
+vent `29b10df` et houle `a8e8950` → « test = les 30 derniers jours d'émission »
+(données jusqu'au ~2026-08-02, donc juillet 2026), une seule fenêtre, sans
+intervalle de confiance ; marée `81a60d3` → « test = les 365 derniers jours
+d'émission ». Même mécanique partout : split temporel, sélection du modèle sur
+une validation prise dans le train, test vu une seule fois.
 
 **Backtest** : champ `gain` (MAE brute, **pas** `gain_debiased`) du
 `pipeline/models/gate.json` à `81a60d3`. Pourquoi cette révision et cette
@@ -82,7 +89,7 @@ Correspondance avec le texte :
 - « 27 à 33 journées, sur 31 à 35 servies » : 27 (Cherbourg vent) à 33 (Ouessant) ; 31 (Saint-Malo) à 35 jours servis.
 - Anglet « ancien critère » : entrée `gate.json` d'avant le protocole
   multi-saisons (`pass: true`, sans `evaluation_ready`). Ré-entraînement du
-  2026-09-14 (`2be86de`) : `holdout dégradé`, une origine, `pass: false`.
+  2026-09-14 (`d3cfae9`) : `holdout dégradé`, une origine, `pass: false`.
   « Une saison » = une seule origine de test de 90 jours.
 - Explication marée : **raisonnée, non mesurée**, et le post le dit.
 
@@ -97,5 +104,5 @@ Correspondance avec le texte :
 - Houle : les 4 bouées Candhis sont muettes depuis le 2026-09-08 12:00 (panne
   côté Cerema, vérifiée le 2026-09-14). La fenêtre s'arrête avant, le post ne
   la mentionne pas.
-- « Dépubliée aujourd'hui » suppose le push de `2be86de` et le daily suivant.
+- « Dépubliée aujourd'hui » suppose le push de `d3cfae9` et le daily suivant.
   Poster après.
