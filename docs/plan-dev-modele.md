@@ -792,6 +792,55 @@ sur brest, ouessant, cherbourg-vent : seule différence, `"skipped_origins": []`
 
 ---
 
+## Houle sur 3 ans avec un jeu de modèles réduit — mesuré le 2026-09-14 sur `0780121`
+
+**Pourquoi.** Les origines rolling sont calculées sur les jours d'observation
+(3 ans), mais `assemble` jette toute émission où l'un des 5 modèles de vagues
+ou des 3 modèles de vent manque. Or `ecmwf_wam025`, `ncep_gfswave025`, `gwam`
+et le vent `ecmwf_ifs025` ont des trous avant mi-2025 (`docs/data-sources.md`
+§ 4ter). Les premières origines n'ont alors presque pas de train : c'est ce qui
+maintient les 4 stations en holdout dégradé, pas la profondeur d'observation.
+
+**Protocole.** Script jetable (non versionné) qui appelle `train.evaluate`
+après avoir restreint `train.KIND_MODELS["wave"]` et
+`MULTI_FORCING_COLUMNS` ; rien n'est écrit dans `models/` ni `model-eval.md`.
+Datasets `data_train/*_raw.parquet` du 2026-08-05. A = production (5 vagues,
+3 vents). B = `meteofrance_wave` + `ewam`, vent ARPEGE + ICON-EU. C = B avec
+référence forcée sur `ewam`.
+
+| station | config | folds | protocole | référence | gain hors biais | IC95 % |
+|---|---|---|---|---|---|---|
+| pierres-noires | A | 3 | dégradé | `ncep_gfswave025` | +21,9 % | [+18,0 ; +25,2] |
+| pierres-noires | B | **4** | **multi-saisons** | `ewam` | +21,7 % | [+18,7 ; +24,5] |
+| belle-ile | A | 3 | dégradé | `ewam` | +25,7 % | [+22,8 ; +28,3] |
+| belle-ile | B | **4** | **multi-saisons** | `ewam` | +21,7 % | [+17,7 ; +24,9] |
+| cherbourg | A | 2 | dégradé | `ewam` | +21,7 % | [+16,8 ; +26,4] |
+| cherbourg | B | 3 | dégradé | `ewam` | +22,8 % | [+19,3 ; +26,3] |
+| anglet | A | 1 | dégradé | `meteofrance_wave` | +6,4 % | [+1,2 ; +10,9] |
+| anglet | B | 3 | dégradé | `meteofrance_wave` | +7,3 % | [+4,4 ; +9,9] |
+| anglet | C | 3 | dégradé | `ewam` | +20,1 % | [+16,1 ; +23,6] |
+
+**Ce que ça dit.**
+
+- **mesuré** : belle-ile et pierres-noires passent en multi-saisons (gate :
+  `evaluation_ready`, gain ≥ 5 %, IC bas > 0). Belle-ile garde la même
+  référence qu'en production : verdict propre.
+- **Pierres-noires perd sa meilleure référence.** MAE horaire brute sur les
+  blocs de test : `ncep_gfswave025` 0,269 m, `ewam` 0,342 m. B mesure le gain
+  contre un adversaire plus faible — exactement le piège « baseline biaisée ».
+  MAE modèle B 0,197 m, sous le `ncep` brut, mais le gain hors biais contre
+  `ncep` sur les mêmes lignes **n'est pas mesuré**. Pas publiable en l'état.
+- **Cherbourg** reste dégradé pour une autre raison : l'origine 2026-02-07 a
+  57/72 jours d'observation (trou bouée), pas un manque de profondeur.
+- **Anglet** : première origine vide (split dégénéré) ; toujours dégradé.
+  C ne mesure **pas** le biais de latence Météo-France : `ewam` y est un
+  adversaire plus faible (MAE brute 0,223 contre 0,188 m), le +20,1 % n'est
+  qu'un changement d'adversaire. Le design de C était faux pour cette question.
+- Rien n'est promu. Passer B en production changerait les features servies
+  (2 modèles de vagues, 2 vents) pour les 4 stations houle.
+
+---
+
 ## Réserves ouvertes
 
 - **Comptes pics perdus sur les jours backfillés — ouverte le 2026-09-08

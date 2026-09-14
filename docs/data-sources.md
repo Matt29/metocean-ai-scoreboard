@@ -392,6 +392,44 @@ comparaison faits en Task 0, rapport complet dans
   `t0` nominal du scoreboard, pas l'heure d'initialisation réelle du run
   vague sous-jacent.
 
+### Nature de l'archive Marine — sondé le 2026-09-14 sur `0780121`
+
+**mesuré** — Prévision servie (`data_forecast_archive/`, 38 jours d'émission
+depuis le 2026-08-03, issue 06 UTC) comparée à l'archive Marine
+(`start_date`/`end_date`) aux mêmes heures, sur anglet, belle-ile,
+pierres-noires :
+
+| modèle | h1–6 : écart moyen, part identique | h25–48 : écart moyen |
+|---|---|---|
+| `ewam` | 0,4–0,6 cm, 91–92 % | 5,8–8,1 cm |
+| `gwam` | 0,8–1,5 cm, 72–80 % | 6,0–8,8 cm |
+| `ecmwf_wam025` | 1,8–2,1 cm, 44–52 % | 5,7–7,0 cm |
+| `ncep_gfswave025` | 0,6–0,8 cm, 70–76 % (anglet : 100 % à toute échéance) | 6,2–6,6 cm |
+| `meteofrance_wave` | 5,2–6,7 cm, 12–17 % | 8,6–10,5 cm |
+
+Identique aux échéances courtes, divergent avec l'échéance : l'archive est une
+**concaténation de runs frais**, pas une réanalyse — même constat que pour le
+vent (`biais-forcage-jours-reconstitues.html`).
+
+**`meteofrance_wave` — mesuré** : pas un décalage horaire (décaler l'archive de
+±1/3/6 h dégrade l'accord, 5,7 → 6,0–13,5 cm) ; métadonnées Open-Meteo
+(`/data/meteofrance_wave/static/meta.json`) : runs 00/12 UTC, pas 3 h,
+disponibilité ~12 h après initialisation. Le cron (07:37 UTC) sert donc le run
+12 UTC de la veille. **raisonné** : l'archive recolle le run le plus récent par
+heure d'initialisation, sans la latence de publication — le biais « runs
+frais » est ~12 h plus fort pour ce modèle. Amplitude sur le gain : **non
+mesurée**.
+
+**inconnu** : pourquoi `ncep_gfswave025` à anglet est identique à toute
+échéance, et y montre une MAE horaire de 1,81 m sur les blocs de test
+(`data_train/anglet_raw.parquet`) — point de grille probablement inadapté, non
+vérifié.
+
+**Profondeur par modèle** (non-null par trimestre, `belle-ile_raw.parquet` du
+2026-08-05) : `meteofrance_wave`, `ewam`, vent ARPEGE et ICON-EU complets dès
+2023-T3 ; `ecmwf_wam025` dès 2024-T1, `ncep_gfswave025` dès 2024-T2, `gwam`
+absent 2024-T3 → 2025-T2, vent `ecmwf_ifs025` dès 2024-T1.
+
 ## 4quater. Météo-France DPObs `/bouees` — archive d'observations bouées (2026-08-03)
 
 Collecteur : `sources/mfbuoy.py` + `archive.write_obs_days`, commande
