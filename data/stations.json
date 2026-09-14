@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-09-13T06:00:00Z",
+  "updated": "2026-09-14T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -12,8 +12,8 @@
       "published": true,
       "weak": false,
       "baseline_model": "ncep_gfswave025",
-      "model_name": "hgb-per-lead",
-      "peaks_alert_published": false,
+      "model_name": "hgb",
+      "peaks_alert_published": true,
       "peaks_band_published": false
     },
     {
@@ -26,8 +26,8 @@
       "published": true,
       "weak": false,
       "baseline_model": "ewam",
-      "model_name": "hgb-per-lead",
-      "peaks_alert_published": false,
+      "model_name": "hgb",
+      "peaks_alert_published": true,
       "peaks_band_published": false
     },
     {
@@ -37,7 +37,7 @@
       "lat": 43.5321655,
       "lon": -1.615,
       "unit": "m",
-      "published": true,
+      "published": false,
       "weak": false,
       "baseline_model": "meteofrance_wave",
       "model_name": "ridge",
