@@ -430,6 +430,14 @@ de `max(médian, p90)` réellement servi, à ne pas confondre avec le `coverage`
 du gate mesuré sur `q90` seul, ni comparer à sa bande 0,85–0,95), voir
 `docs/plan-dev-modele.md` § « Pics » pour le diagnostic 2026-09-08.
 
+**Consommateur externe de `gate.json` (2026-09-16)** : la page « alertes 48 h »
+du site ODC (`/scoreboard/alertes`) lit `pipeline/models/gate.json` via GitHub
+Pages pour afficher le holdout de l'alerte (`peaks.alert.{pod,far,n_days_48h,
+n_events,pass}`), en plus des fichiers de `data/`. Le parseur côté site est
+tolérant (champ absent → tiret), mais renommer ou déplacer ces clés éteint la
+preuve holdout de la démo en silence. Le site coupe cette URL au pré-rendu comme
+le reste du dépôt : aucun chiffre holdout n'est figé dans le HTML statique.
+
 ---
 
 ## Ordre suggéré
