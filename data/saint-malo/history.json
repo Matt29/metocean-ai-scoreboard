@@ -20866,23 +20866,25 @@
           "obs": 6.37,
           "ia": 4.6359,
           "baseline": 4.672
-        }
-      ],
-      "mae_ia": 0.0968,
-      "mae_baseline": 0.1367,
-      "n_points": 31,
-      "max_lead_h": 31,
-      "pending": [
+        },
         {
           "t": "2026-09-16T14:00:00Z",
+          "obs": 3.7637,
           "ia": 3.4965,
           "baseline": 3.5955
         },
         {
           "t": "2026-09-16T15:00:00Z",
+          "obs": 3.7637,
           "ia": 3.0371,
           "baseline": 3.1535
-        },
+        }
+      ],
+      "mae_ia": 0.1211,
+      "mae_baseline": 0.152,
+      "n_points": 33,
+      "max_lead_h": 33,
+      "pending": [
         {
           "t": "2026-09-16T16:00:00Z",
           "ia": 3.4997,
@@ -20960,32 +20962,20 @@
         }
       ],
       "peaks": {
-        "n": 31,
-        "events": 1,
+        "n": 33,
+        "events": 2,
         "hits": 0,
-        "misses": 1,
+        "misses": 2,
         "false_alarms": 0,
-        "brier": 0.9992848600000002,
-        "brier_clim": 1.11,
-        "n_band": 31,
+        "brier": 1.9966882400000003,
+        "brier_clim": 1.9300000000000002,
+        "n_band": 33,
         "covered": 28
       },
       "peaks_pending": {
         "threshold_p90": 0.25501612445205524,
         "clim": 0.1,
         "points": [
-          {
-            "t": "2026-09-16T14:00:00Z",
-            "p_exceed": 0.0013,
-            "p90_upper": 3.6269,
-            "baseline": 3.5955
-          },
-          {
-            "t": "2026-09-16T15:00:00Z",
-            "p_exceed": 0.0013,
-            "p90_upper": 3.1865,
-            "baseline": 3.1535
-          },
           {
             "t": "2026-09-16T16:00:00Z",
             "p_exceed": 0.0009,
