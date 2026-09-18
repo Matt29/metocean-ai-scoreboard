@@ -50,11 +50,11 @@
         "n_days": 9,
         "pod": 0.0,
         "far": null,
-        "bss_clim": 0.6521738521739131
+        "bss_clim": 0.652777717013889
       },
       "band_30d": {
-        "coverage_published": 0.8385542168674699,
-        "n_points": 415,
+        "coverage_published": 0.8365384615384616,
+        "n_points": 416,
         "n_days": 9
       },
       "alert_90d": {
@@ -62,11 +62,11 @@
         "n_days": 9,
         "pod": 0.0,
         "far": null,
-        "bss_clim": 0.6521738521739131
+        "bss_clim": 0.652777717013889
       },
       "band_90d": {
-        "coverage_published": 0.8385542168674699,
-        "n_points": 415,
+        "coverage_published": 0.8365384615384616,
+        "n_points": 416,
         "n_days": 9
       }
     },
@@ -74,27 +74,27 @@
       "id": "saint-malo",
       "threshold_p90": 0.25501612445205524,
       "alert_30d": {
-        "n_events": 35,
+        "n_events": 36,
         "n_days": 9,
         "pod": 0.0,
         "far": null,
-        "bss_clim": -0.04225805940902028
+        "bss_clim": -0.046778160497572996
       },
       "band_30d": {
-        "coverage_published": 0.7759036144578313,
-        "n_points": 415,
+        "coverage_published": 0.7740384615384616,
+        "n_points": 416,
         "n_days": 9
       },
       "alert_90d": {
-        "n_events": 35,
+        "n_events": 36,
         "n_days": 9,
         "pod": 0.0,
         "far": null,
-        "bss_clim": -0.04225805940902028
+        "bss_clim": -0.046778160497572996
       },
       "band_90d": {
-        "coverage_published": 0.7759036144578313,
-        "n_points": 415,
+        "coverage_published": 0.7740384615384616,
+        "n_points": 416,
         "n_days": 9
       }
     },
@@ -106,7 +106,7 @@
         "n_days": 9,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9999862704341093
+        "bss_clim": 0.9999863035973119
       },
       "band_30d": null,
       "alert_90d": {
@@ -114,7 +114,7 @@
         "n_days": 9,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9999862704341093
+        "bss_clim": 0.9999863035973119
       },
       "band_90d": null
     },
@@ -126,7 +126,7 @@
         "n_days": 9,
         "pod": 0.17857142857142858,
         "far": 0.2857142857142857,
-        "bss_clim": 0.21628994545893343
+        "bss_clim": 0.21519756511946153
       },
       "band_30d": null,
       "alert_90d": {
@@ -134,7 +134,7 @@
         "n_days": 9,
         "pod": 0.17857142857142858,
         "far": 0.2857142857142857,
-        "bss_clim": 0.21628994545893343
+        "bss_clim": 0.21519756511946153
       },
       "band_90d": null
     },
@@ -146,11 +146,11 @@
         "n_days": 9,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9977338939454992
+        "bss_clim": 0.9977392822869693
       },
       "band_30d": {
-        "coverage_published": 0.891566265060241,
-        "n_points": 415,
+        "coverage_published": 0.8918269230769231,
+        "n_points": 416,
         "n_days": 9
       },
       "alert_90d": {
@@ -158,11 +158,11 @@
         "n_days": 9,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9977338939454992
+        "bss_clim": 0.9977392822869693
       },
       "band_90d": {
-        "coverage_published": 0.891566265060241,
-        "n_points": 415,
+        "coverage_published": 0.8918269230769231,
+        "n_points": 416,
         "n_days": 9
       }
     }
