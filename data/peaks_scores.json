@@ -46,27 +46,27 @@
       "id": "brest",
       "threshold_p90": 0.20171120650075824,
       "alert_30d": {
-        "n_events": 6,
+        "n_events": 7,
         "n_days": 13,
         "pod": 0.0,
         "far": null,
-        "bss_clim": 0.4480588298068078
+        "bss_clim": 0.4012317775876819
       },
       "band_30d": {
-        "coverage_published": 0.8665568369028006,
-        "n_points": 607,
+        "coverage_published": 0.8637110016420362,
+        "n_points": 609,
         "n_days": 13
       },
       "alert_90d": {
-        "n_events": 6,
+        "n_events": 7,
         "n_days": 13,
         "pod": 0.0,
         "far": null,
-        "bss_clim": 0.4480588298068078
+        "bss_clim": 0.4012317775876819
       },
       "band_90d": {
-        "coverage_published": 0.8665568369028006,
-        "n_points": 607,
+        "coverage_published": 0.8637110016420362,
+        "n_points": 609,
         "n_days": 13
       }
     },
@@ -78,11 +78,11 @@
         "n_days": 13,
         "pod": 0.0,
         "far": null,
-        "bss_clim": -0.0008726865917192406
+        "bss_clim": -0.00032412414360094566
       },
       "band_30d": {
-        "coverage_published": 0.8187808896210873,
-        "n_points": 607,
+        "coverage_published": 0.819376026272578,
+        "n_points": 609,
         "n_days": 13
       },
       "alert_90d": {
@@ -90,11 +90,11 @@
         "n_days": 13,
         "pod": 0.0,
         "far": null,
-        "bss_clim": -0.0008726865917192406
+        "bss_clim": -0.00032412414360094566
       },
       "band_90d": {
-        "coverage_published": 0.8187808896210873,
-        "n_points": 607,
+        "coverage_published": 0.819376026272578,
+        "n_points": 609,
         "n_days": 13
       }
     },
@@ -106,7 +106,7 @@
         "n_days": 13,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9999905883310567
+        "bss_clim": 0.999990619341498
       },
       "band_30d": null,
       "alert_90d": {
@@ -114,7 +114,7 @@
         "n_days": 13,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9999905883310567
+        "bss_clim": 0.999990619341498
       },
       "band_90d": null
     },
@@ -126,7 +126,7 @@
         "n_days": 13,
         "pod": 0.16666666666666666,
         "far": 0.2857142857142857,
-        "bss_clim": 0.23793755548669726
+        "bss_clim": 0.2384816518189683
       },
       "band_30d": null,
       "alert_90d": {
@@ -134,7 +134,7 @@
         "n_days": 13,
         "pod": 0.16666666666666666,
         "far": 0.2857142857142857,
-        "bss_clim": 0.23793755548669726
+        "bss_clim": 0.2384816518189683
       },
       "band_90d": null
     },
@@ -146,11 +146,11 @@
         "n_days": 13,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9895118212735561
+        "bss_clim": 0.9895462442429016
       },
       "band_30d": {
-        "coverage_published": 0.9110378912685337,
-        "n_points": 607,
+        "coverage_published": 0.9080459770114943,
+        "n_points": 609,
         "n_days": 13
       },
       "alert_90d": {
@@ -158,11 +158,11 @@
         "n_days": 13,
         "pod": null,
         "far": null,
-        "bss_clim": 0.9895118212735561
+        "bss_clim": 0.9895462442429016
       },
       "band_90d": {
-        "coverage_published": 0.9110378912685337,
-        "n_points": 607,
+        "coverage_published": 0.9080459770114943,
+        "n_points": 609,
         "n_days": 13
       }
     }
