@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-09-28T06:00:00Z",
+  "updated": "2026-09-29T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -160,13 +160,13 @@
           "baseline_model": "meteofrance_arpege_europe"
         },
         {
-          "date": "2026-07-12",
-          "obs_peak": 16.6,
-          "t_peak": "2026-07-13T08:00:00Z",
-          "ia_at_peak": 12.6373,
-          "baseline_at_peak": 13.76,
-          "peak_error_ia": -3.9627,
-          "peak_error_baseline": -2.84,
+          "date": "2026-09-28",
+          "obs_peak": 16.7,
+          "t_peak": "2026-09-29T13:00:00Z",
+          "ia_at_peak": 12.101,
+          "baseline_at_peak": 12.5,
+          "peak_error_ia": -4.599,
+          "peak_error_baseline": -4.2,
           "baseline_model": "meteofrance_arpege_europe"
         }
       ]
