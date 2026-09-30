@@ -5,7 +5,7 @@
   "status": "ok",
   "unit": "m",
   "threshold_p90": 3.5,
-  "p_48h": 0.9455,
+  "p_48h": 0.8801,
   "t_peak_pred": "2026-10-01T08:00:00Z",
   "series": [
     {
@@ -40,7 +40,7 @@
     },
     {
       "t": "2026-09-30T13:00:00Z",
-      "p_exceed": 0.0001,
+      "p_exceed": 0.0,
       "p90_upper": null
     },
     {
@@ -50,32 +50,32 @@
     },
     {
       "t": "2026-09-30T15:00:00Z",
-      "p_exceed": 0.0002,
+      "p_exceed": 0.0004,
       "p90_upper": null
     },
     {
       "t": "2026-09-30T16:00:00Z",
-      "p_exceed": 0.0008,
+      "p_exceed": 0.0006,
       "p90_upper": null
     },
     {
       "t": "2026-09-30T17:00:00Z",
-      "p_exceed": 0.0022,
+      "p_exceed": 0.0015,
       "p90_upper": null
     },
     {
       "t": "2026-09-30T18:00:00Z",
-      "p_exceed": 0.0017,
+      "p_exceed": 0.0004,
       "p90_upper": null
     },
     {
       "t": "2026-09-30T19:00:00Z",
-      "p_exceed": 0.0007,
+      "p_exceed": 0.0003,
       "p90_upper": null
     },
     {
       "t": "2026-09-30T20:00:00Z",
-      "p_exceed": 0.0002,
+      "p_exceed": 0.0004,
       "p90_upper": null
     },
     {
@@ -125,72 +125,72 @@
     },
     {
       "t": "2026-10-01T06:00:00Z",
-      "p_exceed": 0.0,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
       "t": "2026-10-01T07:00:00Z",
-      "p_exceed": 0.5256,
+      "p_exceed": 0.0218,
       "p90_upper": null
     },
     {
       "t": "2026-10-01T08:00:00Z",
-      "p_exceed": 0.9455,
+      "p_exceed": 0.8801,
       "p90_upper": null
     },
     {
       "t": "2026-10-01T09:00:00Z",
-      "p_exceed": 0.2151,
+      "p_exceed": 0.1599,
       "p90_upper": null
     },
     {
       "t": "2026-10-01T10:00:00Z",
-      "p_exceed": 0.4148,
+      "p_exceed": 0.3162,
       "p90_upper": null
     },
     {
       "t": "2026-10-01T11:00:00Z",
-      "p_exceed": 0.43,
+      "p_exceed": 0.403,
       "p90_upper": null
     },
     {
       "t": "2026-10-01T12:00:00Z",
-      "p_exceed": 0.6882,
+      "p_exceed": 0.5786,
       "p90_upper": null
     },
     {
       "t": "2026-10-01T13:00:00Z",
-      "p_exceed": 0.4645,
+      "p_exceed": 0.4267,
       "p90_upper": null
     },
     {
       "t": "2026-10-01T14:00:00Z",
-      "p_exceed": 0.2443,
+      "p_exceed": 0.2586,
       "p90_upper": null
     },
     {
       "t": "2026-10-01T15:00:00Z",
-      "p_exceed": 0.0529,
+      "p_exceed": 0.0508,
       "p90_upper": null
     },
     {
       "t": "2026-10-01T16:00:00Z",
-      "p_exceed": 0.15,
+      "p_exceed": 0.1519,
       "p90_upper": null
     },
     {
       "t": "2026-10-01T17:00:00Z",
-      "p_exceed": 0.0577,
+      "p_exceed": 0.1302,
       "p90_upper": null
     },
     {
       "t": "2026-10-01T18:00:00Z",
-      "p_exceed": 0.0228,
+      "p_exceed": 0.0454,
       "p90_upper": null
     },
     {
       "t": "2026-10-01T19:00:00Z",
-      "p_exceed": 0.0031,
+      "p_exceed": 0.0041,
       "p90_upper": null
     },
     {
