@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-10-01T06:00:00Z",
+  "updated": "2026-10-02T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -16,6 +16,16 @@
           "baseline_model": "ncep_gfswave025"
         },
         {
+          "date": "2026-10-01",
+          "obs_peak": 4.6,
+          "t_peak": "2026-10-01T11:00:00Z",
+          "ia_at_peak": 3.2282,
+          "baseline_at_peak": 3.22,
+          "peak_error_ia": -1.3718,
+          "peak_error_baseline": -1.38,
+          "baseline_model": "ncep_gfswave025"
+        },
+        {
           "date": "2026-09-28",
           "obs_peak": 3.7,
           "t_peak": "2026-09-30T04:00:00Z",
@@ -23,16 +33,6 @@
           "baseline_at_peak": 2.7,
           "peak_error_ia": -1.1421,
           "peak_error_baseline": -1.0,
-          "baseline_model": "ncep_gfswave025"
-        },
-        {
-          "date": "2026-09-29",
-          "obs_peak": 3.7,
-          "t_peak": "2026-09-30T04:00:00Z",
-          "ia_at_peak": 2.7102,
-          "baseline_at_peak": 3.0,
-          "peak_error_ia": -0.9898,
-          "peak_error_baseline": -0.7,
           "baseline_model": "ncep_gfswave025"
         }
       ]
@@ -61,13 +61,13 @@
           "baseline_model": "ewam"
         },
         {
-          "date": "2026-08-29",
-          "obs_peak": 3.0,
-          "t_peak": "2026-08-29T15:00:00Z",
-          "ia_at_peak": 2.6337,
-          "baseline_at_peak": 2.72,
-          "peak_error_ia": -0.3663,
-          "peak_error_baseline": -0.28,
+          "date": "2026-10-01",
+          "obs_peak": 3.2,
+          "t_peak": "2026-10-01T15:00:00Z",
+          "ia_at_peak": 2.9845,
+          "baseline_at_peak": 2.64,
+          "peak_error_ia": -0.2155,
+          "peak_error_baseline": -0.56,
           "baseline_model": "ewam"
         }
       ]
