@@ -1,129 +1,9 @@
 {
   "schema_version": 1,
   "buoy": "6101034",
-  "updated": "2026-10-07T15:12:00Z",
-  "since": "2026-09-07T16:00:00Z",
+  "updated": "2026-10-08T12:00:00Z",
+  "since": "2026-09-08T12:00:00Z",
   "series": [
-    {
-      "t": "2026-09-07T16:00:00Z",
-      "hs": 0.4,
-      "period": 4.0,
-      "direction": 70.0
-    },
-    {
-      "t": "2026-09-07T17:00:00Z",
-      "hs": 0.4,
-      "period": 4.0,
-      "direction": 72.0
-    },
-    {
-      "t": "2026-09-07T18:00:00Z",
-      "hs": 0.3,
-      "period": 4.0,
-      "direction": 83.0
-    },
-    {
-      "t": "2026-09-07T19:00:00Z",
-      "hs": 0.3,
-      "period": 4.0,
-      "direction": 88.0
-    },
-    {
-      "t": "2026-09-07T20:00:00Z",
-      "hs": 0.3,
-      "period": 4.0,
-      "direction": 84.0
-    },
-    {
-      "t": "2026-09-07T21:00:00Z",
-      "hs": 0.3,
-      "period": 4.0,
-      "direction": 94.0
-    },
-    {
-      "t": "2026-09-07T22:00:00Z",
-      "hs": 0.3,
-      "period": 4.0,
-      "direction": 85.0
-    },
-    {
-      "t": "2026-09-07T23:00:00Z",
-      "hs": 0.2,
-      "period": 4.0,
-      "direction": 79.0
-    },
-    {
-      "t": "2026-09-08T00:00:00Z",
-      "hs": 0.2,
-      "period": 4.0,
-      "direction": 86.0
-    },
-    {
-      "t": "2026-09-08T01:00:00Z",
-      "hs": 0.2,
-      "period": 4.0,
-      "direction": 91.0
-    },
-    {
-      "t": "2026-09-08T02:00:00Z",
-      "hs": 0.2,
-      "period": 4.0,
-      "direction": 83.0
-    },
-    {
-      "t": "2026-09-08T03:00:00Z",
-      "hs": 0.2,
-      "period": 3.0,
-      "direction": 86.0
-    },
-    {
-      "t": "2026-09-08T04:00:00Z",
-      "hs": 0.2,
-      "period": 3.0,
-      "direction": 95.0
-    },
-    {
-      "t": "2026-09-08T05:00:00Z",
-      "hs": 0.2,
-      "period": 4.0,
-      "direction": 148.0
-    },
-    {
-      "t": "2026-09-08T06:00:00Z",
-      "hs": 0.2,
-      "period": 4.0,
-      "direction": 82.0
-    },
-    {
-      "t": "2026-09-08T07:00:00Z",
-      "hs": 0.2,
-      "period": 4.0,
-      "direction": 107.0
-    },
-    {
-      "t": "2026-09-08T08:00:00Z",
-      "hs": 0.2,
-      "period": 4.0,
-      "direction": 126.0
-    },
-    {
-      "t": "2026-09-08T09:00:00Z",
-      "hs": 0.1,
-      "period": 4.0,
-      "direction": 145.0
-    },
-    {
-      "t": "2026-09-08T10:00:00Z",
-      "hs": 0.1,
-      "period": 3.0,
-      "direction": 163.0
-    },
-    {
-      "t": "2026-09-08T11:00:00Z",
-      "hs": 0.2,
-      "period": 3.0,
-      "direction": 195.0
-    },
     {
       "t": "2026-09-08T12:00:00Z",
       "hs": 0.3,
@@ -3939,6 +3819,126 @@
       "hs": null,
       "period": null,
       "direction": 0.0
+    },
+    {
+      "t": "2026-10-07T16:06:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-07T17:12:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-07T18:12:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-07T19:12:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-07T20:06:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-07T21:12:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-07T22:12:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-07T23:12:00Z",
+      "hs": null,
+      "period": null,
+      "direction": null
+    },
+    {
+      "t": "2026-10-08T00:12:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-08T01:24:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-08T02:12:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-08T03:12:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-08T04:12:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-08T05:12:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-08T06:12:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-08T07:12:00Z",
+      "hs": null,
+      "period": null,
+      "direction": 0.0
+    },
+    {
+      "t": "2026-10-08T09:00:00Z",
+      "hs": 2.4,
+      "period": 5.0,
+      "direction": 314.0
+    },
+    {
+      "t": "2026-10-08T10:00:00Z",
+      "hs": 2.6,
+      "period": 6.0,
+      "direction": 315.0
+    },
+    {
+      "t": "2026-10-08T11:00:00Z",
+      "hs": 2.5,
+      "period": 6.0,
+      "direction": 310.0
+    },
+    {
+      "t": "2026-10-08T12:00:00Z",
+      "hs": 3.2,
+      "period": 6.0,
+      "direction": 309.0
     }
   ]
 }
