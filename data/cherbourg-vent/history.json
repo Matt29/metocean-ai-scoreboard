@@ -27119,23 +27119,25 @@
           "obs": 7.8,
           "ia": 7.4808,
           "baseline": 6.36
-        }
-      ],
-      "mae_ia": 0.939,
-      "mae_baseline": 1.3828,
-      "n_points": 32,
-      "max_lead_h": 32,
-      "pending": [
+        },
         {
           "t": "2026-10-10T15:00:00Z",
+          "obs": 8.3,
           "ia": 7.4865,
           "baseline": 6.87
         },
         {
           "t": "2026-10-10T16:00:00Z",
+          "obs": 8.3,
           "ia": 7.5987,
           "baseline": 7.09
-        },
+        }
+      ],
+      "mae_ia": 0.9283,
+      "mae_baseline": 1.3791,
+      "n_points": 34,
+      "max_lead_h": 34,
+      "pending": [
         {
           "t": "2026-10-10T17:00:00Z",
           "ia": 6.4978,
@@ -27207,32 +27209,21 @@
           "baseline": 2.31
         }
       ],
-      "baseline_model": "meteofrance_arpege_europe",
       "peaks": {
-        "n": 32,
+        "n": 34,
         "events": 2,
         "hits": 1,
         "misses": 1,
         "false_alarms": 4,
-        "brier": 3.0811515800000002,
-        "brier_clim": 1.9221859200000004,
-        "n_band": 32,
-        "covered": 29
+        "brier": 3.08116008,
+        "brier_clim": 1.9425475400000005,
+        "n_band": 34,
+        "covered": 31
       },
       "peaks_pending": {
         "threshold_p90": 10.9,
         "clim": 0.1009,
         "points": [
-          {
-            "t": "2026-10-10T15:00:00Z",
-            "p_exceed": 0.0015,
-            "p90_upper": 8.7554
-          },
-          {
-            "t": "2026-10-10T16:00:00Z",
-            "p_exceed": 0.0025,
-            "p90_upper": 8.7195
-          },
           {
             "t": "2026-10-10T17:00:00Z",
             "p_exceed": 0.0006,
@@ -27304,7 +27295,8 @@
             "p90_upper": 3.8749
           }
         ]
-      }
+      },
+      "baseline_model": "meteofrance_arpege_europe"
     }
   ]
 }
