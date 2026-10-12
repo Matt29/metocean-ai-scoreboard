@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-10-11T06:00:00Z",
+  "updated": "2026-10-12T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -210,16 +210,6 @@
       "id": "cherbourg-vent",
       "episodes": [
         {
-          "date": "2026-07-13",
-          "obs_peak": 16.4,
-          "t_peak": "2026-07-13T14:00:00Z",
-          "ia_at_peak": 15.5972,
-          "baseline_at_peak": 10.32,
-          "peak_error_ia": -0.8028,
-          "peak_error_baseline": -6.08,
-          "baseline_model": "meteofrance_arpege_europe"
-        },
-        {
           "date": "2026-10-06",
           "obs_peak": 15.2,
           "t_peak": "2026-10-07T18:00:00Z",
@@ -237,6 +227,16 @@
           "baseline_at_peak": 10.38,
           "peak_error_ia": 0.9248,
           "peak_error_baseline": -4.82,
+          "baseline_model": "meteofrance_arpege_europe"
+        },
+        {
+          "date": "2026-08-23",
+          "obs_peak": 14.8,
+          "t_peak": "2026-08-24T14:00:00Z",
+          "ia_at_peak": 13.3229,
+          "baseline_at_peak": 8.57,
+          "peak_error_ia": -1.4771,
+          "peak_error_baseline": -6.23,
           "baseline_model": "meteofrance_arpege_europe"
         }
       ]
