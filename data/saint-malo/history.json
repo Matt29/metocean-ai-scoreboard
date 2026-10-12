@@ -25934,28 +25934,31 @@
           "obs": 7.0329,
           "ia": 10.1381,
           "baseline": 10.2567
-        }
-      ],
-      "mae_ia": 0.1467,
-      "mae_baseline": 0.2505,
-      "n_points": 35,
-      "max_lead_h": 35,
-      "pending": [
+        },
         {
           "t": "2026-10-12T18:00:00Z",
+          "obs": 11.8974,
           "ia": 11.8896,
           "baseline": 11.9958
         },
         {
           "t": "2026-10-12T19:00:00Z",
+          "obs": 12.2351,
           "ia": 12.0372,
           "baseline": 12.1314
         },
         {
           "t": "2026-10-12T20:00:00Z",
+          "obs": 12.2351,
           "ia": 10.9013,
           "baseline": 10.9246
-        },
+        }
+      ],
+      "mae_ia": 0.1756,
+      "mae_baseline": 0.2705,
+      "n_points": 38,
+      "max_lead_h": 38,
+      "pending": [
         {
           "t": "2026-10-12T21:00:00Z",
           "ia": 8.9468,
@@ -26008,38 +26011,20 @@
         }
       ],
       "peaks": {
-        "n": 35,
-        "events": 4,
+        "n": 38,
+        "events": 5,
         "hits": 0,
-        "misses": 4,
+        "misses": 5,
         "false_alarms": 1,
-        "brier": 2.92260652,
-        "brier_clim": 3.55,
-        "n_band": 35,
-        "covered": 30
+        "brier": 3.88616505,
+        "brier_clim": 4.38,
+        "n_band": 38,
+        "covered": 31
       },
       "peaks_pending": {
         "threshold_p90": 0.25501612445205524,
         "clim": 0.1,
         "points": [
-          {
-            "t": "2026-10-12T18:00:00Z",
-            "p_exceed": 0.0029,
-            "p90_upper": 12.1188,
-            "baseline": 11.9958
-          },
-          {
-            "t": "2026-10-12T19:00:00Z",
-            "p_exceed": 0.0034,
-            "p90_upper": 12.2287,
-            "baseline": 12.1314
-          },
-          {
-            "t": "2026-10-12T20:00:00Z",
-            "p_exceed": 0.0184,
-            "p90_upper": 11.0544,
-            "baseline": 10.9246
-          },
           {
             "t": "2026-10-12T21:00:00Z",
             "p_exceed": 0.062,
