@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "updated": "2026-10-12T19:00:00Z",
+  "updated": "2026-10-13T15:00:00Z",
   "since": "2026-07-31",
   "buoys": [
     {
       "id": "6100001",
       "name": "BOUEE_AZUR",
-      "lat": 43.36,
+      "lat": 43.37,
       "lon": 7.83,
       "wave": true
     },
@@ -20,8 +20,8 @@
     {
       "id": "6101031",
       "name": "BOUEE_AJACCIO",
-      "lat": 41.75,
-      "lon": 7.6,
+      "lat": 41.76,
+      "lon": 7.58,
       "wave": true
     },
     {
@@ -41,8 +41,8 @@
     {
       "id": "6101034",
       "name": "BOUEE_PROVENCE",
-      "lat": 41.57,
-      "lon": 5.52,
+      "lat": 41.56,
+      "lon": 5.51,
       "wave": true
     },
     {
@@ -55,14 +55,14 @@
     {
       "id": "6101036",
       "name": "BOUEE_PACA",
-      "lat": 42.33,
-      "lon": 6.72,
+      "lat": 42.34,
+      "lon": 6.71,
       "wave": true
     },
     {
       "id": "6200001",
       "name": "BOUEE_GASCOGNE",
-      "lat": 45.22,
+      "lat": 45.23,
       "lon": -5.02,
       "wave": true
     }
