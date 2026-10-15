@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-10-14T06:00:00Z",
+  "updated": "2026-10-15T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -94,13 +94,13 @@
           "peak_error_baseline": -0.1566
         },
         {
-          "date": "2026-07-16",
-          "obs_peak": 7.4449,
-          "t_peak": "2026-07-16T17:00:00Z",
-          "ia_at_peak": 7.4061,
-          "baseline_at_peak": 7.3458,
-          "peak_error_ia": -0.0388,
-          "peak_error_baseline": -0.0991
+          "date": "2026-08-13",
+          "obs_peak": 7.4064,
+          "t_peak": "2026-08-14T17:00:00Z",
+          "ia_at_peak": 7.3393,
+          "baseline_at_peak": 7.4528,
+          "peak_error_ia": -0.0671,
+          "peak_error_baseline": 0.0464
         }
       ]
     },
