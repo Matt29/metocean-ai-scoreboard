@@ -5,7 +5,7 @@
   "status": "ok",
   "unit": "m",
   "threshold_p90": 3.25,
-  "p_48h": 0.3749,
+  "p_48h": 0.4635,
   "t_peak_pred": "2026-10-21T06:00:00Z",
   "series": [
     {
@@ -235,17 +235,17 @@
     },
     {
       "t": "2026-10-21T04:00:00Z",
-      "p_exceed": 0.0036,
+      "p_exceed": 0.0009,
       "p90_upper": null
     },
     {
       "t": "2026-10-21T05:00:00Z",
-      "p_exceed": 0.1367,
+      "p_exceed": 0.1747,
       "p90_upper": null
     },
     {
       "t": "2026-10-21T06:00:00Z",
-      "p_exceed": 0.3749,
+      "p_exceed": 0.4635,
       "p90_upper": null
     }
   ]
