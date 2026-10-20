@@ -1,133 +1,13 @@
 {
   "schema_version": 1,
   "station": "belle-ile",
-  "issued": "2026-10-19T06:00:00Z",
+  "issued": "2026-10-20T06:00:00Z",
   "status": "ok",
   "unit": "m",
   "threshold_p90": 3.25,
-  "p_48h": 0.4635,
-  "t_peak_pred": "2026-10-21T06:00:00Z",
+  "p_48h": 1.0,
+  "t_peak_pred": "2026-10-21T12:00:00Z",
   "series": [
-    {
-      "t": "2026-10-19T07:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T08:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T09:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T10:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T11:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T12:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T13:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T14:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T15:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T16:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T17:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T18:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T19:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T20:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T21:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T22:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-19T23:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-20T00:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-20T01:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-20T02:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-20T03:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-20T04:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-20T05:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-20T06:00:00Z",
-      "p_exceed": 0.0,
-      "p90_upper": null
-    },
     {
       "t": "2026-10-20T07:00:00Z",
       "p_exceed": 0.0,
@@ -225,27 +105,147 @@
     },
     {
       "t": "2026-10-21T02:00:00Z",
-      "p_exceed": 0.0,
+      "p_exceed": 0.004,
       "p90_upper": null
     },
     {
       "t": "2026-10-21T03:00:00Z",
-      "p_exceed": 0.0001,
+      "p_exceed": 0.0784,
       "p90_upper": null
     },
     {
       "t": "2026-10-21T04:00:00Z",
-      "p_exceed": 0.0009,
+      "p_exceed": 0.9171,
       "p90_upper": null
     },
     {
       "t": "2026-10-21T05:00:00Z",
-      "p_exceed": 0.1747,
+      "p_exceed": 0.9943,
       "p90_upper": null
     },
     {
       "t": "2026-10-21T06:00:00Z",
-      "p_exceed": 0.4635,
+      "p_exceed": 1.0,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T07:00:00Z",
+      "p_exceed": 0.9999,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T08:00:00Z",
+      "p_exceed": 0.9999,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T09:00:00Z",
+      "p_exceed": 1.0,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T10:00:00Z",
+      "p_exceed": 1.0,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T11:00:00Z",
+      "p_exceed": 1.0,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T12:00:00Z",
+      "p_exceed": 1.0,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T13:00:00Z",
+      "p_exceed": 0.9997,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T14:00:00Z",
+      "p_exceed": 0.9998,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T15:00:00Z",
+      "p_exceed": 0.9996,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T16:00:00Z",
+      "p_exceed": 0.9991,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T17:00:00Z",
+      "p_exceed": 0.9987,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T18:00:00Z",
+      "p_exceed": 0.9969,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T19:00:00Z",
+      "p_exceed": 0.9918,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T20:00:00Z",
+      "p_exceed": 0.6103,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T21:00:00Z",
+      "p_exceed": 0.5744,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T22:00:00Z",
+      "p_exceed": 0.0245,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-21T23:00:00Z",
+      "p_exceed": 0.0019,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-22T00:00:00Z",
+      "p_exceed": 0.0038,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-22T01:00:00Z",
+      "p_exceed": 0.0014,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-22T02:00:00Z",
+      "p_exceed": 0.0012,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-22T03:00:00Z",
+      "p_exceed": 0.0008,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-22T04:00:00Z",
+      "p_exceed": 0.0025,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-22T05:00:00Z",
+      "p_exceed": 0.0033,
+      "p90_upper": null
+    },
+    {
+      "t": "2026-10-22T06:00:00Z",
+      "p_exceed": 0.0036,
       "p90_upper": null
     }
   ]
