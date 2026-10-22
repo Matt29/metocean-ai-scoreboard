@@ -1,10 +1,30 @@
 {
   "schema_version": 1,
-  "updated": "2026-10-21T06:00:00Z",
+  "updated": "2026-10-22T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
       "episodes": [
+        {
+          "date": "2026-10-21",
+          "obs_peak": 4.9,
+          "t_peak": "2026-10-21T09:00:00Z",
+          "ia_at_peak": 4.9415,
+          "baseline_at_peak": 4.44,
+          "peak_error_ia": 0.0415,
+          "peak_error_baseline": -0.46,
+          "baseline_model": "ncep_gfswave025"
+        },
+        {
+          "date": "2026-10-20",
+          "obs_peak": 4.8,
+          "t_peak": "2026-10-21T10:00:00Z",
+          "ia_at_peak": 4.7819,
+          "baseline_at_peak": 4.54,
+          "peak_error_ia": -0.0181,
+          "peak_error_baseline": -0.26,
+          "baseline_model": "ncep_gfswave025"
+        },
         {
           "date": "2026-10-19",
           "obs_peak": 4.7,
@@ -13,26 +33,6 @@
           "baseline_at_peak": 4.42,
           "peak_error_ia": -0.3724,
           "peak_error_baseline": -0.28,
-          "baseline_model": "ncep_gfswave025"
-        },
-        {
-          "date": "2026-10-20",
-          "obs_peak": 4.7,
-          "t_peak": "2026-10-21T06:00:00Z",
-          "ia_at_peak": 5.1231,
-          "baseline_at_peak": 4.64,
-          "peak_error_ia": 0.4231,
-          "peak_error_baseline": -0.06,
-          "baseline_model": "ncep_gfswave025"
-        },
-        {
-          "date": "2026-09-30",
-          "obs_peak": 4.6,
-          "t_peak": "2026-10-01T11:00:00Z",
-          "ia_at_peak": 3.3225,
-          "baseline_at_peak": 3.36,
-          "peak_error_ia": -1.2775,
-          "peak_error_baseline": -1.24,
           "baseline_model": "ncep_gfswave025"
         }
       ]
@@ -51,6 +51,16 @@
           "baseline_model": "ewam"
         },
         {
+          "date": "2026-10-21",
+          "obs_peak": 4.4,
+          "t_peak": "2026-10-21T10:00:00Z",
+          "ia_at_peak": 4.0273,
+          "baseline_at_peak": 4.18,
+          "peak_error_ia": -0.3727,
+          "peak_error_baseline": -0.22,
+          "baseline_model": "ewam"
+        },
+        {
           "date": "2026-10-19",
           "obs_peak": 3.9,
           "t_peak": "2026-10-21T05:00:00Z",
@@ -58,16 +68,6 @@
           "baseline_at_peak": 3.38,
           "peak_error_ia": -0.8253,
           "peak_error_baseline": -0.52,
-          "baseline_model": "ewam"
-        },
-        {
-          "date": "2026-09-29",
-          "obs_peak": 3.2,
-          "t_peak": "2026-09-30T23:00:00Z",
-          "ia_at_peak": 2.7132,
-          "baseline_at_peak": 2.58,
-          "peak_error_ia": -0.4868,
-          "peak_error_baseline": -0.62,
           "baseline_model": "ewam"
         }
       ]
@@ -160,13 +160,13 @@
           "baseline_model": "meteofrance_arpege_europe"
         },
         {
-          "date": "2026-09-07",
-          "obs_peak": 17.0,
-          "t_peak": "2026-09-08T08:00:00Z",
-          "ia_at_peak": 11.4492,
-          "baseline_at_peak": 10.87,
-          "peak_error_ia": -5.5508,
-          "peak_error_baseline": -6.13,
+          "date": "2026-10-21",
+          "obs_peak": 19.2,
+          "t_peak": "2026-10-21T09:00:00Z",
+          "ia_at_peak": 13.7949,
+          "baseline_at_peak": 13.66,
+          "peak_error_ia": -5.4051,
+          "peak_error_baseline": -5.54,
           "baseline_model": "meteofrance_arpege_europe"
         }
       ]
