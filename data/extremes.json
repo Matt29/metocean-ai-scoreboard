@@ -76,6 +76,15 @@
       "id": "brest",
       "episodes": [
         {
+          "date": "2026-10-25",
+          "obs_peak": 7.4972,
+          "t_peak": "2026-10-26T16:00:00Z",
+          "ia_at_peak": 7.3765,
+          "baseline_at_peak": 7.2777,
+          "peak_error_ia": -0.1207,
+          "peak_error_baseline": -0.2195
+        },
+        {
           "date": "2026-09-28",
           "obs_peak": 7.4683,
           "t_peak": "2026-09-29T17:00:00Z",
@@ -92,15 +101,6 @@
           "baseline_at_peak": 7.3117,
           "peak_error_ia": -0.1035,
           "peak_error_baseline": -0.1566
-        },
-        {
-          "date": "2026-08-13",
-          "obs_peak": 7.4064,
-          "t_peak": "2026-08-14T17:00:00Z",
-          "ia_at_peak": 7.3393,
-          "baseline_at_peak": 7.4528,
-          "peak_error_ia": -0.0671,
-          "peak_error_baseline": 0.0464
         }
       ]
     },
