@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-10-26T06:00:00Z",
+  "updated": "2026-10-27T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -46,75 +46,75 @@
       "id": "brest",
       "threshold_p90": 0.20171120650075824,
       "alert_30d": {
-        "n_events": 57,
+        "n_events": 61,
         "n_days": 30,
-        "pod": 0.2631578947368421,
-        "far": 0.3181818181818182,
-        "bss_clim": 0.2719194813763154
+        "pod": 0.26229508196721313,
+        "far": 0.36,
+        "bss_clim": 0.2626615931154823
       },
       "band_30d": {
-        "coverage_published": 0.8598458304134547,
-        "n_points": 1427,
+        "coverage_published": 0.8672752808988764,
+        "n_points": 1424,
         "n_days": 30
       },
       "alert_90d": {
-        "n_events": 65,
-        "n_days": 47,
-        "pod": 0.23076923076923078,
-        "far": 0.3181818181818182,
-        "bss_clim": 0.30686842496305256
+        "n_events": 71,
+        "n_days": 48,
+        "pod": 0.22535211267605634,
+        "far": 0.36,
+        "bss_clim": 0.29117695005020083
       },
       "band_90d": {
-        "coverage_published": 0.8337048595630852,
-        "n_points": 2243,
-        "n_days": 47
+        "coverage_published": 0.833041958041958,
+        "n_points": 2288,
+        "n_days": 48
       }
     },
     {
       "id": "saint-malo",
       "threshold_p90": 0.25501612445205524,
       "alert_30d": {
-        "n_events": 146,
+        "n_events": 153,
         "n_days": 30,
-        "pod": 0.3082191780821918,
-        "far": 0.27419354838709675,
-        "bss_clim": 0.28456274128328374
+        "pod": 0.32679738562091504,
+        "far": 0.2753623188405797,
+        "bss_clim": 0.29877568135245913
       },
       "band_30d": {
-        "coverage_published": 0.8332165381920112,
-        "n_points": 1427,
+        "coverage_published": 0.839185393258427,
+        "n_points": 1424,
         "n_days": 30
       },
       "alert_90d": {
-        "n_events": 185,
-        "n_days": 47,
-        "pod": 0.24324324324324326,
-        "far": 0.27419354838709675,
-        "bss_clim": 0.2298920679457842
+        "n_events": 199,
+        "n_days": 48,
+        "pod": 0.2562814070351759,
+        "far": 0.2714285714285714,
+        "bss_clim": 0.23990777570298782
       },
       "band_90d": {
-        "coverage_published": 0.8216674097191262,
-        "n_points": 2243,
-        "n_days": 47
+        "coverage_published": 0.8225524475524476,
+        "n_points": 2288,
+        "n_days": 48
       }
     },
     {
       "id": "ouessant",
       "threshold_p90": 12.6,
       "alert_30d": {
-        "n_events": 158,
+        "n_events": 177,
         "n_days": 30,
-        "pod": 0.8227848101265823,
-        "far": 0.25287356321839083,
-        "bss_clim": 0.6552388451545883
+        "pod": 0.8305084745762712,
+        "far": 0.25,
+        "bss_clim": 0.6588224898547865
       },
       "band_30d": null,
       "alert_90d": {
-        "n_events": 158,
-        "n_days": 47,
-        "pod": 0.8227848101265823,
-        "far": 0.25287356321839083,
-        "bss_clim": 0.6750427127793881
+        "n_events": 177,
+        "n_days": 48,
+        "pod": 0.8305084745762712,
+        "far": 0.25,
+        "bss_clim": 0.6776133907413858
       },
       "band_90d": null
     },
@@ -122,19 +122,19 @@
       "id": "dieppe",
       "threshold_p90": 8.0,
       "alert_30d": {
-        "n_events": 309,
+        "n_events": 314,
         "n_days": 30,
-        "pod": 0.7669902912621359,
+        "pod": 0.7547770700636943,
         "far": 0.13186813186813187,
-        "bss_clim": 0.6843037268570986
+        "bss_clim": 0.670563573350019
       },
       "band_30d": null,
       "alert_90d": {
-        "n_events": 339,
-        "n_days": 47,
-        "pod": 0.7138643067846607,
+        "n_events": 344,
+        "n_days": 48,
+        "pod": 0.7034883720930233,
         "far": 0.1357142857142857,
-        "bss_clim": 0.6401657956439682
+        "bss_clim": 0.6291641579486036
       },
       "band_90d": null
     },
@@ -142,28 +142,28 @@
       "id": "cherbourg-vent",
       "threshold_p90": 10.9,
       "alert_30d": {
-        "n_events": 260,
+        "n_events": 279,
         "n_days": 30,
-        "pod": 0.7269230769230769,
-        "far": 0.18181818181818182,
-        "bss_clim": 0.630762317886166
+        "pod": 0.7347670250896058,
+        "far": 0.1865079365079365,
+        "bss_clim": 0.6353760043120023
       },
       "band_30d": {
-        "coverage_published": 0.8605466012613875,
-        "n_points": 1427,
+        "coverage_published": 0.8651685393258427,
+        "n_points": 1424,
         "n_days": 30
       },
       "alert_90d": {
-        "n_events": 260,
-        "n_days": 47,
-        "pod": 0.7269230769230769,
-        "far": 0.18181818181818182,
-        "bss_clim": 0.6437536509511108
+        "n_events": 279,
+        "n_days": 48,
+        "pod": 0.7347670250896058,
+        "far": 0.1865079365079365,
+        "bss_clim": 0.648109536692512
       },
       "band_90d": {
-        "coverage_published": 0.872046366473473,
-        "n_points": 2243,
-        "n_days": 47
+        "coverage_published": 0.8736888111888111,
+        "n_points": 2288,
+        "n_days": 48
       }
     }
   ]
