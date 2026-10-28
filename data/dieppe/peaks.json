@@ -5,8 +5,8 @@
   "status": "ok",
   "unit": "m/s",
   "threshold_p90": 8.0,
-  "p_48h": 0.0041,
-  "t_peak_pred": "2026-10-28T15:00:00Z",
+  "p_48h": 0.006,
+  "t_peak_pred": "2026-10-30T06:00:00Z",
   "series": [
     {
       "t": "2026-10-28T07:00:00Z",
@@ -35,27 +35,27 @@
     },
     {
       "t": "2026-10-28T12:00:00Z",
-      "p_exceed": 0.0012,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-28T13:00:00Z",
       "p_exceed": 0.0014,
       "p90_upper": null
     },
     {
+      "t": "2026-10-28T13:00:00Z",
+      "p_exceed": 0.0015,
+      "p90_upper": null
+    },
+    {
       "t": "2026-10-28T14:00:00Z",
-      "p_exceed": 0.0017,
+      "p_exceed": 0.0009,
       "p90_upper": null
     },
     {
       "t": "2026-10-28T15:00:00Z",
-      "p_exceed": 0.0041,
+      "p_exceed": 0.0009,
       "p90_upper": null
     },
     {
       "t": "2026-10-28T16:00:00Z",
-      "p_exceed": 0.0001,
+      "p_exceed": 0.0,
       "p90_upper": null
     },
     {
@@ -70,12 +70,12 @@
     },
     {
       "t": "2026-10-28T19:00:00Z",
-      "p_exceed": 0.0002,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
       "t": "2026-10-28T20:00:00Z",
-      "p_exceed": 0.0005,
+      "p_exceed": 0.0002,
       "p90_upper": null
     },
     {
@@ -90,22 +90,22 @@
     },
     {
       "t": "2026-10-28T23:00:00Z",
-      "p_exceed": 0.0002,
-      "p90_upper": null
-    },
-    {
-      "t": "2026-10-29T00:00:00Z",
       "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
+      "t": "2026-10-29T00:00:00Z",
+      "p_exceed": 0.0002,
+      "p90_upper": null
+    },
+    {
       "t": "2026-10-29T01:00:00Z",
-      "p_exceed": 0.0005,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
       "t": "2026-10-29T02:00:00Z",
-      "p_exceed": 0.0,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
@@ -120,7 +120,7 @@
     },
     {
       "t": "2026-10-29T05:00:00Z",
-      "p_exceed": 0.0004,
+      "p_exceed": 0.0,
       "p90_upper": null
     },
     {
@@ -130,7 +130,7 @@
     },
     {
       "t": "2026-10-29T07:00:00Z",
-      "p_exceed": 0.0001,
+      "p_exceed": 0.0,
       "p90_upper": null
     },
     {
@@ -160,7 +160,7 @@
     },
     {
       "t": "2026-10-29T13:00:00Z",
-      "p_exceed": 0.0002,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
@@ -170,32 +170,32 @@
     },
     {
       "t": "2026-10-29T15:00:00Z",
-      "p_exceed": 0.0002,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
       "t": "2026-10-29T16:00:00Z",
-      "p_exceed": 0.0002,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
       "t": "2026-10-29T17:00:00Z",
-      "p_exceed": 0.0,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
       "t": "2026-10-29T18:00:00Z",
-      "p_exceed": 0.0002,
+      "p_exceed": 0.0,
       "p90_upper": null
     },
     {
       "t": "2026-10-29T19:00:00Z",
-      "p_exceed": 0.0001,
+      "p_exceed": 0.0,
       "p90_upper": null
     },
     {
       "t": "2026-10-29T20:00:00Z",
-      "p_exceed": 0.0001,
+      "p_exceed": 0.0,
       "p90_upper": null
     },
     {
@@ -205,47 +205,47 @@
     },
     {
       "t": "2026-10-29T22:00:00Z",
-      "p_exceed": 0.0002,
+      "p_exceed": 0.0003,
       "p90_upper": null
     },
     {
       "t": "2026-10-29T23:00:00Z",
-      "p_exceed": 0.0004,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
       "t": "2026-10-30T00:00:00Z",
-      "p_exceed": 0.0002,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
       "t": "2026-10-30T01:00:00Z",
-      "p_exceed": 0.0002,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
       "t": "2026-10-30T02:00:00Z",
-      "p_exceed": 0.0002,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
       "t": "2026-10-30T03:00:00Z",
-      "p_exceed": 0.0002,
+      "p_exceed": 0.0001,
       "p90_upper": null
     },
     {
       "t": "2026-10-30T04:00:00Z",
-      "p_exceed": 0.0002,
+      "p_exceed": 0.0003,
       "p90_upper": null
     },
     {
       "t": "2026-10-30T05:00:00Z",
-      "p_exceed": 0.0007,
+      "p_exceed": 0.0002,
       "p90_upper": null
     },
     {
       "t": "2026-10-30T06:00:00Z",
-      "p_exceed": 0.0007,
+      "p_exceed": 0.006,
       "p90_upper": null
     }
   ]
