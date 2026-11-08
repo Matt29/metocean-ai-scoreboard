@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-11-08T14:00:00Z",
+  "updated": "2026-11-08T16:00:00Z",
   "since": "2026-07-31",
   "buoys": [
     {
@@ -48,8 +48,8 @@
     {
       "id": "6101034",
       "name": "BOUEE_PROVENCE",
-      "lat": 41.58,
-      "lon": 5.48,
+      "lat": 41.57,
+      "lon": 5.49,
       "wave": true
     },
     {
@@ -63,14 +63,14 @@
       "id": "6101036",
       "name": "BOUEE_PACA",
       "lat": 42.34,
-      "lon": 6.69,
+      "lon": 6.68,
       "wave": true
     },
     {
       "id": "6200001",
       "name": "BOUEE_GASCOGNE",
       "lat": 45.22,
-      "lon": -5.02,
+      "lon": -5.03,
       "wave": true
     }
   ]
