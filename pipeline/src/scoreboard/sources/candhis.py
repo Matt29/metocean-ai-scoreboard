@@ -11,6 +11,7 @@ from scoreboard.sources import SourceError, make_session
 
 _BASE_URL = "https://candhis.cerema.fr/API/v1/getCampTR.php"
 _TIMEOUT = 30
+_CAP_SLACK = timedelta(days=2)  # a capped response ends within ~2 days of dateDeb + 365 d
 _MAX_SPAN = timedelta(days=365)  # Candhis TR caps a response at ~365 days from dateDeb,
 # never up to "now" — verified live: dateDeb=2021-08-06 returned 2021-08-25 -> 2022-08-05
 # and nothing more recent, even though "today" was almost 5 years later.
@@ -63,8 +64,8 @@ def fetch_wave_obs(
 ) -> pd.DataFrame:
     """Hs/Tp, 30 min. Candhis TR caps each response at ~365 days from `dateDeb`
     (see `_MAX_SPAN`) — spans beyond that are fetched in chunks, each one
-    anchored right after the previous chunk's last observation, transparent to
-    the caller. A window that fits in one cap (the common case: daily/backfill
+    anchored on the previous chunk's last observation (or past a window the buoy
+    left empty), transparent to the caller. A window that fits in one cap (the common case: daily/backfill
     calls a few days deep) still costs exactly one request.
     """
     api_key = os.environ.get("CANDHIS_API_KEY")
@@ -78,25 +79,22 @@ def fetch_wave_obs(
     chunk_start = date_start
     while True:
         chunk = _fetch_chunk(station, chunk_start, api_key, session)
+        window_end = chunk_start + _MAX_SPAN - _CAP_SLACK
         if chunk.empty:
+            last = chunk_start
+        else:
+            frames.append(chunk)
+            last = chunk.index[-1].date()
+        # One rule for both ways a response stops short of `date_end`. Cut by the
+        # cap: resume ON `last`, not `last + 1 day` — the series is 30-min, a
+        # mid-day boundary would drop the rest of that day (the overlap is
+        # deduped below). Silent buoy inside the window (Anglet, 2025-04-22 ->
+        # 2025-11-18), or empty window: skip to the end of what this request
+        # could cover. `window_end > chunk_start`, so the loop always progresses,
+        # and a window shorter than the cap stops after its single request.
+        chunk_start = max(last, window_end)
+        if chunk_start >= date_end:
             break
-        frames.append(chunk)
-        last = chunk.index[-1].date()
-        # Only chain another request if this one was actually cut short by the
-        # ~365-day cap (last lands within a couple days of chunk_start + cap).
-        # Short of that, `last` is the real end of available data (station lag,
-        # a few hours behind "now") — a second request there would just come
-        # back empty and cost a call for nothing on every daily/backfill run.
-        capped = last >= chunk_start + _MAX_SPAN - timedelta(days=2)
-        if last >= date_end or last <= chunk_start or not capped:
-            break
-        # Anchor on `last`, not `last + 1 day`: the series is 30-min, so a chunk
-        # boundary mid-day would otherwise drop up to ~24h of that day's points.
-        # Re-fetching `last`'s day is deliberate — `df[~df.index.duplicated]`
-        # below dedupes the overlap for free, and `last <= chunk_start` above is
-        # exactly the stall guard that makes this terminate: a chunk anchored on
-        # its own previous end can only progress or break.
-        chunk_start = last
 
     if not frames:
         raise SourceError(station.id, "Candhis: aucune observation exploitable")

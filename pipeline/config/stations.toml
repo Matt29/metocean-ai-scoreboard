@@ -58,6 +58,86 @@ source_id = "6200001"
 baseline = "marine-best"
 active = false
 
+# Pilotes Méditerranée, inscrits le 2026-11-13 dans le même état que Gascogne :
+# inactifs, hors gate et hors scoreboard. Positions = snapshot `data/buoys.json`
+# du 2026-11-12. Sardaigne (aucune houle) et Antilles (archive trop courte) absentes.
+[[station]]
+id = "azur-bouee"
+name = "Bouée Azur"
+kind = "wave"
+lat = 43.3600
+lon = 7.8300
+source = "mfbuoy"
+source_id = "6100001"
+baseline = "marine-best"
+active = false
+
+[[station]]
+id = "lion-bouee"
+name = "Bouée Lion"
+kind = "wave"
+lat = 42.1060
+lon = 4.6873
+source = "mfbuoy"
+source_id = "6100002"
+baseline = "marine-best"
+active = false
+
+[[station]]
+id = "ajaccio-bouee"
+name = "Bouée Ajaccio"
+kind = "wave"
+lat = 41.7600
+lon = 7.5900
+source = "mfbuoy"
+source_id = "6101031"
+baseline = "marine-best"
+active = false
+
+[[station]]
+id = "vecchio-bouee"
+name = "Bouée Vecchio"
+kind = "wave"
+lat = 41.6100
+lon = 10.1900
+source = "mfbuoy"
+source_id = "6101032"
+baseline = "marine-best"
+active = false
+
+[[station]]
+id = "calvi-bouee"
+name = "Bouée Calvi"
+kind = "wave"
+lat = 42.8100
+lon = 8.4200
+source = "mfbuoy"
+source_id = "6101033"
+baseline = "marine-best"
+active = false
+
+[[station]]
+id = "provence-bouee"
+name = "Bouée Provence"
+kind = "wave"
+lat = 41.5900
+lon = 5.4900
+source = "mfbuoy"
+source_id = "6101034"
+baseline = "marine-best"
+active = false
+
+[[station]]
+id = "paca-bouee"
+name = "Bouée PACA"
+kind = "wave"
+lat = 42.3500
+lon = 6.7000
+source = "mfbuoy"
+source_id = "6101036"
+baseline = "marine-best"
+active = false
+
 [[station]]
 id = "brest"
 name = "Brest"

@@ -173,3 +173,19 @@ def test_chunk_loop_terminates_when_second_chunk_makes_no_progress():
 
     assert session.get.call_count == 2  # not 3+: the loop terminated
     assert len(df) == 1
+
+
+def test_chain_skips_a_mid_archive_gap():
+    """A buoy silent for months inside the window (Anglet 2025) must not end the
+    chain: the next request jumps to the end of the exhausted window."""
+    session = Mock()
+    session.get.side_effect = [
+        Mock(status_code=200, json=Mock(return_value=_row_payload("2020-04-22 04:00"))),
+        Mock(status_code=200, json=Mock(return_value=_row_payload("2021-06-01 00:00"))),
+    ]
+
+    df = fetch_wave_obs(ST, date(2020, 1, 1), session=session, date_end=date(2021, 3, 1))
+
+    assert session.get.call_count == 2
+    assert session.get.call_args_list[1].kwargs["params"]["dateDeb"] == "2020-12-29"
+    assert list(df.index.date) == [date(2020, 4, 22), date(2021, 6, 1)]

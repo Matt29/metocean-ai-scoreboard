@@ -328,6 +328,48 @@ fraîcheur/complétude, pilote Gascogne inactif, dispatch et builder. Reste à f
 au moment de l'entraînement : modèle, gate, verdict et activation ; la carte du
 site externe peut désormais consommer directement les JSON publics.
 
+### Premier essai d'entraînement Gascogne : non évaluable (2026-11-13, sur `7bee6b5`)
+
+Le « ~2-3 mois d'obs » annoncé plus haut était **raisonné, pas tiré du code** :
+il est faux. `train._rolling_cutoffs` exige, pour une seule origine, deux
+fenêtres de test d'entraînement + 48 h de purge + la fenêtre de test, soit
+**272 jours d'observations** pour une station `wave` (test de 90 jours).
+Gascogne en a 105 (2026-07-31 → 2026-11-12) : `train.py --station
+gascogne-bouee --include-pilots` répond « nothing trained », sans artefact ni
+entrée de gate. Première date évaluable au protocole : **vers le 2027-04-29**,
+si l'archive reste sans trou ; ce sera encore un holdout dégradé (le
+multi-saisons demande 730 jours).
+
+Mesure exploratoire, hors protocole et sans rien écrire (`--test-days 30`,
+30 jours de test du 2026-10-13 au 2026-11-12, 1 251 lignes) : référence
+`meteofrance_wave`, MAE 0,201 → 0,189 m, **gain hors biais +4,5 %**, candidat
+`ridge`, verdict FAIL. Un seul mois d'automne : indicatif, pas un verdict.
+
+Catalogue : **10 bouées** depuis le 2026-10-21 (BOUEE_ANTILLES, `4100230`) ;
+les « 9 bouées » de cette section datent d'août. Les 7 bouées de Méditerranée
+exploitables ont 98 à 104 jours de Hs : même blocage, même échéance.
+
+**Les 7 bouées de Méditerranée sont inscrites comme pilotes inactifs depuis le
+2026-11-13** (`stations.toml`, `active = false`, ids `<nom>-bouee`). Même mesure
+exploratoire que Gascogne, même jour, même commande (`train.py --include-pilots
+--test-days 30`, rien d'écrit), ~30 jours de test finissant le 2026-11-12 :
+
+| pilote | référence retenue | MAE référence (m) | MAE modèle (m) | gain hors biais |
+|---|---|---|---|---|
+| azur-bouee | `meteofrance_wave` | 0,179 | 0,121 | +23,0 % |
+| vecchio-bouee | `ecmwf_wam025` | 0,153 | 0,125 | +17,9 % |
+| paca-bouee | `ecmwf_wam025` | 0,159 | 0,141 | +14,8 % |
+| lion-bouee | `ecmwf_wam025` | 0,178 | 0,163 | +7,5 % |
+| calvi-bouee | `ecmwf_wam025` | 0,137 | 0,127 | +6,3 % |
+| gascogne-bouee | `meteofrance_wave` | 0,201 | 0,189 | +4,5 % |
+| provence-bouee | `ewam` | 0,172 | 0,163 | −0,5 % |
+| ajaccio-bouee | `ecmwf_wam025` | 0,118 | 0,123 | −3,4 % |
+
+Candidat retenu partout : `ridge`. Aucun intervalle de confiance n'a été
+calculé sur ces chiffres : un mois d'automne, ~70 jours d'entraînement, ils
+classent les bouées à titre indicatif et ne valent pas verdict. La borne p90
+échoue sur les 8 (couverture 0,47 à 0,83).
+
 ### Le chemin imposé par la rétention de `/bouees`
 
 - **Scoring quotidien : faisable dès le premier jour.** La fenêtre de 24 h

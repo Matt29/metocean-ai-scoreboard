@@ -13,8 +13,8 @@ Justification de chaque source de données : [`docs/data-sources.md`](docs/data-
 
 ## Stations
 
-9 stations actives, **8 publiées**, plus un pilote Gascogne inactif — la
-neuvième station active est mesurée comme
+9 stations actives, **7 publiées**, plus 8 pilotes bouées Météo-France inactifs (Gascogne et 7 en Méditerranée) — les deux
+autres (Anglet et Cherbourg houle) sont mesurées comme
 les autres tous les jours, mais un *gate* qualité (`pipeline/models/gate.json`)
 retient toute station où l'IA ne bat pas sa propre baseline sur les données
 d'entraînement. Ce n'est pas une faiblesse cachée : c'est l'argument du
@@ -74,6 +74,7 @@ que le gate et le serve utilisent ensuite.
 | Anglet | houle (Hs) | Candhis | Open-Meteo Marine (`meteofrance_wave`) | non (holdout dégradé, dépubliée le 2026-09-14) |
 | Cherbourg | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | non (holdout dégradé) |
 | Bouée Gascogne | houle (Hs) | Météo-France DPObs `/bouees` | Open-Meteo Marine (à sélectionner) | pilote inactif |
+| 7 bouées Méditerranée (Azur, Lion, Ajaccio, Vecchio, Calvi, Provence, PACA) | houle (Hs) | Météo-France DPObs `/bouees` | Open-Meteo Marine (à sélectionner) | pilotes inactifs |
 | Brest | niveau d'eau | SHOM REFMAR | harmonique (utide, 2 ans) | oui |
 | Saint-Malo | niveau d'eau | SHOM REFMAR | harmonique (utide, 2 ans) | oui |
 | Ouessant (Le Stiff) | vent 10 m | Météo-France DPObs | Open-Meteo (`meteofrance_arpege_europe`) | oui |
@@ -96,7 +97,7 @@ les consomme.
 ```
 GitHub Actions (cron, voir .github/workflows/daily.yml)
         │
-        ├─ 1. archive une fois les 9 bouées Météo-France
+        ├─ 1. archive une fois les bouées Météo-France (10 au catalogue)
         │      → Parquet brut + contrôle fraîcheur/complétude Hs
         │      → data/buoys.json + data/buoys/<wmo>/{latest,history}.json
         │

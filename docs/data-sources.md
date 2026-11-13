@@ -102,6 +102,16 @@ fenêtre courte — l'usage quotidien réel du pipeline, `daily.py`/`backfill.py
 qui ne remonte que de quelques jours — ne déclenche jamais de second appel et
 coûte donc toujours exactement 1 requête, comme documenté ci-dessus.
 
+**Trou d'observation en milieu d'archive — corrigé le 2026-11-13.** Le chaînage
+ci-dessus s'arrêtait dès qu'une réponse finissait avant son plafond, en
+supposant que c'était la fin des données. Faux quand la bouée s'est tue
+plusieurs mois : Anglet n'a rien émis du 2025-04-22 au 2025-11-18 (mesuré le
+2026-11-13 par trois appels `getCampTR`, `dateDeb` = 2024-11-13, 2025-04-23,
+2025-11-13), et le rebuild s'arrêtait donc au 2025-04-22. `fetch_wave_obs`
+saute désormais à la fin de la fenêtre épuisée tant que la date de fin demandée
+n'est pas atteinte ; une fenêtre de moins de ~363 jours coûte toujours une
+seule requête.
+
 **Garde-fou ajouté dans `build_dataset.py`** : si les observations d'une
 station s'arrêtent plus de 7 jours avant la fin de la fenêtre demandée, le
 script échoue bruyamment (`RuntimeError`) plutôt que d'écrire un dataset
@@ -448,12 +458,21 @@ collectage : une bouée peut donc bouger. La position du pilote Gascogne dans
 référence explicite du dataset/modèle ; tout déplacement opérationnel notable
 doit être revu avant de modifier cette référence, plutôt que propagé silencieusement.
 
+**État de l'archive au 2026-11-13 (mesuré sur `7bee6b5`, 105 fichiers
+journaliers du 2026-07-31 au 2026-11-12).** Le catalogue compte **10 bouées** :
+BOUEE_ANTILLES (`4100230`) est apparue le 2026-10-21. Jours portant au moins un
+Hs : Gascogne 105, Vecchio 104, Calvi 101, Ajaccio / Azur / PACA / Provence 100,
+Lion 98, Antilles 23, Sardaigne 0. Les mentions « 9 bouées » plus bas dans cette
+section sont des mesures datées d'août 2026, laissées telles quelles.
+
 **Ce que ça fait, et ce que ça ne fait pas.** Ça archive et publie les
 observations pour que le compteur des ~2-3 mois d'historique nécessaires au
 premier entraînement Méditerranée démarre (demande produit 4). Gascogne est
 désormais déclarée dans `stations.toml` comme pilote `active = false` : le
 dispatch quotidien et le builder savent lire `mfbuoy`, mais aucun gate, verdict
-ou modèle n'est inventé avant l'entraînement. Les huit autres bouées restent des
+ou modèle n'est inventé avant l'entraînement. Les sept bouées de Méditerranée
+qui servent la houle sont inscrites de la même façon depuis le 2026-11-13 ;
+Sardaigne et Antilles restent des
 observations publiques, pas des stations scorées.
 
 **Rétention réelle : ~96 h, pas 24 h.** La doc Confluence annonce 24 h. Mesuré
@@ -465,7 +484,7 @@ laisse ~3,5 runs quotidiens de marge : un cron raté se rattrape tout seul au
 lieu de laisser un trou définitif. La doc était fausse dans le sens favorable —
 raison de plus pour mesurer plutôt que lire.
 
-**Une requête par jour pour les 9 bouées** : `id_bouee` omis renvoie tout le
+**Une requête par jour pour toutes les bouées** (9 au 2026-08-03, 10 depuis le 2026-10-21) : `id_bouee` omis renvoie tout le
 réseau (~713 lignes sur 90 h). Les positions viennent du payload
 (`lat`/`lon`/`geo_id_wmo`/`name`), jamais en dur. Coût : 1 requête/jour contre
 un palier de dizaines par minute.

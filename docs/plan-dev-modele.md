@@ -874,6 +874,22 @@ chiffre près — pierres-noires et belle-ile PASS, anglet et cherbourg FAIL. Le
 borne p90 FAIL** sur les deux (voir `docs/model-eval.md`). Pas de dataset
 reconstruit : les 40 jours postérieurs au 2026-08-05 ne sont pas dans le fit.
 
+**Ré-entraînement anglet + cherbourg, 2026-11-13** (`train.py --station
+anglet,cherbourg`, datasets reconstruits le jour même sur `7bee6b5`, fenêtre
+2021-11-14 → 2026-11-13, après correction du chaînage Candhis —
+`docs/data-sources.md` § 1) : les deux restent **FAIL, holdout dégradé**.
+
+| station | origines | référence | candidat | gain hors biais | IC95 % | jours |
+|---|---|---|---|---|---|---|
+| anglet | 2 | `meteofrance_wave` | `ridge` | +8,0 % | [+4,6 ; +11,2] | 165 |
+| cherbourg | 3 | `ewam` | `hgb-per-lead` | +23,2 % | [+18,9 ; +27,5] | 267 |
+
+Origines écartées : anglet 2025-11-19 (test vide, bouée muette du 2025-04-22 au
+2025-11-18) et 2026-02-17 (train trop court pour sa validation) ; cherbourg
+2026-02-17 (54 jours d'émission sur 72 requis). Les deux mois de données en
+plus ne changent donc pas le verdict : c'est un trou d'observation par station
+qui retire une origine, pas la profondeur d'archive.
+
 ---
 
 ## Réserves ouvertes

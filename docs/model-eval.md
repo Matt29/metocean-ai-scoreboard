@@ -1,6 +1,6 @@
 # Évaluation des modèles de post-traitement
 
-Généré par `pipeline/scripts/train.py` le 2026-09-14 11:33 UTC (fenêtres temporelles et protocole détaillés par station ci-dessous).
+Généré par `pipeline/scripts/train.py` le 2026-11-13 13:42 UTC (fenêtres temporelles et protocole détaillés par station ci-dessous).
 
 Le modèle **post-traite** une prévision physique officielle : il la corrige, il
 ne la remplace jamais. Cette baseline n'est plus imposée : pour une station
@@ -14,17 +14,15 @@ de son observation **sur les seuls jours d'émission d'entraînement** (colonne
 
 | Station | Type | Baseline production / folds de test | Modèle ML | Rows train / test | MAE baseline | MAE baseline débiaisée | MAE modèle | Gain affiché | **Gain hors biais** | IC95% gain | Protocole | Verdict |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| pierres-noires | wave | ncep_gfswave025 / ncep_gfswave025, ncep_gfswave025, ncep_gfswave025, ncep_gfswave025 | `hgb` | 35952 / 16426 | 0.269 | 0.264 | 0.206 | +23.6% | **+22.1%** | [+18.9%, +25.0%] (347 jours) | rolling-origin multi-saisons (4×90j) | PASS |
-| belle-ile | wave | ewam / ewam, ewam, ewam, ewam | `hgb` | 35710 / 17017 | 0.178 | 0.164 | 0.126 | +29.0% | **+23.3%** | [+20.4%, +25.8%] (360 jours) | rolling-origin multi-saisons (4×90j) | PASS |
-| anglet | wave | meteofrance_wave / meteofrance_wave | `ridge` | 12484 / 4260 | 0.109 | 0.106 | 0.099 | +9.8% | **+6.6%** | [+1.4%, +11.0%] (90 jours) | holdout dégradé (1×90j) | FAIL |
-| cherbourg | wave | ewam / ewam, ewam, ewam | `hgb` | 35134 / 12668 | 0.157 | 0.125 | 0.095 | +39.5% | **+23.9%** | [+20.3%, +27.5%] (267 jours) | holdout dégradé (3×90j) | FAIL |
+| anglet | wave | meteofrance_wave / meteofrance_wave, meteofrance_wave | `ridge` | 16330 / 7626 | 0.126 | 0.119 | 0.110 | +13.4% | **+8.0%** | [+4.6%, +11.2%] (165 jours) | holdout dégradé (2×90j) | FAIL |
+| cherbourg | wave | ewam / ewam, ewam, ewam | `hgb-per-lead` | 39658 / 12580 | 0.152 | 0.122 | 0.094 | +38.1% | **+23.2%** | [+18.9%, +27.5%] (267 jours) | holdout dégradé (3×90j) | FAIL |
 
-**4 origine(s) rolling écartée(s) avant de compter dans `n_folds` ci-dessus** — une origine prévue par le calendrier saisonnier mais dont le split train/test ou la couverture ne suffisait pas (voir `_origin_split` / `MIN_FOLD_COVERAGE`) :
+**3 origine(s) rolling écartée(s) avant de compter dans `n_folds` ci-dessus** — une origine prévue par le calendrier saisonnier mais dont le split train/test ou la couverture ne suffisait pas (voir `_origin_split` / `MIN_FOLD_COVERAGE`) :
 
-   * `anglet` : vide: split train/test dégénéré; 2025-11-17: split train/test dégénéré; 2026-02-07: validation interne dégénérée (train plus court que ses 90 jours de validation)
-   * `cherbourg` : 2026-02-07: couverture 57/72 jours d'émission
+   * `anglet` : 2025-11-19: split train/test dégénéré; 2026-02-17: validation interne dégénérée (train plus court que ses 90 jours de validation)
+   * `cherbourg` : 2026-02-17: couverture 54/72 jours d'émission
 
-**Stations non ré-entraînées sur cette fenêtre : brest, saint-malo, ouessant, dieppe, cherbourg-vent** — leur
+**Stations non ré-entraînées sur cette fenêtre : pierres-noires, belle-ile, brest, saint-malo, ouessant, dieppe, cherbourg-vent** — leur
 jeu d'entraînement est absent de `pipeline/data_train/`. Leur artefact et leur
 entrée `gate.json` du run précédent sont **conservés tels quels** : ils ne sont
 ni supprimés ni rafraîchis, et les chiffres ci-dessus ne les couvrent pas.
@@ -79,14 +77,10 @@ que la baseline pourrait connaître à l'avance.
 
 | Station | Bande | Heures | MAE baseline | MAE baseline débiaisée | MAE modèle | Gain hors biais |
 |---|---|---|---|---|---|---|
-| pierres-noires | décile sup. | 1664 | 0.748 | 0.748 | 0.454 | **+39.3%** |
-| pierres-noires | |résidu| > 0.5 m | 2392 | 0.682 | 0.683 | 0.415 | **+39.2%** |
-| belle-ile | décile sup. | 1703 | 0.504 | 0.475 | 0.270 | **+43.2%** |
-| belle-ile | |résidu| > 0.5 m | 690 | 0.618 | 0.591 | 0.328 | **+44.5%** |
-| anglet | décile sup. | 429 | 0.311 | 0.316 | 0.278 | **+12.0%** |
-| anglet | |résidu| > 0.5 m | 42 | 0.568 | 0.587 | 0.550 | **+6.2%** |
-| cherbourg | décile sup. | 1305 | 0.491 | 0.381 | 0.202 | **+46.9%** |
-| cherbourg | |résidu| > 0.5 m | 408 | 0.702 | 0.586 | 0.268 | **+54.2%** |
+| anglet | décile sup. | 766 | 0.386 | 0.386 | 0.319 | **+17.2%** |
+| anglet | |résidu| > 0.5 m | 118 | 0.710 | 0.732 | 0.603 | **+17.5%** |
+| cherbourg | décile sup. | 1268 | 0.515 | 0.414 | 0.205 | **+50.6%** |
+| cherbourg | |résidu| > 0.5 m | 436 | 0.743 | 0.638 | 0.263 | **+58.7%** |
 
 ## Pics — alerte de dépassement et borne haute
 
@@ -106,10 +100,8 @@ jours à événement mesurée sur le test lui-même, donc un skill optimiste.
 
 | Station | Seuil p90 | Seuil p98 | BSS clim. | IC95 % | POD / FAR modèle | POD / FAR baseline | Événements | p48 BSS | n jours | Verdict |
 |---|---|---|---|---|---|---|---|---|---|---|
-| pierres-noires | 3.500 | 4.950 | +0.824 | [+0.789 ; +0.853] | 0.91 / 0.09 | 0.86 / 0.11 | 3478 | +0.852 | 347 | PASS |
-| belle-ile | 3.250 | 4.600 | +0.865 | [+0.834 ; +0.890] | 0.91 / 0.05 | 0.88 / 0.04 | 3649 | +0.889 | 360 | PASS |
-| anglet | 3.400 | 5.150 | +1.000 | [+1.000 ; +1.000] | — / — | — / — | 0 | — | 90 | FAIL |
-| cherbourg | 1.150 | 1.900 | +0.644 | [+0.578 ; +0.703] | 0.75 / 0.18 | 0.77 / 0.20 | 1724 | +0.737 | 267 | FAIL |
+| anglet | 3.250 | 4.950 | +0.788 | [+0.672 ; +0.933] | 0.73 / 0.11 | 0.73 / 0.10 | 124 | +0.993 | 165 | FAIL |
+| cherbourg | 1.200 | 1.950 | +0.704 | [+0.643 ; +0.755] | 0.80 / 0.15 | 0.83 / 0.18 | 1656 | +0.737 | 267 | FAIL |
 
 Borne haute : quantile 0,9 de la cible. Adversaire : la baseline décalée de son
 propre quantile 0,9 d'erreur de train. `max(médian, p90)` est publié ; la part de
@@ -117,10 +109,8 @@ croisements est un diagnostic (`weak` au-delà de 5 %).
 
 | Station | Couverture | Pinball modèle | Pinball baseline | Gain pinball | IC95 % | Croisements | Verdict |
 |---|---|---|---|---|---|---|---|
-| pierres-noires | 0.834 | 0.0469 | 0.0640 | +26.7% | [+21.9% ; +30.9%] | 1.5% | FAIL |
-| belle-ile | 0.780 | 0.0389 | 0.0437 | +11.0% | [-2.0% ; +21.2%] | 5.4% | FAIL* |
-| anglet | 0.673 | 0.0396 | 0.0303 | -30.6% | [-48.1% ; -14.6%] | 15.2% | FAIL* |
-| cherbourg | 0.840 | 0.0239 | 0.0268 | +10.7% | [+6.3% ; +14.8%] | 1.6% | FAIL |
+| anglet | 0.722 | 0.0402 | 0.0351 | -14.6% | [-26.2% ; -4.6%] | 10.2% | FAIL* |
+| cherbourg | 0.855 | 0.0242 | 0.0262 | +7.8% | [+3.4% ; +12.0%] | 0.8% | FAIL |
 
 ## Comparaison des modèles ML
 
@@ -137,10 +127,8 @@ ne paie pas sa complexité, et c'est un résultat, pas un échec.
 
 | Station | Baseline physique | `hgb` | `ridge` | `hgb-per-lead` | Publié |
 |---|---|---|---|---|---|
-| pierres-noires | ncep_gfswave025 | **+28.9%** | +21.4% | +27.1% | `hgb` |
-| belle-ile | ewam | **+34.4%** | +30.1% | +30.9% | `hgb` |
-| anglet | meteofrance_wave | -8.2% | **+4.9%** | -11.9% | `ridge` |
-| cherbourg | ewam | **+31.8%** | +23.8% | +29.8% | `hgb` |
+| anglet | meteofrance_wave | +2.7% | **+7.7%** | -0.9% | `ridge` |
+| cherbourg | ewam | +17.2% | +10.1% | **+18.2%** | `hgb-per-lead` |
 
 ## Protocole
 
@@ -216,17 +204,15 @@ ne paie pas sa complexité, et c'est un résultat, pas un échec.
    de run, avec la limite de granularité journalière explicitée ci-dessus :
    ce n'est plus une analyse parfaite a posteriori, sans être une causalité
    exacte à l'heure près.
-4. **Sur 0 des 4 stations ré-entraînées, plus de la
+4. **Sur 0 des 2 stations ré-entraînées, plus de la
    moitié du gain
    affiché n'est qu'une correction de biais constant** — chaque baseline dérive
    sur la fenêtre de test, et retirer ce seul offset capte déjà l'essentiel du
    gain. Le chiffre à citer est donc **« Gain hors biais »**, jamais « Gain
    affiché ». Détail par station (biais obs − baseline, puis les deux gains) :
 
-   * `pierres-noires` : biais -0.016 m — gain affiché +23.6%, **hors biais +22.1%**
-   * `belle-ile` : biais -0.072 m — gain affiché +29.0%, **hors biais +23.3%**
-   * `anglet` : biais -0.018 m — gain affiché +9.8%, **hors biais +6.6%**
-   * `cherbourg` : biais -0.118 m — gain affiché +39.5%, **hors biais +23.9%**
+   * `anglet` : biais -0.031 m — gain affiché +13.4%, **hors biais +8.0%**
+   * `cherbourg` : biais -0.110 m — gain affiché +38.1%, **hors biais +23.2%**
 
    Aucune station ré-entraînée n'a un gain affiché supérieur au double de son gain hors biais.
    Aucune station de `gate.json` n'est `weak` : toutes battent ce simple débiaisage.
@@ -243,8 +229,8 @@ ne paie pas sa complexité, et c'est un résultat, pas un échec.
    ce que chaque feature apporte réellement (p. ex.
    `--ablate wind_u10,wind_v10`).
 
-   * `anglet` (wave) : 12484 lignes de train, MAE baseline 0.109 → modèle 0.099 (+9.8% affiché, +6.6% hors biais)
-   * `cherbourg` (wave) : 35134 lignes de train, MAE baseline 0.157 → modèle 0.095 (+39.5% affiché, +23.9% hors biais)
+   * `anglet` (wave) : 16330 lignes de train, MAE baseline 0.126 → modèle 0.110 (+13.4% affiché, +8.0% hors biais)
+   * `cherbourg` (wave) : 39658 lignes de train, MAE baseline 0.152 → modèle 0.094 (+38.1% affiché, +23.2% hors biais)
 
 
 ## Pistes testées et écartées
