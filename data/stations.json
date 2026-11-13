@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-11-12T06:00:00Z",
+  "updated": "2026-11-13T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -54,7 +54,7 @@
       "published": false,
       "weak": false,
       "baseline_model": "ewam",
-      "model_name": "hgb",
+      "model_name": "hgb-per-lead",
       "peaks_alert_published": false,
       "peaks_band_published": false
     },
