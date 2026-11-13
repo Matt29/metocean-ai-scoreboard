@@ -890,6 +890,38 @@ Origines écartées : anglet 2025-11-19 (test vide, bouée muette du 2025-04-22 
 plus ne changent donc pas le verdict : c'est un trou d'observation par station
 qui retire une origine, pas la profondeur d'archive.
 
+**Publication provisoire — règle introduite le 2026-11-13**
+(`train.provisional_verdict`). Une station `wave`/`wind` qui n'atteint pas le
+protocole multi-saisons est publiée avec la mention « provisoire » si, et
+seulement si, toutes ces conditions tiennent :
+
+1. il ne manque qu'**une** origine sur les 4 prévues ;
+2. cette origine est écartée pour **couverture d'observation** (bouée muette),
+   pas pour un split ou une validation dégénérés ;
+3. le test retenu couvre au moins **240 jours d'émission** ;
+4. la **borne basse de l'IC95 % du gain hors biais ≥ 5 %** (le gate lui-même,
+   au lieu de > 0 : la saison non testée se paie par une barre plus haute) ;
+5. le gain hors biais est **positif sur chaque origine retenue**.
+
+Les sorties pics (alerte, borne p90) sont jugées avec leurs critères habituels
+sur la même décision de publication. `gate.json` porte `provisional: true`,
+`evaluation_ready` reste `false` et le protocole reste « holdout dégradé » ;
+`stations.json` expose `provisional` pour le site. Le statut n'a pas de durée :
+il est recalculé à chaque entraînement et tombe dès qu'une condition lâche.
+
+Ce que la règle coûte, à ne pas oublier : on publie une station dont une saison
+n'a pas été testée.
+
+**Première application, mesurée le 2026-11-13** (`train.py --station
+cherbourg`, datasets du jour) : cherbourg **PASS (provisoire)** — 3 origines,
+267 jours, gain hors biais +23,2 % [+18,9 ; +27,5], origine 2026-02-17 écartée
+(54 jours d'émission sur 72, bouée muette du 2026-04-05 au 2026-05-11). Borne
+p90 PASS (couverture 0,855, gain pinball +7,8 %) ; **alerte FAIL**, sur son
+critère habituel et non sur le protocole : POD 0,80 contre 0,83 pour la
+référence. Anglet reste FAIL (2 origines, 165 jours, borne basse +4,6 %). Le
+trou d'avril-mai sort de la fenêtre des 4 origines vers mai 2027 (raisonné sur
+le calendrier des origines, pas mesuré).
+
 ---
 
 ## Réserves ouvertes

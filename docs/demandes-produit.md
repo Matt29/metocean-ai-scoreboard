@@ -470,7 +470,9 @@ visite que les stations dont le médian passe, donc une station sans médian
 publié ne sert aucun `peaks.json` — et la borne haute, qui publie
 `max(médian, p90)`, n'aurait de toute façon pas de sens sans lui. Les drapeaux
 `peaks_alert_published`/`peaks_band_published` de `stations.json` disent donc
-« médian publié **et** cet output passe », jamais l'output seul.
+« médian publié **et** cet output passe », jamais l'output seul. Depuis le
+2026-11-13, `stations.json` porte aussi `provisional` (booléen) : station publiée
+à titre provisoire, règle dans `docs/plan-dev-modele.md`.
 
 1. **Alerte de dépassement** — probabilité `p_h` que l'observation dépasse un
    seuil, à chaque heure de l'horizon. Deux seuils par station, calculés sur

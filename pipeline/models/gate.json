@@ -173,7 +173,7 @@
     "mae_model": 0.094,
     "n_folds": 3,
     "n_issue_days": 267,
-    "pass": false,
+    "pass": true,
     "peaks": {
       "alert": {
         "bss_clim": 0.7039,
@@ -199,12 +199,13 @@
         "gain_pinball": 0.0777,
         "gain_pinball_ci95_high": 0.12,
         "gain_pinball_ci95_low": 0.0345,
-        "pass": false,
+        "pass": true,
         "pinball_baseline": 0.0262,
         "pinball_model": 0.0242,
         "weak": false
       }
     },
+    "provisional": true,
     "test_days": 90,
     "weak": false
   },

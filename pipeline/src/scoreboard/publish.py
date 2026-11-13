@@ -4,7 +4,7 @@ Four files per run, all wrapped in `{"schema_version": 1, ...}` so an external
 consumer (the website, a separate repo) can detect a breaking change:
 
     data/stations.json          {"updated","stations": [{"id","name","kind","lat","lon",
-                                 "unit","published","weak","baseline_model"?,"model_name"?,
+                                 "unit","published","weak","provisional","baseline_model"?,"model_name"?,
                                  "peaks_alert_published","peaks_band_published"}]}
     data/<id>/latest.json       {"station","issued","series":[{"t","ia","baseline"}]}
     data/<id>/history.json      {"station","days":[{"date","status",
@@ -236,6 +236,9 @@ def _station_entry(s: Station, gate: dict, models_dir: Path | None = None) -> di
         "published": bool(gate.get("pass", False)),
         "weak": bool(gate.get("weak", False)),
     }
+    # Publication provisoire (`train.provisional_verdict`) : la station est
+    # servie comme les autres, le site l'affiche avec la mention.
+    entry["provisional"] = entry["published"] and bool(gate.get("provisional", False))
     # Omis plutôt que `null` — même forme optionnelle que dans `write_latest`.
     if gate.get("baseline_model"):
         entry["baseline_model"] = gate["baseline_model"]

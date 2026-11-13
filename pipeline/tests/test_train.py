@@ -893,3 +893,19 @@ def test_write_report_has_a_peaks_section(tmp_path, monkeypatch):
     assert "| first | 12.000 | 15.000 | +0.200 | [+0.100 ; +0.300] |" in text
     assert "| 300 | +0.150 | 360 | PASS |" in text  # le diagnostic p_48h
     assert "ne modifie pas le gate" in text
+
+
+def test_provisional_verdict_needs_every_condition():
+    """One origin lost to an observation hole, and only that, opens the provisional door."""
+    ok = dict(kind="wave", n_folds=3, skipped=1, skipped_for_coverage=1,
+              n_issue_days=267, ci_low=0.19, fold_gains=[0.2, 0.25, 0.3])
+    assert train.provisional_verdict(**ok) is True
+    for change in (
+        {"kind": "tide"},                       # no rolling-origin protocol to fall short of
+        {"n_folds": 2, "skipped": 2, "skipped_for_coverage": 2},  # two seasons missing
+        {"skipped_for_coverage": 0},            # the origin was lost to the model/split, not the buoy
+        {"n_issue_days": 239},
+        {"ci_low": 0.049},                      # above zero is not enough here
+        {"fold_gains": [0.2, -0.01, 0.3]},      # one retained season loses
+    ):
+        assert train.provisional_verdict(**{**ok, **change}) is False, change

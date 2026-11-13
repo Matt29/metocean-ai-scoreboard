@@ -13,8 +13,9 @@ Justification de chaque source de données : [`docs/data-sources.md`](docs/data-
 
 ## Stations
 
-9 stations actives, **7 publiées**, plus 8 pilotes bouées Météo-France inactifs (Gascogne et 7 en Méditerranée) — les deux
-autres (Anglet et Cherbourg houle) sont mesurées comme
+9 stations actives, **8 publiées** dont une à titre provisoire (Cherbourg houle,
+depuis le 2026-11-13), plus 8 pilotes bouées Météo-France inactifs (Gascogne et
+7 en Méditerranée) — la neuvième (Anglet) est mesurée comme
 les autres tous les jours, mais un *gate* qualité (`pipeline/models/gate.json`)
 retient toute station où l'IA ne bat pas sa propre baseline sur les données
 d'entraînement. Ce n'est pas une faiblesse cachée : c'est l'argument du
@@ -72,7 +73,7 @@ que le gate et le serve utilisent ensuite.
 | Pierres Noires | houle (Hs) | Candhis | Open-Meteo Marine (`ncep_gfswave025`) | oui |
 | Belle-Île | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | oui |
 | Anglet | houle (Hs) | Candhis | Open-Meteo Marine (`meteofrance_wave`) | non (holdout dégradé, dépubliée le 2026-09-14) |
-| Cherbourg | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | non (holdout dégradé) |
+| Cherbourg | houle (Hs) | Candhis | Open-Meteo Marine (`ewam`) | oui, **provisoire** (3 origines sur 4, depuis le 2026-11-13) |
 | Bouée Gascogne | houle (Hs) | Météo-France DPObs `/bouees` | Open-Meteo Marine (à sélectionner) | pilote inactif |
 | 7 bouées Méditerranée (Azur, Lion, Ajaccio, Vecchio, Calvi, Provence, PACA) | houle (Hs) | Météo-France DPObs `/bouees` | Open-Meteo Marine (à sélectionner) | pilotes inactifs |
 | Brest | niveau d'eau | SHOM REFMAR | harmonique (utide, 2 ans) | oui |

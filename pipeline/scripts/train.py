@@ -49,6 +49,12 @@ DATA_DIR = ROOT / "pipeline" / "data_train"
 REPORT_PATH = ROOT / "docs" / "model-eval.md"
 GATE_PATH = model.MODELS_DIR / "gate.json"
 GATE = 0.05  # the model must beat the baseline, hors biais, by >= 5% to go live
+# Publication provisoire (décidée le 2026-11-13, `docs/plan-dev-modele.md`) : une
+# station à modèles à qui il ne manque qu'UNE origine saisonnière, écartée pour
+# un trou d'observation et non pour le modèle, peut être publiée avec la mention
+# « provisoire ». La barre monte en échange de la saison non testée : la borne
+# basse de l'IC doit dépasser le gate lui-même, pas seulement zéro.
+PROVISIONAL_MIN_ISSUE_DAYS = 240
 
 # Held-out issue days, per kind. Tide keeps one full-year holdout. Wave and wind
 # use 90-day blocks: with >= two years of history, four rolling origins cover
@@ -157,6 +163,34 @@ PEAK_DECISION = 0.5
 PEAK_COVERAGE = (0.85, 0.95)
 PEAK_CROSSINGS_WEAK = 0.05
 BOOTSTRAP_SEED = 20260804
+
+
+def provisional_verdict(
+    kind: str,
+    n_folds: int,
+    skipped: int,
+    skipped_for_coverage: int,
+    n_issue_days: int,
+    ci_low: float,
+    fold_gains: list[float],
+) -> bool:
+    """Whether a station short of the multi-season protocol may publish provisionally.
+
+    Every condition is about evidence, none about convenience: exactly one
+    planned origin is missing, it was discarded for observation coverage (a
+    silent buoy) rather than for anything the model did, the remaining test
+    still spans >= `PROVISIONAL_MIN_ISSUE_DAYS` issue days, the gain's CI lower
+    bound clears `GATE`, and no retained origin loses to its debiased baseline.
+    """
+    planned = ROLLING_FOLDS_BY_KIND.get(kind)
+    return bool(
+        planned is not None
+        and n_folds == planned - 1
+        and skipped == skipped_for_coverage == 1
+        and n_issue_days >= PROVISIONAL_MIN_ISSUE_DAYS
+        and ci_low >= GATE
+        and all(gain > 0 for gain in fold_gains)
+    )
 
 
 def _fmt(value: float | None, spec: str = ".2f") -> str:
@@ -559,6 +593,7 @@ def evaluate(
     fold_baselines = []
     fold_peaks: list[dict | None] = []
     skipped_origins: list[str] = []
+    skipped_for_coverage = 0
     val_scores: dict = {}
     best = model_names[0]
     final_x = final_target = None
@@ -587,6 +622,7 @@ def evaluate(
                 reason = "split train/test dégénéré"
             elif station.kind in KIND_MODELS and len(day_test.unique()) < needed:
                 reason = f"couverture {len(day_test.unique())}/{needed} jours d'émission"
+                skipped_for_coverage += 1  # the only skip `provisional_verdict` tolerates
             x_train, target_train, obs_train = x[train_mask], target[train_mask], obs[train_mask]
             if reason is None:
                 val_days = min(test_days, VAL_DAYS_CAP)
@@ -658,8 +694,10 @@ def evaluate(
     residual = obs_test.to_numpy() - x_test["baseline"].to_numpy()
     mae_base = float(np.abs(residual).mean())
     bias = float(residual.mean())
-    mae_debiased = float(_debiased_baseline_error(residual, test_fold_ids).mean())
-    mae_model = float(np.abs(level_test - obs_test.to_numpy()).mean())
+    debiased_error = _debiased_baseline_error(residual, test_fold_ids)
+    abs_error = np.abs(level_test - obs_test.to_numpy())
+    mae_debiased = float(debiased_error.mean())
+    mae_model = float(abs_error.mean())
     scores = {
         "mae_model": mae_model,
         "gain": (mae_base - mae_model) / mae_base if mae_base else 0.0,
@@ -680,9 +718,21 @@ def evaluate(
     else:
         protocol = "holdout annuel"
     evaluation_ready = station.kind not in KIND_MODELS or protocol == "rolling-origin multi-saisons"
+    fold_gains = []
+    for k in np.unique(test_fold_ids):
+        fold = test_fold_ids == k
+        base, mod = float(debiased_error[fold].mean()), float(abs_error[fold].mean())
+        fold_gains.append((base - mod) / base if base else 0.0)
+    provisional = not evaluation_ready and provisional_verdict(
+        station.kind, len(fold_levels), len(skipped_origins), skipped_for_coverage,
+        n_issue_days, ci_low, fold_gains,
+    )
+    # One publication decision for the median and both peak outputs: a station
+    # published provisionally is judged on the same evidence everywhere.
+    publishable = evaluation_ready or provisional
     peaks_row = _peak_verdicts(
         station.kind, x_test, obs_test, level_test, test_fold_ids,
-        fold_peaks, evaluation_ready,
+        fold_peaks, publishable,
     )
     # Once the reported heldouts are sealed, baseline selection and training may
     # use all available rows for the artefact served in production.  This is
@@ -741,6 +791,7 @@ def evaluate(
         "n_issue_days": n_issue_days,
         "evaluation_protocol": protocol,
         "evaluation_ready": evaluation_ready,
+        "provisional": provisional,
         "gain_debiased_ci95_low": ci_low,
         "gain_debiased_ci95_high": ci_high,
         "ci_unit": "issue_day",
@@ -755,7 +806,7 @@ def evaluate(
         # A positive lower bound is deliberately required even in degraded
         # mode: short history is labelled as such, never compensated by a
         # point estimate with indistinguishable-from-zero skill.
-        "pass": evaluation_ready and scores["gain_debiased"] >= GATE and ci_low > 0.0,
+        "pass": publishable and scores["gain_debiased"] >= GATE and ci_low > 0.0,
         # "weak": the model brings nothing a constant offset would not. Now that
         # `pass` itself requires beating the debiased baseline by >= GATE, a
         # passing station can no longer be weak — the flag is kept as-is (still
@@ -857,6 +908,8 @@ def _verdict(r: dict) -> str:
     """`PASS*` = au-dessus du gate mais sans battre un simple débiaisage."""
     if not r["pass"]:
         return "FAIL"
+    if r.get("provisional"):
+        return "PASS (provisoire)"
     return "PASS*" if r["weak"] else "PASS"
 
 
@@ -1204,7 +1257,7 @@ def write_report(
         "Ce verdict est aussi émis en donnée dans `pipeline/models/gate.json`",
         "(`{station: {pass, weak, mae_model, mae_baseline, gain, gain_debiased,",
         "gain_debiased_ci95_low, gain_debiased_ci95_high, n_folds, n_issue_days,",
-        "evaluation_protocol, evaluation_ready, ci_unit, baseline_model,",
+        "evaluation_protocol, evaluation_ready, provisional, ci_unit, baseline_model,",
         "fold_baselines}}`) — c'est cette",
         "source, pas ce tableau, que le publisher doit lire.",
         "",
@@ -1218,6 +1271,12 @@ def write_report(
         if gate_failed
         else "**Toutes les stations de `gate.json` passent le gate.**\n",
     ]
+    if gate_provisional := sorted(s for s, e in gate.items() if e["pass"] and e.get("provisional")):
+        lines.append(
+            f"**Publiées à titre provisoire : {', '.join(gate_provisional)}** — une origine "
+            "saisonnière manque pour trou d'observation ; règle et conditions dans "
+            "`docs/plan-dev-modele.md` (`train.provisional_verdict`).\n"
+        )
     lines += _event_diagnostic(rows)
     lines += _peaks_section(rows)
     lines += _ml_comparison(rows)
@@ -1366,6 +1425,7 @@ def merge_gate(previous: dict, rows: list[dict], known: set[str]) -> dict:
             "test_days",
             "evaluation_protocol",
             "evaluation_ready",
+            "provisional",
             "ci_unit",
             "fold_baselines",
         ):
