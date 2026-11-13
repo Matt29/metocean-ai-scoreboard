@@ -370,6 +370,32 @@ calculé sur ces chiffres : un mois d'automne, ~70 jours d'entraînement, ils
 classent les bouées à titre indicatif et ne valent pas verdict. La borne p90
 échoue sur les 8 (couverture 0,47 à 0,83).
 
+**Ablation sur les deux pilotes en gain négatif (2026-11-13, code de `a9e18e5`,
+script hors dépôt, lecture seule).** Même découpage, mêmes lignes de test,
+candidat `ridge`, gain hors biais :
+
+| variante d'entraînement | ajaccio | provence | azur (témoin) | vecchio (témoin) |
+|---|---|---|---|---|
+| tout l'entraînement (mesure ci-dessus) | −3,4 % | −0,5 % | +23,0 % | +17,9 % |
+| ses 30 derniers jours seulement | −7,4 % | −0,5 % | +3,9 % | +9,4 % |
+| sans ses 30 derniers jours | −5,3 % | −3,0 % | +26,9 % | +8,7 % |
+| référence + biais moyen d'entraînement | −9,8 % | −3,1 % | −15,8 % | −0,7 % |
+
+- **Mesuré** : aucune variante ne rend ajaccio ou provence positifs. Imposer
+  `ecmwf_wam025` comme référence à provence (meilleure qu'`ewam` sur le test)
+  laisse le gain négatif (−2,4 %, MAE modèle 0,161 m contre 0,163). Le biais
+  moyen de la référence à ajaccio change bien entre entraînement et test
+  (résidu moyen +0,065 m à l'entraînement), mais le modèle complet fait déjà
+  mieux que cette seule correction.
+- **Réfuté** : « la correction apprise l'été ne tient plus en automne » et
+  « mauvaise référence à provence ». Entraîner sur les jours les plus proches
+  du test n'aide pas.
+- **Raisonné** : la profondeur d'entraînement pèse plus que la saison (azur
+  perd 19 points avec 30 jours seulement).
+- **Inconnu** : la cause du gain négatif. Un mois de test et ~70 jours
+  d'entraînement ne séparent pas une absence de marge (ajaccio a la meilleure
+  référence des huit, 0,119 m débiaisée) d'un effet d'échantillon.
+
 ### Le chemin imposé par la rétention de `/bouees`
 
 - **Scoring quotidien : faisable dès le premier jour.** La fenêtre de 24 h
