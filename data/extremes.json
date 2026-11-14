@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-11-13T06:00:00Z",
+  "updated": "2026-11-14T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -74,7 +74,18 @@
     },
     {
       "id": "cherbourg",
-      "episodes": []
+      "episodes": [
+        {
+          "date": "2026-11-13",
+          "obs_peak": 0.9,
+          "t_peak": "2026-11-13T07:00:00Z",
+          "ia_at_peak": 0.9406,
+          "baseline_at_peak": 1.02,
+          "peak_error_ia": 0.0406,
+          "peak_error_baseline": 0.12,
+          "baseline_model": "ewam"
+        }
+      ]
     },
     {
       "id": "brest",
