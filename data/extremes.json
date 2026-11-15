@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-11-14T06:00:00Z",
+  "updated": "2026-11-15T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -83,6 +83,16 @@
           "baseline_at_peak": 1.02,
           "peak_error_ia": 0.0406,
           "peak_error_baseline": 0.12,
+          "baseline_model": "ewam"
+        },
+        {
+          "date": "2026-11-14",
+          "obs_peak": 0.6,
+          "t_peak": "2026-11-15T12:00:00Z",
+          "ia_at_peak": 0.5657,
+          "baseline_at_peak": 0.68,
+          "peak_error_ia": -0.0343,
+          "peak_error_baseline": 0.08,
           "baseline_model": "ewam"
         }
       ]
