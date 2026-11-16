@@ -1,21 +1,9 @@
 {
   "schema_version": 1,
   "buoy": "6101035",
-  "updated": "2026-11-16T17:00:00Z",
-  "since": "2026-10-17T17:00:00Z",
+  "updated": "2026-11-16T19:00:00Z",
+  "since": "2026-10-17T19:00:00Z",
   "series": [
-    {
-      "t": "2026-10-17T17:00:00Z",
-      "hs": null,
-      "period": null,
-      "direction": null
-    },
-    {
-      "t": "2026-10-17T18:00:00Z",
-      "hs": null,
-      "period": null,
-      "direction": null
-    },
     {
       "t": "2026-10-17T19:00:00Z",
       "hs": null,
@@ -3822,6 +3810,12 @@
     },
     {
       "t": "2026-11-16T17:00:00Z",
+      "hs": null,
+      "period": null,
+      "direction": null
+    },
+    {
+      "t": "2026-11-16T19:00:00Z",
       "hs": null,
       "period": null,
       "direction": null
