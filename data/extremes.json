@@ -1,10 +1,20 @@
 {
   "schema_version": 1,
-  "updated": "2026-11-16T06:00:00Z",
+  "updated": "2026-11-17T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
       "episodes": [
+        {
+          "date": "2026-11-16",
+          "obs_peak": 5.0,
+          "t_peak": "2026-11-17T17:00:00Z",
+          "ia_at_peak": 4.5659,
+          "baseline_at_peak": 4.66,
+          "peak_error_ia": -0.4341,
+          "peak_error_baseline": -0.34,
+          "baseline_model": "ncep_gfswave025"
+        },
         {
           "date": "2026-10-21",
           "obs_peak": 4.9,
@@ -23,16 +33,6 @@
           "baseline_at_peak": 4.54,
           "peak_error_ia": -0.0181,
           "peak_error_baseline": -0.26,
-          "baseline_model": "ncep_gfswave025"
-        },
-        {
-          "date": "2026-10-19",
-          "obs_peak": 4.7,
-          "t_peak": "2026-10-21T06:00:00Z",
-          "ia_at_peak": 4.3276,
-          "baseline_at_peak": 4.42,
-          "peak_error_ia": -0.3724,
-          "peak_error_baseline": -0.28,
           "baseline_model": "ncep_gfswave025"
         }
       ]
@@ -76,6 +76,16 @@
       "id": "cherbourg",
       "episodes": [
         {
+          "date": "2026-11-16",
+          "obs_peak": 1.7,
+          "t_peak": "2026-11-17T08:00:00Z",
+          "ia_at_peak": 1.3481,
+          "baseline_at_peak": 1.68,
+          "peak_error_ia": -0.3519,
+          "peak_error_baseline": -0.02,
+          "baseline_model": "ewam"
+        },
+        {
           "date": "2026-11-14",
           "obs_peak": 1.5,
           "t_peak": "2026-11-15T20:00:00Z",
@@ -93,16 +103,6 @@
           "baseline_at_peak": 1.06,
           "peak_error_ia": -0.565,
           "peak_error_baseline": -0.44,
-          "baseline_model": "ewam"
-        },
-        {
-          "date": "2026-11-13",
-          "obs_peak": 0.9,
-          "t_peak": "2026-11-13T07:00:00Z",
-          "ia_at_peak": 0.9406,
-          "baseline_at_peak": 1.02,
-          "peak_error_ia": 0.0406,
-          "peak_error_baseline": 0.12,
           "baseline_model": "ewam"
         }
       ]
