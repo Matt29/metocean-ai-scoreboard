@@ -6,13 +6,23 @@
       "id": "pierres-noires",
       "episodes": [
         {
+          "date": "2026-11-17",
+          "obs_peak": 6.2,
+          "t_peak": "2026-11-18T08:00:00Z",
+          "ia_at_peak": 5.5432,
+          "baseline_at_peak": 5.32,
+          "peak_error_ia": -0.6568,
+          "peak_error_baseline": -0.88,
+          "baseline_model": "ncep_gfswave025"
+        },
+        {
           "date": "2026-11-16",
-          "obs_peak": 5.2,
-          "t_peak": "2026-11-17T19:00:00Z",
-          "ia_at_peak": 4.6221,
-          "baseline_at_peak": 4.6,
-          "peak_error_ia": -0.5779,
-          "peak_error_baseline": -0.6,
+          "obs_peak": 5.4,
+          "t_peak": "2026-11-17T21:00:00Z",
+          "ia_at_peak": 4.4401,
+          "baseline_at_peak": 4.68,
+          "peak_error_ia": -0.9599,
+          "peak_error_baseline": -0.72,
           "baseline_model": "ncep_gfswave025"
         },
         {
@@ -24,22 +34,32 @@
           "peak_error_ia": 0.0415,
           "peak_error_baseline": -0.46,
           "baseline_model": "ncep_gfswave025"
-        },
-        {
-          "date": "2026-10-20",
-          "obs_peak": 4.8,
-          "t_peak": "2026-10-21T10:00:00Z",
-          "ia_at_peak": 4.7819,
-          "baseline_at_peak": 4.54,
-          "peak_error_ia": -0.0181,
-          "peak_error_baseline": -0.26,
-          "baseline_model": "ncep_gfswave025"
         }
       ]
     },
     {
       "id": "belle-ile",
       "episodes": [
+        {
+          "date": "2026-11-17",
+          "obs_peak": 5.8,
+          "t_peak": "2026-11-18T14:00:00Z",
+          "ia_at_peak": 5.5592,
+          "baseline_at_peak": 4.72,
+          "peak_error_ia": -0.2408,
+          "peak_error_baseline": -1.08,
+          "baseline_model": "ewam"
+        },
+        {
+          "date": "2026-11-16",
+          "obs_peak": 5.0,
+          "t_peak": "2026-11-17T23:00:00Z",
+          "ia_at_peak": 4.6096,
+          "baseline_at_peak": 4.72,
+          "peak_error_ia": -0.3904,
+          "peak_error_baseline": -0.28,
+          "baseline_model": "ewam"
+        },
         {
           "date": "2026-10-20",
           "obs_peak": 4.4,
@@ -48,26 +68,6 @@
           "baseline_at_peak": 4.28,
           "peak_error_ia": -0.4128,
           "peak_error_baseline": -0.12,
-          "baseline_model": "ewam"
-        },
-        {
-          "date": "2026-10-21",
-          "obs_peak": 4.4,
-          "t_peak": "2026-10-21T10:00:00Z",
-          "ia_at_peak": 4.0273,
-          "baseline_at_peak": 4.18,
-          "peak_error_ia": -0.3727,
-          "peak_error_baseline": -0.22,
-          "baseline_model": "ewam"
-        },
-        {
-          "date": "2026-11-15",
-          "obs_peak": 4.4,
-          "t_peak": "2026-11-15T15:00:00Z",
-          "ia_at_peak": 4.2939,
-          "baseline_at_peak": 4.6,
-          "peak_error_ia": -0.1061,
-          "peak_error_baseline": 0.2,
           "baseline_model": "ewam"
         }
       ]
@@ -86,6 +86,16 @@
           "baseline_model": "ewam"
         },
         {
+          "date": "2026-11-17",
+          "obs_peak": 1.7,
+          "t_peak": "2026-11-17T08:00:00Z",
+          "ia_at_peak": 1.5795,
+          "baseline_at_peak": 1.72,
+          "peak_error_ia": -0.1205,
+          "peak_error_baseline": 0.02,
+          "baseline_model": "ewam"
+        },
+        {
           "date": "2026-11-14",
           "obs_peak": 1.5,
           "t_peak": "2026-11-15T20:00:00Z",
@@ -93,16 +103,6 @@
           "baseline_at_peak": 0.88,
           "peak_error_ia": -0.5934,
           "peak_error_baseline": -0.62,
-          "baseline_model": "ewam"
-        },
-        {
-          "date": "2026-11-15",
-          "obs_peak": 1.5,
-          "t_peak": "2026-11-15T20:00:00Z",
-          "ia_at_peak": 0.935,
-          "baseline_at_peak": 1.06,
-          "peak_error_ia": -0.565,
-          "peak_error_baseline": -0.44,
           "baseline_model": "ewam"
         }
       ]

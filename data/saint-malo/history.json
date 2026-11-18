@@ -26307,32 +26307,34 @@
         },
         {
           "t": "2026-11-18T16:00:00Z",
-          "obs": 6.2392,
+          "obs": 6.1646,
           "ia": 6.3485,
           "baseline": 5.9571
         },
         {
           "t": "2026-11-18T17:00:00Z",
-          "obs": 6.2392,
+          "obs": 5.5369,
           "ia": 5.7738,
           "baseline": 5.3731
-        }
-      ],
-      "mae_ia": 0.1649,
-      "mae_baseline": 0.3757,
-      "n_points": 35,
-      "max_lead_h": 35,
-      "pending": [
+        },
         {
           "t": "2026-11-18T18:00:00Z",
+          "obs": 5.3123,
           "ia": 5.5264,
           "baseline": 5.114
         },
         {
           "t": "2026-11-18T19:00:00Z",
+          "obs": 5.3123,
           "ia": 5.6645,
           "baseline": 5.2419
-        },
+        }
+      ],
+      "mae_ia": 0.1671,
+      "mae_baseline": 0.3417,
+      "n_points": 37,
+      "max_lead_h": 37,
+      "pending": [
         {
           "t": "2026-11-18T20:00:00Z",
           "ia": 6.3316,
@@ -26390,32 +26392,20 @@
         }
       ],
       "peaks": {
-        "n": 35,
-        "events": 31,
-        "hits": 14,
+        "n": 37,
+        "events": 29,
+        "hits": 12,
         "misses": 17,
-        "false_alarms": 2,
-        "brier": 12.36137913,
-        "brier_clim": 25.15,
-        "n_band": 35,
-        "covered": 26
+        "false_alarms": 6,
+        "brier": 14.66431571,
+        "brier_clim": 23.570000000000007,
+        "n_band": 37,
+        "covered": 29
       },
       "peaks_pending": {
         "threshold_p90": 0.25501612445205524,
         "clim": 0.1,
         "points": [
-          {
-            "t": "2026-11-18T18:00:00Z",
-            "p_exceed": 0.8303,
-            "p90_upper": 5.6493,
-            "baseline": 5.114
-          },
-          {
-            "t": "2026-11-18T19:00:00Z",
-            "p_exceed": 0.8293,
-            "p90_upper": 5.8399,
-            "baseline": 5.2419
-          },
           {
             "t": "2026-11-18T20:00:00Z",
             "p_exceed": 0.9273,
