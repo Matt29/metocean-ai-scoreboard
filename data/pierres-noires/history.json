@@ -22970,12 +22970,24 @@
           "obs": 4.9,
           "ia": 5.704,
           "baseline": 5.38
+        },
+        {
+          "t": "2026-11-19T18:00:00Z",
+          "obs": 5.0,
+          "ia": 5.8775,
+          "baseline": 5.36
+        },
+        {
+          "t": "2026-11-19T19:00:00Z",
+          "obs": 5.0,
+          "ia": 5.9002,
+          "baseline": 5.38
         }
       ],
-      "mae_ia": 0.3302,
-      "mae_baseline": 0.2842,
-      "n_points": 24,
-      "max_lead_h": 35,
+      "mae_ia": 0.3732,
+      "mae_baseline": 0.2908,
+      "n_points": 26,
+      "max_lead_h": 37,
       "pending": [
         {
           "t": "2026-11-18T21:00:00Z",
@@ -23033,16 +23045,6 @@
           "baseline": 5.42
         },
         {
-          "t": "2026-11-19T18:00:00Z",
-          "ia": 5.8775,
-          "baseline": 5.36
-        },
-        {
-          "t": "2026-11-19T19:00:00Z",
-          "ia": 5.9002,
-          "baseline": 5.38
-        },
-        {
           "t": "2026-11-19T20:00:00Z",
           "ia": 6.0231,
           "baseline": 5.46
@@ -23098,15 +23100,14 @@
           "baseline": 5.88
         }
       ],
-      "baseline_model": "ncep_gfswave025",
       "peaks": {
-        "n": 24,
-        "events": 24,
-        "hits": 24,
+        "n": 26,
+        "events": 26,
+        "hits": 26,
         "misses": 0,
         "false_alarms": 0,
         "brier": 4.9999999999988986e-08,
-        "brier_clim": 19.254683759999995,
+        "brier_clim": 20.859240739999994,
         "n_band": 0,
         "covered": 0
       },
@@ -23170,16 +23171,6 @@
             "p90_upper": null
           },
           {
-            "t": "2026-11-19T18:00:00Z",
-            "p_exceed": 1.0,
-            "p90_upper": null
-          },
-          {
-            "t": "2026-11-19T19:00:00Z",
-            "p_exceed": 1.0,
-            "p90_upper": null
-          },
-          {
             "t": "2026-11-19T20:00:00Z",
             "p_exceed": 1.0,
             "p90_upper": null
@@ -23235,7 +23226,8 @@
             "p90_upper": null
           }
         ]
-      }
+      },
+      "baseline_model": "ncep_gfswave025"
     }
   ]
 }
