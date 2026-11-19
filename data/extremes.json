@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-11-18T06:00:00Z",
+  "updated": "2026-11-19T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -16,6 +16,16 @@
           "baseline_model": "ncep_gfswave025"
         },
         {
+          "date": "2026-11-18",
+          "obs_peak": 6.2,
+          "t_peak": "2026-11-18T08:00:00Z",
+          "ia_at_peak": 5.8737,
+          "baseline_at_peak": 5.26,
+          "peak_error_ia": -0.3263,
+          "peak_error_baseline": -0.94,
+          "baseline_model": "ncep_gfswave025"
+        },
+        {
           "date": "2026-11-16",
           "obs_peak": 5.4,
           "t_peak": "2026-11-17T21:00:00Z",
@@ -24,22 +34,22 @@
           "peak_error_ia": -0.9599,
           "peak_error_baseline": -0.72,
           "baseline_model": "ncep_gfswave025"
-        },
-        {
-          "date": "2026-10-21",
-          "obs_peak": 4.9,
-          "t_peak": "2026-10-21T09:00:00Z",
-          "ia_at_peak": 4.9415,
-          "baseline_at_peak": 4.44,
-          "peak_error_ia": 0.0415,
-          "peak_error_baseline": -0.46,
-          "baseline_model": "ncep_gfswave025"
         }
       ]
     },
     {
       "id": "belle-ile",
       "episodes": [
+        {
+          "date": "2026-11-18",
+          "obs_peak": 5.9,
+          "t_peak": "2026-11-19T09:00:00Z",
+          "ia_at_peak": 5.7358,
+          "baseline_at_peak": 5.3,
+          "peak_error_ia": -0.1642,
+          "peak_error_baseline": -0.6,
+          "baseline_model": "ewam"
+        },
         {
           "date": "2026-11-17",
           "obs_peak": 5.8,
@@ -58,16 +68,6 @@
           "baseline_at_peak": 4.72,
           "peak_error_ia": -0.3904,
           "peak_error_baseline": -0.28,
-          "baseline_model": "ewam"
-        },
-        {
-          "date": "2026-10-20",
-          "obs_peak": 4.4,
-          "t_peak": "2026-10-21T10:00:00Z",
-          "ia_at_peak": 3.9872,
-          "baseline_at_peak": 4.28,
-          "peak_error_ia": -0.4128,
-          "peak_error_baseline": -0.12,
           "baseline_model": "ewam"
         }
       ]
@@ -96,13 +96,13 @@
           "baseline_model": "ewam"
         },
         {
-          "date": "2026-11-14",
-          "obs_peak": 1.5,
-          "t_peak": "2026-11-15T20:00:00Z",
-          "ia_at_peak": 0.9066,
-          "baseline_at_peak": 0.88,
-          "peak_error_ia": -0.5934,
-          "peak_error_baseline": -0.62,
+          "date": "2026-11-18",
+          "obs_peak": 1.7,
+          "t_peak": "2026-11-18T08:00:00Z",
+          "ia_at_peak": 1.4113,
+          "baseline_at_peak": 1.88,
+          "peak_error_ia": -0.2887,
+          "peak_error_baseline": 0.18,
           "baseline_model": "ewam"
         }
       ]
