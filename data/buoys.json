@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "updated": "2026-11-19T18:00:00Z",
+  "updated": "2026-11-20T16:00:00Z",
   "since": "2026-07-31",
   "buoys": [
     {
       "id": "4100230",
       "name": "BOUEE_ANTILLES",
-      "lat": 16.21,
+      "lat": 16.2,
       "lon": -59.17,
       "wave": true
     },
@@ -14,7 +14,7 @@
       "id": "6100001",
       "name": "BOUEE_AZUR",
       "lat": 43.36,
-      "lon": 7.83,
+      "lon": 7.85,
       "wave": true
     },
     {
@@ -41,29 +41,29 @@
     {
       "id": "6101033",
       "name": "BOUEE_CALVI",
-      "lat": 42.82,
-      "lon": 8.42,
+      "lat": 42.81,
+      "lon": 8.43,
       "wave": true
     },
     {
       "id": "6101034",
       "name": "BOUEE_PROVENCE",
-      "lat": 41.59,
-      "lon": 5.52,
+      "lat": 41.5833,
+      "lon": 5.5,
       "wave": true
     },
     {
       "id": "6101035",
       "name": "BOUEE_SARDAIGNE",
       "lat": 40.5,
-      "lon": 6.73,
+      "lon": 6.72,
       "wave": false
     },
     {
       "id": "6101036",
       "name": "BOUEE_PACA",
-      "lat": 42.35,
-      "lon": 6.71,
+      "lat": 42.34,
+      "lon": 6.72,
       "wave": true
     },
     {
