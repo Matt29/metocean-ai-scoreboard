@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-11-22T06:00:00Z",
+  "updated": "2026-11-23T06:00:00Z",
   "stations": [
     {
       "id": "pierres-noires",
@@ -76,6 +76,26 @@
       "id": "cherbourg",
       "episodes": [
         {
+          "date": "2026-11-21",
+          "obs_peak": 2.5,
+          "t_peak": "2026-11-22T21:00:00Z",
+          "ia_at_peak": 1.2639,
+          "baseline_at_peak": 1.12,
+          "peak_error_ia": -1.2361,
+          "peak_error_baseline": -1.38,
+          "baseline_model": "ewam"
+        },
+        {
+          "date": "2026-11-22",
+          "obs_peak": 2.5,
+          "t_peak": "2026-11-22T21:00:00Z",
+          "ia_at_peak": 1.7763,
+          "baseline_at_peak": 1.84,
+          "peak_error_ia": -0.7237,
+          "peak_error_baseline": -0.66,
+          "baseline_model": "ewam"
+        },
+        {
           "date": "2026-11-19",
           "obs_peak": 1.9,
           "t_peak": "2026-11-20T09:00:00Z",
@@ -83,26 +103,6 @@
           "baseline_at_peak": 1.78,
           "peak_error_ia": -0.2027,
           "peak_error_baseline": -0.12,
-          "baseline_model": "ewam"
-        },
-        {
-          "date": "2026-11-16",
-          "obs_peak": 1.7,
-          "t_peak": "2026-11-17T08:00:00Z",
-          "ia_at_peak": 1.3481,
-          "baseline_at_peak": 1.68,
-          "peak_error_ia": -0.3519,
-          "peak_error_baseline": -0.02,
-          "baseline_model": "ewam"
-        },
-        {
-          "date": "2026-11-17",
-          "obs_peak": 1.7,
-          "t_peak": "2026-11-17T08:00:00Z",
-          "ia_at_peak": 1.5795,
-          "baseline_at_peak": 1.72,
-          "peak_error_ia": -0.1205,
-          "peak_error_baseline": 0.02,
           "baseline_model": "ewam"
         }
       ]
