@@ -5,8 +5,8 @@
   "status": "ok",
   "unit": "m/s",
   "threshold_p90": 12.6,
-  "p_48h": 0.6145,
-  "t_peak_pred": "2026-11-28T12:00:00Z",
+  "p_48h": 0.5182,
+  "t_peak_pred": "2026-11-28T11:00:00Z",
   "series": [
     {
       "t": "2026-11-27T07:00:00Z",
@@ -110,57 +110,57 @@
     },
     {
       "t": "2026-11-28T03:00:00Z",
-      "p_exceed": 0.0,
+      "p_exceed": 0.0003,
       "p90_upper": null
     },
     {
       "t": "2026-11-28T04:00:00Z",
-      "p_exceed": 0.0038,
+      "p_exceed": 0.0015,
       "p90_upper": null
     },
     {
       "t": "2026-11-28T05:00:00Z",
-      "p_exceed": 0.0095,
+      "p_exceed": 0.0171,
       "p90_upper": null
     },
     {
       "t": "2026-11-28T06:00:00Z",
-      "p_exceed": 0.0394,
+      "p_exceed": 0.0337,
       "p90_upper": null
     },
     {
       "t": "2026-11-28T07:00:00Z",
-      "p_exceed": 0.0806,
+      "p_exceed": 0.1555,
       "p90_upper": null
     },
     {
       "t": "2026-11-28T08:00:00Z",
-      "p_exceed": 0.1371,
+      "p_exceed": 0.1582,
       "p90_upper": null
     },
     {
       "t": "2026-11-28T09:00:00Z",
-      "p_exceed": 0.0767,
+      "p_exceed": 0.0972,
       "p90_upper": null
     },
     {
       "t": "2026-11-28T10:00:00Z",
-      "p_exceed": 0.1546,
+      "p_exceed": 0.1216,
       "p90_upper": null
     },
     {
       "t": "2026-11-28T11:00:00Z",
-      "p_exceed": 0.4844,
+      "p_exceed": 0.5182,
       "p90_upper": null
     },
     {
       "t": "2026-11-28T12:00:00Z",
-      "p_exceed": 0.6145,
+      "p_exceed": 0.2973,
       "p90_upper": null
     },
     {
       "t": "2026-11-28T13:00:00Z",
-      "p_exceed": 0.0103,
+      "p_exceed": 0.0045,
       "p90_upper": null
     },
     {
